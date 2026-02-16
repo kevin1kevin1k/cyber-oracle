@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=elin
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d elin"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   backend:
     build:
       context: ./backend
@@ -6,6 +22,10 @@ services:
       - "8000:8000"
     environment:
       - CORS_ORIGINS=http://localhost:3000
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/elin
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./backend:/app
 
@@ -16,9 +36,12 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-      - NEXT_PUBLIC_DEV_BEARER_TOKEN=
+      - NEXT_PUBLIC_DEV_BEARER_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0.
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+volumes:
+  postgres_data:

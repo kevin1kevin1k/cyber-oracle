@@ -51,6 +51,7 @@ Pull requests should include:
 - changed files list in reviewer scan order (top-down): show high-level docs/config first, then backend, then frontend, then tests/helpers
 - one-line summary per changed file so reviewers can predict each diff before opening it (avoid surprise files in later sections)
 - after the changed files summary, include manual test steps for any behavior not fully covered by automation (or best validated by humans), with expected results for each step
+- for important backend changes (DB/schema/API/runtime behavior), update `backend/README.md` in the same change set
 
 ## Security & Configuration Tips
 - Do not commit secrets. Keep runtime values in `.env` and local overrides (ignored by `.gitignore`).

@@ -23,6 +23,7 @@ docker compose up -d --build
 Services:
 - Frontend: http://localhost:3000
 - Backend health: http://localhost:8000/api/v1/health
+- PostgreSQL: `localhost:5432` (db: `elin`, user: `postgres`, password: `postgres`)
 
 ## Rebuild/Restart Rules
 Use this quick rule during development:
@@ -73,6 +74,37 @@ cd backend
 uv sync
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+### Backend Migrations
+```bash
+cd backend
+uv run alembic upgrade head
+```
+
+If you use Docker Compose services, prefer running migrations inside backend container:
+```bash
+docker compose exec backend uv run alembic upgrade head
+```
+
+Create a new migration:
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "your message"
+```
+
+Create a dedicated test database once:
+```bash
+docker compose exec postgres psql -U postgres -d postgres -c "CREATE DATABASE elin_test;"
+```
+
+Run DB schema tests (requires PostgreSQL available at `TEST_DATABASE_URL`):
+```bash
+cd backend
+TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test uv run pytest -q
+```
+
+Safety note: `backend/tests/test_user_schema.py` is destructive by design (`drop/create` target tables).
+Never point `TEST_DATABASE_URL` to primary database `elin`.
 
 ## Environment Variables
 Copy `.env.example` and adjust values as needed.

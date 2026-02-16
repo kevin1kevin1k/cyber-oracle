@@ -1,3 +1,49 @@
 # Backend
 
 FastAPI backend for ELIN 神域引擎。
+
+## Local Development
+```bash
+uv sync
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+## Database
+- Primary DB: PostgreSQL
+- Default local URL: `postgresql+psycopg://postgres:postgres@localhost:5432/elin`
+- Docker Compose URL (inside container): `postgresql+psycopg://postgres:postgres@postgres:5432/elin`
+
+Environment variables:
+- `DATABASE_URL`: app runtime database
+- `TEST_DATABASE_URL`: test-only database (use `elin_test`)
+
+## Migrations (Alembic)
+Run on host:
+```bash
+uv run alembic upgrade head
+```
+
+Run in compose backend container:
+```bash
+docker compose exec backend uv run alembic upgrade head
+```
+
+Create a migration:
+```bash
+uv run alembic revision --autogenerate -m "message"
+```
+
+## Tests
+Create test DB once:
+```bash
+docker compose exec postgres psql -U postgres -d postgres -c "CREATE DATABASE elin_test;"
+```
+
+Run tests:
+```bash
+TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test uv run pytest -q
+```
+
+Safety note:
+- `backend/tests/test_user_schema.py` is destructive for target tables.
+- Never point `TEST_DATABASE_URL` to primary DB `elin`.

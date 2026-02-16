@@ -11,6 +11,8 @@ COPY pyproject.toml ./
 RUN uv sync --no-dev
 
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
 
 EXPOSE 8000
 
