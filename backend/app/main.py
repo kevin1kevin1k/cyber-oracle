@@ -1,10 +1,11 @@
 from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import AuthContext, require_verified_email
 from app.config import settings
-from app.schemas import AskRequest, AskResponse, LayerPercentage
+from app.schemas import AskRequest, AskResponse, ErrorResponse, LayerPercentage
 
 app = FastAPI(title="ELIN Backend", version="0.1.0")
 
@@ -22,8 +23,15 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/v1/ask", response_model=AskResponse)
-def ask(payload: AskRequest) -> AskResponse:
+@app.post(
+    "/api/v1/ask",
+    response_model=AskResponse,
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+    },
+)
+def ask(payload: AskRequest, _: AuthContext = Depends(require_verified_email)) -> AskResponse:
     return AskResponse(
         answer=f"（Mock）已收到你的問題：{payload.question}。目前為開發環境回覆。",
         source="mock",

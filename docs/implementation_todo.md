@@ -6,7 +6,7 @@
 
 ## P0（必做 / 上線門檻）
 - [ ] 建立 Auth 流程：register/login/logout/verify-email/forgot-password
-- [ ] 未驗證 Email 不可提問（API 與前端雙重限制）
+- [x] 未驗證 Email 不可提問（API 與前端雙重限制）
 - [ ] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
 - [ ] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
@@ -25,7 +25,7 @@
 - [ ] 建立測試與 CI：backend 單元/整合、frontend 關鍵流程測試、自動化檢查
 
 ## Test Cases（必測）
-- [ ] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
+- [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
 - [ ] 餘額不足時提問失敗且不產生 capture
 - [ ] 提問成功流程：reserve -> capture
 - [ ] 提問失敗流程：reserve -> refund

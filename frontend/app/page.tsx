@@ -10,6 +10,7 @@ type AskResponse = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const DEV_BEARER_TOKEN = process.env.NEXT_PUBLIC_DEV_BEARER_TOKEN;
 
 export default function HomePage() {
   const [question, setQuestion] = useState("");
@@ -31,17 +32,29 @@ export default function HomePage() {
 
     setLoading(true);
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (DEV_BEARER_TOKEN) {
+        headers.Authorization = `Bearer ${DEV_BEARER_TOKEN}`;
+      }
+
       const res = await fetch(`${API_BASE}/api/v1/ask`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers,
         body: JSON.stringify({ question, lang: "zh", mode: "analysis" })
       });
 
       if (!res.ok) {
-        const payload = await res.text();
-        throw new Error(payload || "API 請求失敗");
+        const payload = await res.json().catch(() => null);
+        const code = payload?.detail?.code as string | undefined;
+        if (code === "EMAIL_NOT_VERIFIED") {
+          throw new Error("Email 尚未驗證，請先完成驗證後再提問。");
+        }
+        if (code === "UNAUTHORIZED") {
+          throw new Error("尚未登入或登入資訊失效，請重新登入。");
+        }
+        throw new Error("API 請求失敗");
       }
 
       const data = (await res.json()) as AskResponse;

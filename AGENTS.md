@@ -48,6 +48,9 @@ Pull requests should include:
 - linked issue or requirement context (`PRD.md` section)
 - test evidence (commands + key output)
 - UI screenshots for frontend changes
+- changed files list in reviewer scan order (top-down): show high-level docs/config first, then backend, then frontend, then tests/helpers
+- one-line summary per changed file so reviewers can predict each diff before opening it (avoid surprise files in later sections)
+- after the changed files summary, include manual test steps for any behavior not fully covered by automation (or best validated by humans), with expected results for each step
 
 ## Security & Configuration Tips
 - Do not commit secrets. Keep runtime values in `.env` and local overrides (ignored by `.gitignore`).

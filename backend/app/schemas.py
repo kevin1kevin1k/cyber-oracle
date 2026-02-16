@@ -27,3 +27,8 @@ class AskResponse(BaseModel):
     source: Literal["mock"]
     layer_percentages: list[LayerPercentage]
     request_id: str
+
+
+class ErrorResponse(BaseModel):
+    code: Literal["UNAUTHORIZED", "EMAIL_NOT_VERIFIED"]
+    message: str
