@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# dotenv
+.env
+frontend/.env.local
+frontend/.env.*.local
+backend/.env
+
+# Node / Next
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/npm-debug.log*
+frontend/.turbo
+
+# Python
+**/__pycache__/
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+backend/.mypy_cache
+backend/*.pyc
+backend/.ruff_cache
+backend/.coverage
+
+# IDE
+.vscode
+.idea
