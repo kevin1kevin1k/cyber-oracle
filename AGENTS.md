@@ -52,6 +52,9 @@ Pull requests should include:
 - one-line summary per changed file so reviewers can predict each diff before opening it (avoid surprise files in later sections)
 - after the changed files summary, include manual test steps for any behavior not fully covered by automation (or best validated by humans), with expected results for each step
 - for important backend changes (DB/schema/API/runtime behavior), update `backend/README.md` in the same change set
+- after each implementation batch, review `docs/implementation_todo.md` and update checklist/progress notes when status has changed
+- in `docs/implementation_todo.md`, represent partial progress as checkbox subtasks (subitems) instead of plain text progress lines like `進度：...`
+- when introducing new libraries/packages, include a short explainer in the reply covering each package's purpose and practical alternatives
 
 ## Security & Configuration Tips
 - Do not commit secrets. Keep runtime values in `.env` and local overrides (ignored by `.gitignore`).

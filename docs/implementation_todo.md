@@ -6,8 +6,21 @@
 
 ## P0（必做 / 上線門檻）
 - [ ] 建立 Auth 流程：register/login/logout/verify-email/forgot-password
+  - [x] `register` API
+  - [x] `verify-email` API
+  - [ ] `login` API
+  - [ ] `logout` API
+  - [ ] `forgot-password` API
 - [x] 未驗證 Email 不可提問（API 與前端雙重限制）
 - [ ] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
+  - [x] `users`
+  - [ ] `sessions`
+  - [ ] `questions`
+  - [ ] `answers`
+  - [ ] `credit_wallets`
+  - [ ] `credit_transactions`
+  - [ ] `orders`
+  - [ ] `followups`
 - [ ] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
 - [ ] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
@@ -26,6 +39,8 @@
 
 ## Test Cases（必測）
 - [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
+- [x] `register` 成功建立 user，重複 email 回傳 409
+- [x] `verify-email` 成功啟用帳號，無效或過期 token 回傳 400
 - [ ] 餘額不足時提問失敗且不產生 capture
 - [ ] 提問成功流程：reserve -> capture
 - [ ] 提問失敗流程：reserve -> refund

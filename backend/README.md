@@ -8,6 +8,13 @@ uv sync
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## Auth APIs (MVP progress)
+- `POST /api/v1/auth/register`
+  - creates user with hashed password
+  - returns `verification_token` for dev flow
+- `POST /api/v1/auth/verify-email`
+  - verifies token and flips `email_verified=true`
+
 ## Database
 - Primary DB: PostgreSQL
 - Default local URL: `postgresql+psycopg://postgres:postgres@localhost:5432/elin`
