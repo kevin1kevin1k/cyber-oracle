@@ -26,8 +26,28 @@
   - [x] `orders`
   - [x] `followups`
 - [ ] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
+  - [ ] Backend：`POST /api/v1/ask` 支援 `Idempotency-Key`
+  - [ ] Backend：餘額不足回 `402` + `INSUFFICIENT_CREDIT`
+  - [ ] Backend：成功流程 `reserve -> persist question/answer -> capture`
+  - [ ] Backend：失敗流程 `reserve -> refund`（冪等保護）
+  - [ ] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
+  - [ ] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
+  - [ ] Backend：`GET /api/v1/credits/balance`
+  - [ ] Backend：`GET /api/v1/credits/transactions`
+  - [ ] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
+  - [ ] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
+  - [ ] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
+  - [ ] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
+  - [ ] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
+  - [ ] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口
+  - [ ] 測試：建單、入帳、餘額/流水一致性
+  - [ ] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
 - [ ] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
+  - [ ] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
+  - [ ] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
+  - [ ] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
+  - [ ] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
 
 ## P1（高價值 / MVP 完整）
 - [ ] 實作 RAG Top-3 + rerank + 百分比（總和 100）
@@ -43,6 +63,9 @@
   - [x] backend lint（Ruff）導入與 blocking
   - [x] frontend lint（ESLint）導入與 blocking
   - [x] pre-commit hooks（pre-commit stage）導入
+  - [ ] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
+  - [ ] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
+    - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
 
 ## Test Cases（必測）
 - [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
@@ -62,47 +85,16 @@
 - [ ] 通過 PRD v0.3 第 9 節驗收標準
 - [ ] 每個完成項目附測試證據（命令、輸出、截圖或 API 回應）
 - [ ] 文件與實作一致（README / API schema / UI 文案同步）
+  - [ ] 更新 `backend/README.md`（API、錯誤碼、env）
+  - [ ] 更新 `frontend` 相關說明（含 API 契約、環境變數、畫面流程）
+  - [ ] 更新本文件完成勾選與子項
+  - [ ] 補齊 backend/frontend 驗證命令與人工測試步驟（可直接執行）
+  - [ ] 文件收尾需附 production 切換清單完成證據（API 行為、UI 文案、環境變數、部署流程）
 
 ## 備註與依賴
 - Router 規則由工程團隊維護
 - 前台維持不顯示來源摘要
 - 固定扣點策略：每次提問 1 點
-
-## 後續批次（已拆分，待下一輪實作）
-
-### Commit 3：Ask 持久化 + 點數交易引擎（reserve/capture/refund）
-- [ ] Backend：`POST /api/v1/ask` 支援 `Idempotency-Key`
-- [ ] Backend：餘額不足回 `402` + `INSUFFICIENT_CREDIT`
-- [ ] Backend：成功流程 `reserve -> persist question/answer -> capture`
-- [ ] Backend：失敗流程 `reserve -> refund`（冪等保護）
-- [ ] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
-- [ ] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
-- [ ] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
-- [ ] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
-- [ ] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
-- [ ] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
-
-### Commit 4：Credits/Orders MVP API（內建模擬支付）
-- [ ] Backend：`GET /api/v1/credits/balance`
-- [ ] Backend：`GET /api/v1/credits/transactions`
-- [ ] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
-- [ ] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
-- [ ] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
-- [ ] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
-- [ ] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
-- [ ] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口
-- [ ] 測試：建單、入帳、餘額/流水一致性
-- [ ] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
-
-### Commit 5：文件與測試收尾
-- [ ] 更新 `backend/README.md`（API、錯誤碼、env）
-- [ ] 更新 `frontend` 相關說明（含 API 契約、環境變數、畫面流程）
-- [ ] 更新本文件完成勾選與子項
-- [ ] 補齊 backend/frontend 驗證命令與人工測試步驟（可直接執行）
-- [ ] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
-- [ ] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
-  - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
-- [ ] 文件收尾需附 production 切換清單完成證據（API 行為、UI 文案、環境變數、部署流程）
 
 ## Production Readiness（Dev -> Production）
 
