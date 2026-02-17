@@ -5,7 +5,7 @@
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
-- [ ] 建立 Auth 流程：register/login/logout/verify-email/forgot-password
+- [x] 建立 Auth 流程：register/login/logout/verify-email/forgot-password
   - [x] `register` API
   - [x] `verify-email` API
   - [x] `login` API
@@ -25,7 +25,7 @@
   - [x] `credit_transactions`
   - [x] `orders`
   - [x] `followups`
-- [ ] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
+- [x] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
   - [x] Backend：`POST /api/v1/ask` 支援 `Idempotency-Key`
   - [x] Backend：餘額不足回 `402` + `INSUFFICIENT_CREDIT`
   - [x] Backend：成功流程 `reserve -> persist question/answer -> capture`
@@ -44,7 +44,7 @@
   - [x] Frontend：提問成功後即時扣點顯示（含 `-1` 動畫提示與背景對帳）
   - [x] 測試：建單、入帳、餘額/流水一致性
   - [x] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
-- [ ] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
+- [x] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
   - [x] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
   - [x] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
   - [x] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
@@ -60,7 +60,7 @@
 ## P2（穩定性 / 營運效率）
 - [ ] 建立可觀測性：request_id、錯誤率、延遲、交易審計事件
 - [ ] 安全強化：rate limit、輸入防護、key management、個資刪除流程
-- [ ] 建立測試與 CI：backend 單元/整合、frontend 關鍵流程測試、自動化檢查
+- [x] 建立測試與 CI：backend 單元/整合、frontend 關鍵流程測試、自動化檢查
   - [x] backend lint（Ruff）導入與 blocking
   - [x] frontend lint（ESLint）導入與 blocking
   - [x] pre-commit hooks（pre-commit stage）導入
