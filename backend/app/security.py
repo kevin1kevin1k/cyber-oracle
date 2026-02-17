@@ -1,8 +1,7 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from pwdlib import PasswordHash
-
 
 password_hasher = PasswordHash.recommended()
 
@@ -16,4 +15,4 @@ def generate_verification_token() -> str:
 
 
 def verification_token_expiry(hours: int = 24) -> datetime:
-    return datetime.now(timezone.utc) + timedelta(hours=hours)
+    return datetime.now(UTC) + timedelta(hours=hours)

@@ -54,3 +54,15 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_tes
 Safety note:
 - `backend/tests/test_user_schema.py` is destructive for target tables.
 - Never point `TEST_DATABASE_URL` to primary DB `elin`.
+
+## Lint and Hooks
+Run backend lint:
+```bash
+uv run ruff check .
+```
+
+Install and run pre-commit from backend environment:
+```bash
+uv run pre-commit install
+uv run pre-commit run --all-files
+```

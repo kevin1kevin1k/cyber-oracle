@@ -89,6 +89,26 @@ uv sync
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## Lint & Pre-commit
+Backend lint:
+```bash
+cd backend
+uv run ruff check .
+```
+
+Frontend lint:
+```bash
+cd frontend
+npm run lint
+```
+
+Install pre-commit hook:
+```bash
+cd backend
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
 ### Backend Migrations
 ```bash
 cd backend

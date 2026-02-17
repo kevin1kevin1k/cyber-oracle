@@ -55,6 +55,10 @@ Pull requests should include:
 - after each implementation batch, review `docs/implementation_todo.md` and update checklist/progress notes when status has changed
 - in `docs/implementation_todo.md`, represent partial progress as checkbox subtasks (subitems) instead of plain text progress lines like `進度：...`
 - when introducing new libraries/packages, include a short explainer in the reply covering each package's purpose and practical alternatives
+- when reporting verification commands, always provide fully executable commands with concrete values (never placeholders like `...`)
+- when commands require entering subdirectories (for example `backend`/`frontend`), include a final command to return to project root (for example `cd ..`)
+- prefer single-line commands chained with `&&` for reproducibility; only use line continuations (`\`) when readability clearly benefits
+- if a command becomes too long (for example with long env vars), use `\` line continuations to keep it copy-paste safe as one command
 
 ## Security & Configuration Tips
 - Do not commit secrets. Keep runtime values in `.env` and local overrides (ignored by `.gitignore`).

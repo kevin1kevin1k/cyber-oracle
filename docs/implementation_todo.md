@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `PRD.md v0.3` 與現有 codebase 差距整理，依優先度排序。  
+本清單依 `PRD.md v0.3` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -36,6 +36,9 @@
 - [ ] 建立可觀測性：request_id、錯誤率、延遲、交易審計事件
 - [ ] 安全強化：rate limit、輸入防護、key management、個資刪除流程
 - [ ] 建立測試與 CI：backend 單元/整合、frontend 關鍵流程測試、自動化檢查
+  - [x] backend lint（Ruff）導入與 blocking
+  - [x] frontend lint（ESLint）導入與 blocking
+  - [x] pre-commit hooks（pre-commit stage）導入
 
 ## Test Cases（必測）
 - [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕

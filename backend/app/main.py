@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -61,12 +61,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
     db.add(user)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "EMAIL_ALREADY_EXISTS", "message": "Email already exists"},
-        )
+        ) from exc
     db.refresh(user)
 
     return RegisterResponse(
@@ -83,7 +83,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
     responses={400: {"model": ApiErrorDetail}},
 )
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> VerifyEmailResponse:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user = db.scalar(select(User).where(User.verify_token == payload.token))
 
     if user is None or user.verify_token_expires_at is None or user.verify_token_expires_at < now:

@@ -1,6 +1,6 @@
-import uuid
-from datetime import datetime, timedelta, timezone
 import os
+import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db import Base, get_db
 from app.main import app
 from app.models.user import User
-
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -110,7 +109,7 @@ def test_verify_email_success(client: TestClient, db_session: Session) -> None:
         password_hash="hash",
         email_verified=False,
         verify_token="valid-token",
-        verify_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        verify_token_expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     db_session.add(user)
     db_session.commit()
@@ -125,14 +124,17 @@ def test_verify_email_success(client: TestClient, db_session: Session) -> None:
     assert user.verify_token_expires_at is None
 
 
-def test_verify_email_invalid_or_expired_returns_400(client: TestClient, db_session: Session) -> None:
+def test_verify_email_invalid_or_expired_returns_400(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     expired = User(
         id=uuid.uuid4(),
         email="expired@example.com",
         password_hash="hash",
         email_verified=False,
         verify_token="expired-token",
-        verify_token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        verify_token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     db_session.add(expired)
     db_session.commit()

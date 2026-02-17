@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -55,8 +54,8 @@ def require_verified_email(
 
     try:
         payload = _decode_jwt_payload(credentials.credentials)
-    except ValueError:
-        raise _unauthorized()
+    except ValueError as exc:
+        raise _unauthorized() from exc
 
     email_verified = payload.get("email_verified")
     if not isinstance(email_verified, bool):

@@ -2,14 +2,13 @@ import os
 import uuid
 
 import pytest
-from sqlalchemy.engine import make_url
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
 from app.models.user import User
-
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
