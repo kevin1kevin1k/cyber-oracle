@@ -44,11 +44,12 @@ When to use `-d`:
 ## API Endpoints
 - `GET /api/v1/health`
 - `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
 - `POST /api/v1/auth/verify-email`
 - `POST /api/v1/ask`
 
 `POST /api/v1/ask` requires `Authorization: Bearer <token>`.
-For current dev stage, token payload must include `email_verified` boolean.
+For current dev stage, token must be HS256-signed JWT with `email_verified` boolean.
 
 Example:
 ```bash
@@ -64,15 +65,21 @@ curl -X POST http://localhost:8000/api/v1/auth/verify-email \
 ```
 
 ```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"Password123"}'
+```
+
+```bash
 curl -X POST http://localhost:8000/api/v1/ask \
-  -H "Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0." \
+  -H "Authorization: Bearer <access_token_from_login_or_dev_token>" \
   -H "Content-Type: application/json" \
   -d '{"question":"今天該聚焦什麼？","lang":"zh","mode":"analysis"}'
 ```
 
 Dev tokens:
-- verified: `eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0.`
-- unverified: `eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbF92ZXJpZmllZCI6ZmFsc2V9.`
+- verified (compose default): `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXYtdXNlciIsImVtYWlsIjoiZGV2QGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlhdCI6MTc3MTI5NTE5MiwiZXhwIjoyMDg2NjU1MTkyfQ.m70AkIrZkrCPLU9DaOugAv-QAgc8mztx_yi-O_KLNws`
+- to generate your own token, use `POST /api/v1/auth/login`
 
 ## Run without Docker
 ### Frontend

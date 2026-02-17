@@ -12,6 +12,9 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `POST /api/v1/auth/register`
   - creates user with hashed password
   - returns `verification_token` for dev flow
+- `POST /api/v1/auth/login`
+  - verifies email/password
+  - returns HS256 bearer token with `email_verified` claim
 - `POST /api/v1/auth/verify-email`
   - verifies token and flips `email_verified=true`
 
@@ -23,6 +26,9 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Environment variables:
 - `DATABASE_URL`: app runtime database
 - `TEST_DATABASE_URL`: test-only database (use `elin_test`)
+- `JWT_SECRET`: HS256 signing secret for access token
+- `JWT_ALGORITHM`: JWT algorithm (default `HS256`)
+- `JWT_EXP_MINUTES`: access token expiration in minutes (default `60`)
 
 ## Migrations (Alembic)
 Run on host:

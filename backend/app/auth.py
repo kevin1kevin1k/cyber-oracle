@@ -1,9 +1,11 @@
-import base64
-import json
 from dataclasses import dataclass
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import InvalidTokenError
+
+from app.config import settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -14,16 +16,13 @@ class AuthContext:
 
 
 def _decode_jwt_payload(token: str) -> dict:
-    parts = token.split(".")
-    if len(parts) != 3:
-        raise ValueError("invalid token format")
-
-    payload = parts[1]
-    padding = "=" * (-len(payload) % 4)
     try:
-        raw = base64.urlsafe_b64decode(payload + padding)
-        decoded = json.loads(raw.decode("utf-8"))
-    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        decoded = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except InvalidTokenError as exc:
         raise ValueError("invalid token payload") from exc
 
     if not isinstance(decoded, dict):

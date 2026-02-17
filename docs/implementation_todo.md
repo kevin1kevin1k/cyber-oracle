@@ -8,7 +8,7 @@
 - [ ] 建立 Auth 流程：register/login/logout/verify-email/forgot-password
   - [x] `register` API
   - [x] `verify-email` API
-  - [ ] `login` API
+  - [x] `login` API
   - [ ] `logout` API
   - [ ] `forgot-password` API
 - [x] 未驗證 Email 不可提問（API 與前端雙重限制）
@@ -44,6 +44,7 @@
 - [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
 - [x] `register` 成功建立 user，重複 email 回傳 409
 - [x] `verify-email` 成功啟用帳號，無效或過期 token 回傳 400
+- [x] `login` 成功回傳 bearer token，錯誤帳密回傳 401
 - [ ] 餘額不足時提問失敗且不產生 capture
 - [ ] 提問成功流程：reserve -> capture
 - [ ] 提問失敗流程：reserve -> refund

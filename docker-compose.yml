@@ -23,6 +23,9 @@ services:
     environment:
       - CORS_ORIGINS=http://localhost:3000
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/elin
+      - JWT_SECRET=dev-only-change-me-please-replace-32+
+      - JWT_ALGORITHM=HS256
+      - JWT_EXP_MINUTES=60
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,7 +39,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-      - NEXT_PUBLIC_DEV_BEARER_TOKEN=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0.
+      - NEXT_PUBLIC_DEV_BEARER_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXYtdXNlciIsImVtYWlsIjoiZGV2QGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlhdCI6MTc3MTI5NTE5MiwiZXhwIjoyMDg2NjU1MTkyfQ.m70AkIrZkrCPLU9DaOugAv-QAgc8mztx_yi-O_KLNws
     depends_on:
       - backend
     volumes:

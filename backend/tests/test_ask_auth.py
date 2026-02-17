@@ -1,22 +1,21 @@
-import base64
-import json
-
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.main import app
+from app.security import create_access_token
 
 client = TestClient(app)
 
 
 def make_dev_jwt(email_verified: bool) -> str:
-    header = {"alg": "none", "typ": "JWT"}
-    payload = {"email_verified": email_verified}
-
-    def encode(obj: dict) -> str:
-        raw = json.dumps(obj, separators=(",", ":")).encode("utf-8")
-        return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
-
-    return f"{encode(header)}.{encode(payload)}."
+    return create_access_token(
+        subject="dev-user",
+        email="dev@example.com",
+        email_verified=email_verified,
+        secret_key=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+        expires_minutes=60,
+    )
 
 
 def test_ask_unauthorized_returns_401() -> None:

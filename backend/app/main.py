@@ -17,12 +17,20 @@ from app.schemas import (
     AskResponse,
     ErrorResponse,
     LayerPercentage,
+    LoginRequest,
+    LoginResponse,
     RegisterRequest,
     RegisterResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
 )
-from app.security import generate_verification_token, hash_password, verification_token_expiry
+from app.security import (
+    create_access_token,
+    generate_verification_token,
+    hash_password,
+    verification_token_expiry,
+    verify_password,
+)
 
 app = FastAPI(title="ELIN Backend", version="0.1.0")
 
@@ -74,6 +82,42 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
         email=user.email,
         email_verified=user.email_verified,
         verification_token=token,
+    )
+
+
+@app.post(
+    "/api/v1/auth/login",
+    response_model=LoginResponse,
+    responses={401: {"model": ApiErrorDetail}},
+)
+def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+    user = db.scalar(select(User).where(User.email == payload.email))
+    password_valid = False
+    if user is not None:
+        try:
+            password_valid = verify_password(payload.password, user.password_hash)
+        except Exception:
+            password_valid = False
+
+    if user is None or not password_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_CREDENTIALS", "message": "Invalid email or password"},
+        )
+
+    access_token = create_access_token(
+        subject=str(user.id),
+        email=user.email,
+        email_verified=user.email_verified,
+        secret_key=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+        expires_minutes=settings.jwt_exp_minutes,
+    )
+
+    return LoginResponse(
+        access_token=access_token,
+        token_type="bearer",
+        email_verified=user.email_verified,
     )
 
 

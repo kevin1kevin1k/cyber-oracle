@@ -2,6 +2,7 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -9,9 +10,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import settings
 from app.db import Base, get_db
 from app.main import app
 from app.models.user import User
+from app.security import hash_password
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -146,3 +149,88 @@ def test_verify_email_invalid_or_expired_returns_400(
     expired_response = client.post("/api/v1/auth/verify-email", json={"token": "expired-token"})
     assert expired_response.status_code == 400
     assert expired_response.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"
+
+
+def test_login_success_returns_bearer_token(client: TestClient, db_session: Session) -> None:
+    user = User(
+        id=uuid.uuid4(),
+        email="login@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "Login@example.com", "password": "Password123"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["token_type"] == "bearer"
+    assert payload["email_verified"] is True
+    assert payload["access_token"]
+
+    claims = jwt.decode(
+        payload["access_token"],
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+    )
+    assert claims["sub"] == str(user.id)
+    assert claims["email"] == "login@example.com"
+    assert claims["email_verified"] is True
+    assert claims["exp"] > claims["iat"]
+
+
+def test_login_unverified_user_returns_token_but_not_verified(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = User(
+        id=uuid.uuid4(),
+        email="unverified@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=False,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "unverified@example.com", "password": "Password123"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email_verified"] is False
+
+    claims = jwt.decode(
+        payload["access_token"],
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+    )
+    assert claims["email_verified"] is False
+
+
+def test_login_invalid_credentials_return_401(client: TestClient, db_session: Session) -> None:
+    user = User(
+        id=uuid.uuid4(),
+        email="invalid-login@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    wrong_password = client.post(
+        "/api/v1/auth/login",
+        json={"email": "invalid-login@example.com", "password": "wrong-pass-123"},
+    )
+    assert wrong_password.status_code == 401
+    assert wrong_password.json()["detail"]["code"] == "INVALID_CREDENTIALS"
+
+    unknown_email = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.com", "password": "Password123"},
+    )
+    assert unknown_email.status_code == 401
+    assert unknown_email.json()["detail"]["code"] == "INVALID_CREDENTIALS"
