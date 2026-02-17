@@ -13,6 +13,8 @@ frontend/.next
 frontend/out
 frontend/npm-debug.log*
 frontend/.turbo
+frontend/playwright-report
+frontend/test-results
 
 # Python
 **/__pycache__/

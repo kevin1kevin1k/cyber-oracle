@@ -45,11 +45,14 @@ When to use `-d`:
 - `GET /api/v1/health`
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/verify-email`
+- `POST /api/v1/auth/forgot-password`
+- `POST /api/v1/auth/reset-password`
 - `POST /api/v1/ask`
 
 `POST /api/v1/ask` requires `Authorization: Bearer <token>`.
-For current dev stage, token must be HS256-signed JWT with `email_verified` boolean.
+Token should be obtained from `POST /api/v1/auth/login`.
 
 Example:
 ```bash
@@ -77,9 +80,14 @@ curl -X POST http://localhost:8000/api/v1/ask \
   -d '{"question":"今天該聚焦什麼？","lang":"zh","mode":"analysis"}'
 ```
 
-Dev tokens:
-- verified (compose default): `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXYtdXNlciIsImVtYWlsIjoiZGV2QGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlhdCI6MTc3MTI5NTE5MiwiZXhwIjoyMDg2NjU1MTkyfQ.m70AkIrZkrCPLU9DaOugAv-QAgc8mztx_yi-O_KLNws`
-- to generate your own token, use `POST /api/v1/auth/login`
+Frontend auth routes:
+- `/login`
+- `/register`
+- `/verify-email`
+- `/forgot-password`
+- `/reset-password`
+
+Frontend stores auth token in browser localStorage (`elin_access_token`) for MVP.
 
 ## Run without Docker
 ### Frontend

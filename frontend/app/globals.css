@@ -27,13 +27,32 @@ main {
   box-shadow: 0 8px 30px rgba(17, 33, 56, 0.08);
 }
 
-textarea {
+.auth-bar {
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f3f8ff;
+  border: 1px solid #d7e6fa;
+}
+
+label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+textarea,
+input {
   width: 100%;
-  min-height: 140px;
   border: 1px solid #c7d4e5;
   border-radius: 10px;
   padding: 12px;
   font: inherit;
+}
+
+textarea {
+  min-height: 140px;
 }
 
 button {
@@ -52,6 +71,10 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.secondary-button {
+  background: #4f5d70;
+}
+
 .answer {
   margin-top: 18px;
   padding: 14px;
@@ -63,6 +86,28 @@ button:disabled {
 .error {
   margin-top: 10px;
   color: #b42318;
+}
+
+.error-inline {
+  color: #b42318;
+  margin: 8px 0 0;
+}
+
+.success {
+  margin-top: 10px;
+  color: #067647;
+}
+
+.helper-links {
+  margin-top: 12px;
+}
+
+.token-box {
+  word-break: break-all;
+  border: 1px dashed #7b8ba3;
+  border-radius: 8px;
+  background: #f8fafd;
+  padding: 10px;
 }
 
 ul {

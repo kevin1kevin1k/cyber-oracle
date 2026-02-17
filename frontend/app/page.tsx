@@ -1,29 +1,62 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+
+import { apiRequest, ApiError } from "@/lib/api";
+import { clearAuthSession, getAuthSession } from "@/lib/auth";
 
 type AskResponse = {
   answer: string;
-  source: "mock";
+  source: "rag" | "rule" | "openai" | "mock";
   layer_percentages: { label: "主層" | "輔層" | "參照層"; pct: number }[];
   request_id: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const DEV_BEARER_TOKEN = process.env.NEXT_PUBLIC_DEV_BEARER_TOKEN;
-
 export default function HomePage() {
+  const router = useRouter();
+  const authSession = getAuthSession();
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AskResponse | null>(null);
 
-  const canSubmit = useMemo(() => question.trim().length > 0 && !loading, [question, loading]);
+  const isLoggedIn = !!authSession?.accessToken;
+  const isVerified = !!authSession?.emailVerified;
+  const canSubmit = useMemo(
+    () => question.trim().length > 0 && !loading && isLoggedIn && isVerified,
+    [question, loading, isLoggedIn, isVerified]
+  );
+
+  async function handleLogout() {
+    try {
+      await apiRequest<void>("/api/v1/auth/logout", {
+        method: "POST",
+        auth: true,
+      });
+    } catch {
+      // Ignore logout failures and clear local state anyway.
+    } finally {
+      clearAuthSession();
+      router.replace("/login");
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setResult(null);
+
+    if (!isLoggedIn) {
+      setError("請先登入後再提問。");
+      return;
+    }
+
+    if (!isVerified) {
+      setError("Email 尚未驗證，請先完成驗證後再提問。");
+      return;
+    }
 
     if (!question.trim()) {
       setError("請先輸入問題。");
@@ -32,34 +65,28 @@ export default function HomePage() {
 
     setLoading(true);
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json"
-      };
-      if (DEV_BEARER_TOKEN) {
-        headers.Authorization = `Bearer ${DEV_BEARER_TOKEN}`;
-      }
-
-      const res = await fetch(`${API_BASE}/api/v1/ask`, {
+      const data = await apiRequest<AskResponse>("/api/v1/ask", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ question, lang: "zh", mode: "analysis" })
+        auth: true,
+        body: JSON.stringify({ question, lang: "zh", mode: "analysis" }),
       });
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        const code = payload?.detail?.code as string | undefined;
-        if (code === "EMAIL_NOT_VERIFIED") {
-          throw new Error("Email 尚未驗證，請先完成驗證後再提問。");
-        }
-        if (code === "UNAUTHORIZED") {
-          throw new Error("尚未登入或登入資訊失效，請重新登入。");
-        }
-        throw new Error("API 請求失敗");
-      }
-
-      const data = (await res.json()) as AskResponse;
       setResult(data);
     } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 401 || err.code === "UNAUTHORIZED") {
+          setError("尚未登入或登入資訊失效，請重新登入。");
+          router.replace("/login");
+          return;
+        }
+        if (err.code === "EMAIL_NOT_VERIFIED") {
+          setError("Email 尚未驗證，請先完成驗證後再提問。");
+          return;
+        }
+        if (err.code === "INSUFFICIENT_CREDIT") {
+          setError("點數不足，請先購點再提問。");
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : "發生未知錯誤");
     } finally {
       setLoading(false);
@@ -69,9 +96,31 @@ export default function HomePage() {
   return (
     <main>
       <h1>ELIN 神域引擎 MVP</h1>
-      <p>輸入問題後，系統會呼叫 FastAPI 後端並回傳 mock 結果。</p>
+      <p>輸入問題後，系統會呼叫 FastAPI 後端並回傳結果。</p>
 
       <section className="card">
+        <div className="auth-bar">
+          {isLoggedIn ? (
+            <>
+              <p>
+                目前狀態：已登入（{isVerified ? "已驗證" : "未驗證"}）
+              </p>
+              {!isVerified && (
+                <p className="error-inline">
+                  你已登入但尚未驗證 Email。請前往 <Link href="/verify-email">Email 驗證</Link>
+                </p>
+              )}
+              <button type="button" onClick={handleLogout} className="secondary-button">
+                登出
+              </button>
+            </>
+          ) : (
+            <p>
+              尚未登入，請先 <Link href="/login">登入</Link> 或 <Link href="/register">註冊</Link>。
+            </p>
+          )}
+        </div>
+
         <form onSubmit={handleSubmit}>
           <label htmlFor="question">問題內容</label>
           <textarea
@@ -79,6 +128,7 @@ export default function HomePage() {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="請輸入你想詢問的問題"
+            disabled={!isLoggedIn || !isVerified}
           />
           <button type="submit" disabled={!canSubmit}>
             {loading ? "送出中..." : "送出問題"}
@@ -92,6 +142,10 @@ export default function HomePage() {
             <p>
               <strong>回答：</strong>
               {result.answer}
+            </p>
+            <p>
+              <strong>來源：</strong>
+              {result.source}
             </p>
             <p>
               <strong>Request ID：</strong>

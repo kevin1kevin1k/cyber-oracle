@@ -8,6 +8,11 @@ uv sync
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Docker Compose backend startup runs migrations automatically before uvicorn:
+```bash
+uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
 ## Auth APIs (MVP progress)
 - `POST /api/v1/auth/register`
   - creates user with hashed password
@@ -53,6 +58,11 @@ docker compose exec backend uv run alembic upgrade head
 Create a migration:
 ```bash
 uv run alembic revision --autogenerate -m "message"
+```
+
+Troubleshooting schema drift (`UndefinedColumn` / `UndefinedTable`):
+```bash
+docker compose exec backend uv run alembic upgrade head && docker compose exec postgres psql -U postgres -d elin -c "select * from alembic_version;"
 ```
 
 ## Tests

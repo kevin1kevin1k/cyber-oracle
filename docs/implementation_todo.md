@@ -11,10 +11,10 @@
   - [x] `login` API
   - [x] `logout` API
   - [x] `forgot-password` API
-- [ ] 前端 Auth 流程整合（使用既有 API）
-  - [ ] `register/login/verify-email/forgot-password/reset-password` 頁面與互動流程
-  - [ ] access token 儲存與失效處理（含 logout）
-  - [ ] 移除 `NEXT_PUBLIC_DEV_BEARER_TOKEN` 依賴，改為正式登入態
+- [x] 前端 Auth 流程整合（使用既有 API）
+  - [x] `register/login/verify-email/forgot-password/reset-password` 頁面與互動流程
+  - [x] access token 儲存與失效處理（含 logout）
+  - [x] 移除 `NEXT_PUBLIC_DEV_BEARER_TOKEN` 依賴，改為正式登入態
 - [x] 未驗證 Email 不可提問（API 與前端雙重限制）
 - [x] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
   - [x] `users`
@@ -100,3 +100,4 @@
 - [ ] 補齊 backend/frontend 驗證命令與人工測試步驟（可直接執行）
 - [ ] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
 - [ ] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
+  - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）

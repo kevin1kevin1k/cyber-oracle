@@ -22,6 +22,18 @@ Backend local run:
 - `cd backend && uv sync`
 - `uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
+## Database Migration Safety (Required)
+- Root cause to avoid: backend code/model is updated but DB schema is still on older Alembic revision (for example new column referenced by runtime code but DB does not have it yet).
+- You must run migrations whenever a change touches DB runtime contract, including:
+  - Alembic revision files under `backend/alembic/versions/`
+  - SQLAlchemy models under `backend/app/models/`
+  - Runtime code that reads/writes new/renamed/removed DB columns/tables
+- Mandatory verification commands after such changes:
+  - Host mode: `cd backend && uv run alembic upgrade head && uv run alembic current && cd ..`
+  - Docker Compose mode: `docker compose exec backend uv run alembic upgrade head && docker compose exec postgres psql -U postgres -d elin -c "select * from alembic_version;"`
+- If Web UI/API returns DB errors like `UndefinedColumn` or `UndefinedTable`, first action is to run the migration commands above, then retry.
+- Docker behavior: backend container startup must run `uv run alembic upgrade head` before starting uvicorn to reduce schema drift risk.
+
 ## Coding Style & Naming Conventions
 - Indentation: 2 spaces for YAML/JSON/Markdown, 4 spaces for Python.
 - TypeScript/React: components in `PascalCase`, variables/functions in `camelCase`.
