@@ -60,6 +60,14 @@ Pull requests should include:
 - prefer single-line commands chained with `&&` for reproducibility; only use line continuations (`\`) when readability clearly benefits
 - if a command becomes too long (for example with long env vars), use `\` line continuations to keep it copy-paste safe as one command
 
+## Response Format & Language
+- For every implementation report response, always use Traditional Chinese.
+- For every implementation report response, always include these sections in order:
+  1. `實作結果摘要` (clear summary + impacted area)
+  2. `修改檔案` (reviewer scan order: docs/config -> backend -> frontend -> tests/helpers; include one-line summary per file)
+  3. `測試方式與結果` (fully executable commands with concrete values, plus key outputs)
+  4. `人工驗證步驟` (only for behavior not fully covered by automation; include expected result per step)
+
 ## Security & Configuration Tips
 - Do not commit secrets. Keep runtime values in `.env` and local overrides (ignored by `.gitignore`).
 - Use `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` for browser-based local development.

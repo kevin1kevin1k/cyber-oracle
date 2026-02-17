@@ -38,9 +38,10 @@ def engine():
     except OperationalError:
         pytest.skip(f"PostgreSQL is not available at {TEST_DATABASE_URL}")
 
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine, tables=[User.__table__])
     yield engine
-    Base.metadata.drop_all(bind=engine, tables=[User.__table__])
+    Base.metadata.drop_all(bind=engine)
     engine.dispose()
 
 

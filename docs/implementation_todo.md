@@ -12,15 +12,15 @@
   - [ ] `logout` API
   - [ ] `forgot-password` API
 - [x] 未驗證 Email 不可提問（API 與前端雙重限制）
-- [ ] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
+- [x] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
   - [x] `users`
-  - [ ] `sessions`
-  - [ ] `questions`
-  - [ ] `answers`
-  - [ ] `credit_wallets`
-  - [ ] `credit_transactions`
-  - [ ] `orders`
-  - [ ] `followups`
+  - [x] `sessions`
+  - [x] `questions`
+  - [x] `answers`
+  - [x] `credit_wallets`
+  - [x] `credit_transactions`
+  - [x] `orders`
+  - [x] `followups`
 - [ ] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
 - [ ] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
@@ -63,3 +63,34 @@
 - Router 規則由工程團隊維護
 - 前台維持不顯示來源摘要
 - 固定扣點策略：每次提問 1 點
+
+
+## 後續批次（已拆分，待下一輪實作）
+
+### Commit 2：Auth 完整化（session logout + forgot/reset password）
+- [ ] JWT 加入 `jti` claim，login 建立 `sessions` 紀錄
+- [ ] 認證中介層檢查 session 狀態（不存在/過期/revoked => 401）
+- [ ] 新增 `POST /api/v1/auth/logout`（revoked session）
+- [ ] 新增 `POST /api/v1/auth/forgot-password`（固定 202；dev/test 可回 token）
+- [ ] 新增 `POST /api/v1/auth/reset-password`（單次 token、過期失效）
+- [ ] 測試：logout 後 token 失效、forgot/reset 完整流程
+
+### Commit 3：Ask 持久化 + 點數交易引擎（reserve/capture/refund）
+- [ ] `POST /api/v1/ask` 支援 `Idempotency-Key`
+- [ ] 餘額不足回 `402` + `INSUFFICIENT_CREDIT`
+- [ ] 成功流程：reserve -> persist question/answer -> capture
+- [ ] 失敗流程：reserve -> refund（冪等保護）
+- [ ] `AskResponse.source` 擴充為 `rag/rule/openai/mock`
+- [ ] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
+
+### Commit 4：Credits/Orders MVP API（內建模擬支付）
+- [ ] `GET /api/v1/credits/balance`
+- [ ] `GET /api/v1/credits/transactions`
+- [ ] `POST /api/v1/orders`（僅 1/3/5 題包）
+- [ ] `POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
+- [ ] 測試：建單、入帳、餘額/流水一致性
+
+### Commit 5：文件與測試收尾
+- [ ] 更新 `backend/README.md`（API、錯誤碼、env）
+- [ ] 更新本文件完成勾選與子項
+- [ ] 補齊驗證命令與人工測試步驟（可直接執行）
