@@ -31,6 +31,16 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
 - `POST /api/v1/auth/reset-password`
   - resets password by token, token is single-use with expiration
 
+## Ask API (credit flow)
+- `POST /api/v1/ask`
+  - requires authenticated + verified email
+  - supports `Idempotency-Key` request header
+  - credit flow:
+    - success: `reserve -> persist question/answer -> capture`
+    - processing failure: `reserve -> refund`
+  - returns `402` with `INSUFFICIENT_CREDIT` when balance is not enough
+  - duplicate retries with same `Idempotency-Key` replay previous successful response and do not double-charge
+
 ## Database
 - Primary DB: PostgreSQL
 - Default local URL: `postgresql+psycopg://postgres:postgres@localhost:5432/elin`

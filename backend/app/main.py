@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 from app.auth import AuthContext, require_authenticated, require_verified_email
 from app.config import settings
 from app.db import get_db
+from app.models.answer import Answer
+from app.models.credit_transaction import CreditTransaction
+from app.models.credit_wallet import CreditWallet
+from app.models.question import Question
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas import (
@@ -49,6 +53,87 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+CREDIT_COST_PER_ASK = 1
+
+
+def _build_mock_answer_text(question: str) -> str:
+    return f"（Mock）已收到你的問題：{question}。目前為開發環境回覆。"
+
+
+def _to_ask_response(question: Question, answer: Answer) -> AskResponse:
+    return AskResponse(
+        answer=answer.answer_text,
+        source=question.source,
+        layer_percentages=[
+            LayerPercentage(label="主層", pct=answer.main_pct),
+            LayerPercentage(label="輔層", pct=answer.secondary_pct),
+            LayerPercentage(label="參照層", pct=answer.reference_pct),
+        ],
+        request_id=question.request_id,
+    )
+
+
+def _find_existing_ask_response(
+    db: Session,
+    user_id,
+    idempotency_key: str,
+) -> AskResponse | None:
+    question = db.scalar(
+        select(Question).where(
+            Question.user_id == user_id,
+            Question.idempotency_key == idempotency_key,
+            Question.status == "succeeded",
+        )
+    )
+    if question is None:
+        return None
+
+    answer = db.scalar(select(Answer).where(Answer.question_id == question.id))
+    if answer is None:
+        return None
+    return _to_ask_response(question, answer)
+
+
+def _refund_reserved_credit(
+    db: Session,
+    user_id,
+    request_id: str,
+    idempotency_key: str,
+    question_id=None,
+) -> None:
+    refund_exists = db.scalar(
+        select(CreditTransaction.id).where(
+            CreditTransaction.user_id == user_id,
+            CreditTransaction.action == "refund",
+            CreditTransaction.idempotency_key == idempotency_key,
+        )
+    )
+    if refund_exists is not None:
+        db.rollback()
+        return
+
+    wallet = db.scalar(
+        select(CreditWallet).where(CreditWallet.user_id == user_id).with_for_update()
+    )
+    if wallet is None:
+        wallet = CreditWallet(user_id=user_id, balance=0)
+        db.add(wallet)
+        db.flush()
+    wallet.balance += CREDIT_COST_PER_ASK
+    db.add(wallet)
+    db.add(
+        CreditTransaction(
+            user_id=user_id,
+            question_id=question_id,
+            action="refund",
+            amount=CREDIT_COST_PER_ASK,
+            reason_code="ASK_REFUNDED",
+            idempotency_key=idempotency_key,
+            request_id=request_id,
+        )
+    )
+    db.commit()
 
 
 @app.get("/api/v1/health")
@@ -252,16 +337,124 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
     responses={
         401: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
+        402: {"model": ErrorResponse},
     },
 )
-def ask(payload: AskRequest, _: AuthContext = Depends(require_verified_email)) -> AskResponse:
-    return AskResponse(
-        answer=f"（Mock）已收到你的問題：{payload.question}。目前為開發環境回覆。",
-        source="mock",
-        layer_percentages=[
-            LayerPercentage(label="主層", pct=70),
-            LayerPercentage(label="輔層", pct=20),
-            LayerPercentage(label="參照層", pct=10),
-        ],
-        request_id=str(uuid4()),
+def ask(
+    payload: AskRequest,
+    auth_context: AuthContext = Depends(require_verified_email),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+) -> AskResponse:
+    normalized_key = (idempotency_key or "").strip()
+    if normalized_key and len(normalized_key) > 128:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_IDEMPOTENCY_KEY", "message": "Idempotency-Key is too long"},
+        )
+    if not normalized_key:
+        normalized_key = str(uuid4())
+
+    replayed = _find_existing_ask_response(
+        db=db,
+        user_id=auth_context.user_id,
+        idempotency_key=normalized_key,
     )
+    if replayed is not None:
+        return replayed
+
+    request_id = str(uuid4())
+
+    wallet = db.scalar(
+        select(CreditWallet)
+        .where(CreditWallet.user_id == auth_context.user_id)
+        .with_for_update()
+    )
+    if wallet is None:
+        wallet = CreditWallet(user_id=auth_context.user_id, balance=0)
+        db.add(wallet)
+        db.flush()
+
+    if wallet.balance < CREDIT_COST_PER_ASK:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={"code": "INSUFFICIENT_CREDIT", "message": "Insufficient credit balance"},
+        )
+
+    wallet.balance -= CREDIT_COST_PER_ASK
+    db.add(wallet)
+    db.add(
+        CreditTransaction(
+            user_id=auth_context.user_id,
+            action="reserve",
+            amount=-CREDIT_COST_PER_ASK,
+            reason_code="ASK_RESERVED",
+            idempotency_key=normalized_key,
+            request_id=request_id,
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        replayed = _find_existing_ask_response(
+            db=db,
+            user_id=auth_context.user_id,
+            idempotency_key=normalized_key,
+        )
+        if replayed is not None:
+            return replayed
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Duplicate request is in progress"},
+        ) from exc
+
+    try:
+        question = Question(
+            user_id=auth_context.user_id,
+            question_text=payload.question,
+            lang=payload.lang,
+            mode=payload.mode,
+            status="succeeded",
+            source="mock",
+            request_id=request_id,
+            idempotency_key=normalized_key,
+        )
+        db.add(question)
+        db.flush()
+
+        answer = Answer(
+            question_id=question.id,
+            answer_text=_build_mock_answer_text(payload.question),
+            main_pct=70,
+            secondary_pct=20,
+            reference_pct=10,
+        )
+        db.add(answer)
+        db.add(
+            CreditTransaction(
+                user_id=auth_context.user_id,
+                question_id=question.id,
+                action="capture",
+                amount=-CREDIT_COST_PER_ASK,
+                reason_code="ASK_CAPTURED",
+                idempotency_key=normalized_key,
+                request_id=request_id,
+            )
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        _refund_reserved_credit(
+            db=db,
+            user_id=auth_context.user_id,
+            request_id=request_id,
+            idempotency_key=normalized_key,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "ASK_PROCESSING_FAILED", "message": "Failed to process ask request"},
+        ) from exc
+
+    return _to_ask_response(question=question, answer=answer)

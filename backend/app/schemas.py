@@ -29,13 +29,13 @@ class LayerPercentage(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
-    source: Literal["mock"]
+    source: Literal["rag", "rule", "openai", "mock"]
     layer_percentages: list[LayerPercentage]
     request_id: str
 
 
 class ErrorResponse(BaseModel):
-    code: Literal["UNAUTHORIZED", "EMAIL_NOT_VERIFIED"]
+    code: Literal["UNAUTHORIZED", "EMAIL_NOT_VERIFIED", "INSUFFICIENT_CREDIT"]
     message: str
 
 

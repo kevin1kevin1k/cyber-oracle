@@ -26,11 +26,11 @@
   - [x] `orders`
   - [x] `followups`
 - [ ] 實作點數交易引擎（固定扣 1 點）：reserve/capture/refund + idempotency
-  - [ ] Backend：`POST /api/v1/ask` 支援 `Idempotency-Key`
-  - [ ] Backend：餘額不足回 `402` + `INSUFFICIENT_CREDIT`
-  - [ ] Backend：成功流程 `reserve -> persist question/answer -> capture`
-  - [ ] Backend：失敗流程 `reserve -> refund`（冪等保護）
-  - [ ] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
+  - [x] Backend：`POST /api/v1/ask` 支援 `Idempotency-Key`
+  - [x] Backend：餘額不足回 `402` + `INSUFFICIENT_CREDIT`
+  - [x] Backend：成功流程 `reserve -> persist question/answer -> capture`
+  - [x] Backend：失敗流程 `reserve -> refund`（冪等保護）
+  - [x] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
   - [ ] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
   - [ ] Backend：`GET /api/v1/credits/balance`
@@ -72,9 +72,9 @@
 - [x] `register` 成功建立 user，重複 email 回傳 409
 - [x] `verify-email` 成功啟用帳號，無效或過期 token 回傳 400
 - [x] `login` 成功回傳 bearer token，錯誤帳密回傳 401
-- [ ] 餘額不足時提問失敗且不產生 capture
-- [ ] 提問成功流程：reserve -> capture
-- [ ] 提問失敗流程：reserve -> refund
+- [x] 餘額不足時提問失敗且不產生 capture
+- [x] 提問成功流程：reserve -> capture
+- [x] 提問失敗流程：reserve -> refund
 - [ ] `ask` 回傳三層百分比固定 3 筆且總和 100
 - [ ] 前台不顯示內部演算法名稱/規則編號/來源摘要
 - [ ] 購點成功後餘額更新正確（含重試冪等）

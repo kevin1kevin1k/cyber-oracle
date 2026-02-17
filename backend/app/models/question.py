@@ -1,7 +1,16 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +27,11 @@ class Question(Base):
         CheckConstraint(
             "source IN ('rag', 'rule', 'openai', 'mock')",
             name="ck_questions_source_valid",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_questions_user_id_idempotency_key",
         ),
         Index("ix_questions_user_id_created_at", "user_id", "created_at"),
         Index("ix_questions_idempotency_key", "idempotency_key"),

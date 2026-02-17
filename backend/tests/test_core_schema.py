@@ -176,6 +176,38 @@ def test_credit_transactions_user_action_idempotency_unique(db_session: Session)
     db_session.rollback()
 
 
+def test_questions_user_idempotency_unique(db_session: Session) -> None:
+    user = _create_user(db_session)
+    key = "ask-key"
+    q1 = Question(
+        user_id=user.id,
+        question_text="q1",
+        lang="zh",
+        mode="analysis",
+        status="submitted",
+        source="mock",
+        request_id=str(uuid.uuid4()),
+        idempotency_key=key,
+    )
+    q2 = Question(
+        user_id=user.id,
+        question_text="q2",
+        lang="zh",
+        mode="analysis",
+        status="submitted",
+        source="mock",
+        request_id=str(uuid.uuid4()),
+        idempotency_key=key,
+    )
+    db_session.add(q1)
+    db_session.commit()
+
+    db_session.add(q2)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
 def test_session_jti_unique(db_session: Session) -> None:
     user = _create_user(db_session)
     now = datetime.now(UTC)

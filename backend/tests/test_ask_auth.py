@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.db import Base, get_db
 from app.main import app
+from app.models.answer import Answer
+from app.models.credit_transaction import CreditTransaction
+from app.models.credit_wallet import CreditWallet
+from app.models.order import Order
+from app.models.question import Question
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.security import create_access_token
@@ -39,9 +44,18 @@ def engine():
     except OperationalError:
         pytest.skip(f"PostgreSQL is not available at {TEST_DATABASE_URL}")
 
-    Base.metadata.create_all(bind=engine, tables=[User.__table__, SessionRecord.__table__])
+    tables = [
+        User.__table__,
+        SessionRecord.__table__,
+        Question.__table__,
+        Answer.__table__,
+        CreditWallet.__table__,
+        Order.__table__,
+        CreditTransaction.__table__,
+    ]
+    Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, tables=tables)
     engine.dispose()
 
 
@@ -50,6 +64,11 @@ def db_session(engine):
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     session = SessionLocal()
     try:
+        session.query(CreditTransaction).delete()
+        session.query(Answer).delete()
+        session.query(Question).delete()
+        session.query(Order).delete()
+        session.query(CreditWallet).delete()
         session.query(SessionRecord).delete()
         session.query(User).delete()
         session.commit()
@@ -70,7 +89,11 @@ def client(db_session: Session):
     app.dependency_overrides.clear()
 
 
-def _make_token_with_session(db_session: Session, email_verified: bool) -> str:
+def _make_token_with_session(
+    db_session: Session,
+    email_verified: bool,
+    wallet_balance: int | None = None,
+) -> str:
     user = User(
         id=uuid.uuid4(),
         email=f"{uuid.uuid4()}@example.com",
@@ -78,6 +101,11 @@ def _make_token_with_session(db_session: Session, email_verified: bool) -> str:
         email_verified=email_verified,
     )
     db_session.add(user)
+    db_session.flush()
+
+    if wallet_balance is not None:
+        db_session.add(CreditWallet(user_id=user.id, balance=wallet_balance))
+
     db_session.commit()
 
     token = create_access_token(
@@ -147,7 +175,7 @@ def test_ask_unverified_email_returns_403(client: TestClient, db_session: Sessio
 
 
 def test_ask_verified_email_returns_200(client: TestClient, db_session: Session) -> None:
-    token = _make_token_with_session(db_session=db_session, email_verified=True)
+    token = _make_token_with_session(db_session=db_session, email_verified=True, wallet_balance=1)
     response = client.post(
         "/api/v1/ask",
         headers={"Authorization": f"Bearer {token}"},
