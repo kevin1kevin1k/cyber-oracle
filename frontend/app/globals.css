@@ -156,3 +156,31 @@ ul {
   color: #b42318;
   margin-left: 6px;
 }
+
+.credit-line {
+  position: relative;
+}
+
+.credit-count {
+  display: inline-block;
+  min-width: 48px;
+}
+
+.credit-delta {
+  display: inline-block;
+  margin-left: 8px;
+  color: #b42318;
+  font-weight: 700;
+  animation: creditDeltaFadeUp 1s ease-out forwards;
+}
+
+@keyframes creditDeltaFadeUp {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}

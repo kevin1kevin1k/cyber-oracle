@@ -247,6 +247,113 @@ test("ask handles 402 insufficient credit", async ({ page }) => {
   await expect(page.getByText("點數不足，請先購點再提問。")).toBeVisible();
 });
 
+test("ask success updates credit balance immediately", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-verified-credit-live",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  let balanceCalls = 0;
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    balanceCalls += 1;
+    if (balanceCalls === 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ balance: 5, updated_at: "2026-02-17T12:00:00Z" }),
+      });
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 4, updated_at: "2026-02-17T12:00:01Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/ask", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        answer: "即時扣點測試",
+        source: "mock",
+        layer_percentages: [
+          { label: "主層", pct: 70 },
+          { label: "輔層", pct: 20 },
+          { label: "參照層", pct: 10 },
+        ],
+        request_id: "req-credit-live",
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("credit-live@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByText("目前點數：5 點")).toBeVisible();
+
+  await page.getByLabel("問題內容").fill("即時扣點");
+  await page.getByRole("button", { name: "送出問題" }).click();
+  await expect(page.getByText("目前點數：4 點")).toBeVisible();
+  await expect(page.locator(".credit-delta")).toHaveText("-1");
+});
+
+test("ask failure does not decrement credit balance", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-verified-credit-fail",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 5, updated_at: "2026-02-17T12:00:00Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/ask", async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { code: "ASK_PROCESSING_FAILED", message: "Failed to process ask request" },
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("credit-fail@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByText("目前點數：5 點")).toBeVisible();
+
+  await page.getByLabel("問題內容").fill("不應扣點");
+  await page.getByRole("button", { name: "送出問題" }).click();
+  await expect(page.getByText("Failed to process ask request")).toBeVisible();
+  await expect(page.getByText("目前點數：5 點")).toBeVisible();
+  await expect(page.locator(".credit-delta")).toHaveCount(0);
+});
+
 test("ask retry uses the same Idempotency-Key", async ({ page }) => {
   await page.route("**/api/v1/auth/login", async (route) => {
     await route.fulfill({

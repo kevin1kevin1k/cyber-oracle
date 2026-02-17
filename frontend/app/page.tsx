@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
@@ -25,6 +25,8 @@ export default function HomePage() {
   const [result, setResult] = useState<AskResponse | null>(null);
   const [pendingAskKey, setPendingAskKey] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [creditDelta, setCreditDelta] = useState<number | null>(null);
+  const creditDeltaTimerRef = useRef<number | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
   const isVerified = !!authSession?.emailVerified;
@@ -38,30 +40,40 @@ export default function HomePage() {
     setAuthLoaded(true);
   }, []);
 
-  useEffect(() => {
+  const refreshBalance = useCallback(async () => {
     if (!authLoaded || !isLoggedIn) {
       setCreditBalance(null);
       return;
     }
+    try {
+      const payload = await getCreditsBalance();
+      setCreditBalance(payload.balance);
+    } catch {
+      setCreditBalance(null);
+    }
+  }, [authLoaded, isLoggedIn]);
 
+  useEffect(() => {
     let active = true;
     async function loadBalance() {
-      try {
-        const payload = await getCreditsBalance();
-        if (active) {
-          setCreditBalance(payload.balance);
-        }
-      } catch {
-        if (active) {
-          setCreditBalance(null);
-        }
+      if (!active) {
+        return;
       }
+      await refreshBalance();
     }
     void loadBalance();
     return () => {
       active = false;
     };
-  }, [authLoaded, isLoggedIn]);
+  }, [refreshBalance]);
+
+  useEffect(() => {
+    return () => {
+      if (creditDeltaTimerRef.current !== null) {
+        window.clearTimeout(creditDeltaTimerRef.current);
+      }
+    };
+  }, []);
 
   async function handleLogout() {
     try {
@@ -118,6 +130,15 @@ export default function HomePage() {
       });
       setResult(data);
       setPendingAskKey(null);
+      setCreditBalance((prev) => (prev === null ? null : Math.max(0, prev - 1)));
+      setCreditDelta(-1);
+      if (creditDeltaTimerRef.current !== null) {
+        window.clearTimeout(creditDeltaTimerRef.current);
+      }
+      creditDeltaTimerRef.current = window.setTimeout(() => {
+        setCreditDelta(null);
+      }, 1000);
+      void refreshBalance();
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === "UNAUTHORIZED") {
@@ -169,8 +190,9 @@ export default function HomePage() {
             </p>
           )}
           {isLoggedIn && (
-            <p>
-              目前點數：{creditBalance === null ? "讀取中..." : `${creditBalance} 點`} ·{" "}
+            <p className="credit-line">
+              目前點數：<span className="credit-count">{creditBalance === null ? "讀取中..." : `${creditBalance} 點`}</span>
+              {creditDelta !== null && <span className="credit-delta">{creditDelta}</span>} ·{" "}
               <Link href="/wallet">前往點數錢包</Link>
             </p>
           )}
