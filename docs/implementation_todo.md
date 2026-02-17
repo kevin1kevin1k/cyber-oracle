@@ -87,6 +87,7 @@
 - [ ] Backend：`GET /api/v1/credits/transactions`
 - [ ] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
 - [ ] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
+- [ ] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
 - [ ] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
 - [ ] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
 - [ ] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口
@@ -101,3 +102,25 @@
 - [ ] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
 - [ ] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
   - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
+- [ ] 文件收尾需附 production 切換清單完成證據（API 行為、UI 文案、環境變數、部署流程）
+
+## Production Readiness（Dev -> Production）
+
+### 安全與帳務一致性（高優先）
+- [ ] Auth：`POST /api/v1/auth/register` production 不回傳 `verification_token`
+- [ ] Auth：`POST /api/v1/auth/forgot-password` production 僅回 `202 accepted`，不回傳 `reset_token`
+- [ ] Auth：導入 email provider（SES/SendGrid/Postmark 擇一）發送驗證信與重設信
+- [ ] Auth：新增 resend-verification 流程（重發時舊 token 失效）
+- [ ] Secrets：移除弱預設 `JWT_SECRET`，production 啟動時必填且強度校驗
+- [ ] Auth：規劃 access token 儲存策略（MVP localStorage -> production cookie/httpOnly）
+- [ ] Billing：`simulate-paid` 僅限非 production（環境守衛 + 權限限制）
+- [ ] Billing：production 串接實際金流 callback 與簽章驗證
+- [ ] DB：部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
+
+### 使用者體驗與可營運性（高優先）
+- [ ] Frontend：驗證信/重設信改為「請查收 Email」文案（不顯示 token）
+- [ ] Frontend：forgot/reset/verify 失敗訊息統一（過期、無效、重試引導）
+- [ ] Frontend：登入失效（401）全站一致導回 `/login` 並保留 return path
+- [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL）
+- [ ] Observability：auth/交易事件新增 request_id 與審計記錄
+- [ ] Runbook：新增「發生 UndefinedColumn / 版本不一致」標準排障步驟
