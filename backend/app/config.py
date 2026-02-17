@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    app_env: str = "dev"
     cors_origins: str = "http://localhost:3000"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/elin"
     jwt_secret: str = "dev-only-change-me-please-replace-32+"

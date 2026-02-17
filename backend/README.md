@@ -14,9 +14,17 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   - returns `verification_token` for dev flow
 - `POST /api/v1/auth/login`
   - verifies email/password
-  - returns HS256 bearer token with `email_verified` claim
+  - returns HS256 bearer token with `email_verified` + `jti` claims
+  - creates a `sessions` record for token revocation/expiration checks
 - `POST /api/v1/auth/verify-email`
   - verifies token and flips `email_verified=true`
+- `POST /api/v1/auth/logout`
+  - revokes current session by token `jti` and returns `204`
+- `POST /api/v1/auth/forgot-password`
+  - always returns `202` to avoid user enumeration
+  - returns `reset_token` only in `dev`/`test` app env
+- `POST /api/v1/auth/reset-password`
+  - resets password by token, token is single-use with expiration
 
 ## Database
 - Primary DB: PostgreSQL
@@ -24,6 +32,7 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Docker Compose URL (inside container): `postgresql+psycopg://postgres:postgres@postgres:5432/elin`
 
 Environment variables:
+- `APP_ENV`: runtime env (`dev` / `test` / `prod`, default `dev`)
 - `DATABASE_URL`: app runtime database
 - `TEST_DATABASE_URL`: test-only database (use `elin_test`)
 - `JWT_SECRET`: HS256 signing secret for access token

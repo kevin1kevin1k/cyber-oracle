@@ -94,3 +94,37 @@ class VerifyEmailRequest(BaseModel):
 
 class VerifyEmailResponse(BaseModel):
     status: Literal["verified"]
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("invalid email format")
+        return normalized
+
+
+class ForgotPasswordResponse(BaseModel):
+    status: Literal["accepted"]
+    reset_token: str | None = None
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=512)
+    new_password: str = Field(..., min_length=8, max_length=256)
+
+    @field_validator("token")
+    @classmethod
+    def normalize_token(cls, value: str) -> str:
+        token = value.strip()
+        if not token:
+            raise ValueError("token must not be empty")
+        return token
+
+
+class ResetPasswordResponse(BaseModel):
+    status: Literal["password_reset"]

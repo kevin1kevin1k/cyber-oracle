@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.db import Base, get_db
 from app.main import app
+from app.models.session_record import SessionRecord
 from app.models.user import User
-from app.security import hash_password
+from app.security import hash_password, verify_password
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -39,7 +40,7 @@ def engine():
         pytest.skip(f"PostgreSQL is not available at {TEST_DATABASE_URL}")
 
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine, tables=[User.__table__])
+    Base.metadata.create_all(bind=engine, tables=[User.__table__, SessionRecord.__table__])
     yield engine
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
@@ -50,6 +51,7 @@ def db_session(engine):
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     session = SessionLocal()
     try:
+        session.query(SessionRecord).delete()
         session.query(User).delete()
         session.commit()
         yield session
@@ -180,7 +182,15 @@ def test_login_success_returns_bearer_token(client: TestClient, db_session: Sess
     assert claims["sub"] == str(user.id)
     assert claims["email"] == "login@example.com"
     assert claims["email_verified"] is True
+    assert isinstance(claims["jti"], str)
     assert claims["exp"] > claims["iat"]
+
+    session_record = db_session.scalar(
+        select(SessionRecord).where(SessionRecord.jti == claims["jti"])
+    )
+    assert session_record is not None
+    assert session_record.user_id == user.id
+    assert session_record.revoked_at is None
 
 
 def test_login_unverified_user_returns_token_but_not_verified(
@@ -210,6 +220,7 @@ def test_login_unverified_user_returns_token_but_not_verified(
         algorithms=[settings.jwt_algorithm],
     )
     assert claims["email_verified"] is False
+    assert isinstance(claims["jti"], str)
 
 
 def test_login_invalid_credentials_return_401(client: TestClient, db_session: Session) -> None:
@@ -235,3 +246,128 @@ def test_login_invalid_credentials_return_401(client: TestClient, db_session: Se
     )
     assert unknown_email.status_code == 401
     assert unknown_email.json()["detail"]["code"] == "INVALID_CREDENTIALS"
+
+
+def test_logout_revokes_session_and_invalidates_token(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = User(
+        id=uuid.uuid4(),
+        email="logout@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "logout@example.com", "password": "Password123"},
+    )
+    assert login_response.status_code == 200
+    access_token = login_response.json()["access_token"]
+    claims = jwt.decode(access_token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+
+    logout_response = client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert logout_response.status_code == 204
+
+    session_record = db_session.scalar(
+        select(SessionRecord).where(SessionRecord.jti == claims["jti"])
+    )
+    assert session_record is not None
+    assert session_record.revoked_at is not None
+
+    ask_after_logout = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+    assert ask_after_logout.status_code == 401
+    assert ask_after_logout.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+def test_forgot_password_and_reset_password_success(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "app_env", "test")
+
+    user = User(
+        id=uuid.uuid4(),
+        email="forgot@example.com",
+        password_hash=hash_password("OldPassword123"),
+        email_verified=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    forgot_response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "forgot@example.com"},
+    )
+    assert forgot_response.status_code == 202
+    forgot_payload = forgot_response.json()
+    assert forgot_payload["status"] == "accepted"
+    assert forgot_payload["reset_token"]
+
+    reset_response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": forgot_payload["reset_token"], "new_password": "NewPassword123"},
+    )
+    assert reset_response.status_code == 200
+    assert reset_response.json()["status"] == "password_reset"
+
+    db_session.refresh(user)
+    assert user.password_reset_token is None
+    assert user.password_reset_token_expires_at is None
+    assert verify_password("NewPassword123", user.password_hash)
+
+
+def test_forgot_password_unknown_email_returns_202_without_token_in_prod(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "app_env", "prod")
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "not-found@example.com"},
+    )
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "accepted"
+    assert payload["reset_token"] is None
+
+
+def test_reset_password_invalid_or_expired_returns_400(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = User(
+        id=uuid.uuid4(),
+        email="expired-reset@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=True,
+        password_reset_token="expired-reset-token",
+        password_reset_token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    invalid = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "not-found", "new_password": "NewPassword123"},
+    )
+    assert invalid.status_code == 400
+    assert invalid.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"
+
+    expired = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "expired-reset-token", "new_password": "NewPassword123"},
+    )
+    assert expired.status_code == 400
+    assert expired.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"

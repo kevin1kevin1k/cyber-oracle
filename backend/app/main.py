@@ -1,33 +1,41 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import jwt
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import AuthContext, require_verified_email
+from app.auth import AuthContext, require_authenticated, require_verified_email
 from app.config import settings
 from app.db import get_db
+from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas import (
     ApiErrorDetail,
     AskRequest,
     AskResponse,
     ErrorResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LayerPercentage,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
 )
 from app.security import (
     create_access_token,
+    generate_password_reset_token,
     generate_verification_token,
     hash_password,
+    password_reset_token_expiry,
     verification_token_expiry,
     verify_password,
 )
@@ -113,12 +121,105 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         algorithm=settings.jwt_algorithm,
         expires_minutes=settings.jwt_exp_minutes,
     )
+    claims = jwt.decode(access_token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    jti = claims.get("jti")
+    exp = claims.get("exp")
+    iat = claims.get("iat")
+    if not isinstance(jti, str) or not isinstance(exp, int) or not isinstance(iat, int):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "TOKEN_GENERATION_FAILED",
+                "message": "Unable to generate access token",
+            },
+        )
+    session_record = SessionRecord(
+        user_id=user.id,
+        jti=jti,
+        issued_at=datetime.fromtimestamp(iat, tz=UTC),
+        expires_at=datetime.fromtimestamp(exp, tz=UTC),
+    )
+    db.add(session_record)
+    db.commit()
 
     return LoginResponse(
         access_token=access_token,
         token_type="bearer",
         email_verified=user.email_verified,
     )
+
+
+@app.post(
+    "/api/v1/auth/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def logout(
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> None:
+    session_record = db.scalar(
+        select(SessionRecord).where(
+            SessionRecord.jti == auth_context.jti,
+            SessionRecord.user_id == auth_context.user_id,
+        )
+    )
+    if session_record is not None and session_record.revoked_at is None:
+        session_record.revoked_at = datetime.now(UTC)
+        db.add(session_record)
+        db.commit()
+
+
+@app.post(
+    "/api/v1/auth/forgot-password",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ForgotPasswordResponse,
+)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+) -> ForgotPasswordResponse:
+    user = db.scalar(select(User).where(User.email == payload.email))
+    reset_token: str | None = None
+    if user is not None:
+        reset_token = generate_password_reset_token()
+        user.password_reset_token = reset_token
+        user.password_reset_token_expires_at = password_reset_token_expiry()
+        db.add(user)
+        db.commit()
+
+    if settings.app_env in {"dev", "test"}:
+        return ForgotPasswordResponse(status="accepted", reset_token=reset_token)
+    return ForgotPasswordResponse(status="accepted")
+
+
+@app.post(
+    "/api/v1/auth/reset-password",
+    response_model=ResetPasswordResponse,
+    responses={400: {"model": ApiErrorDetail}},
+)
+def reset_password(
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+) -> ResetPasswordResponse:
+    now = datetime.now(UTC)
+    user = db.scalar(select(User).where(User.password_reset_token == payload.token))
+    if (
+        user is None
+        or user.password_reset_token_expires_at is None
+        or user.password_reset_token_expires_at < now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_OR_EXPIRED_TOKEN", "message": "Invalid or expired token"},
+        )
+
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_token_expires_at = None
+    db.add(user)
+    db.commit()
+
+    return ResetPasswordResponse(status="password_reset")
 
 
 @app.post(

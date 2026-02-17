@@ -9,8 +9,8 @@
   - [x] `register` API
   - [x] `verify-email` API
   - [x] `login` API
-  - [ ] `logout` API
-  - [ ] `forgot-password` API
+  - [x] `logout` API
+  - [x] `forgot-password` API
 - [x] 未驗證 Email 不可提問（API 與前端雙重限制）
 - [x] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
   - [x] `users`
@@ -64,16 +64,7 @@
 - 前台維持不顯示來源摘要
 - 固定扣點策略：每次提問 1 點
 
-
 ## 後續批次（已拆分，待下一輪實作）
-
-### Commit 2：Auth 完整化（session logout + forgot/reset password）
-- [ ] JWT 加入 `jti` claim，login 建立 `sessions` 紀錄
-- [ ] 認證中介層檢查 session 狀態（不存在/過期/revoked => 401）
-- [ ] 新增 `POST /api/v1/auth/logout`（revoked session）
-- [ ] 新增 `POST /api/v1/auth/forgot-password`（固定 202；dev/test 可回 token）
-- [ ] 新增 `POST /api/v1/auth/reset-password`（單次 token、過期失效）
-- [ ] 測試：logout 後 token 失效、forgot/reset 完整流程
 
 ### Commit 3：Ask 持久化 + 點數交易引擎（reserve/capture/refund）
 - [ ] `POST /api/v1/ask` 支援 `Idempotency-Key`

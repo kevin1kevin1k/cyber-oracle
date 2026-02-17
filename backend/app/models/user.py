@@ -30,6 +30,11 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    password_reset_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    password_reset_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
     channel_user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

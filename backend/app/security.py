@@ -1,4 +1,5 @@
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -26,10 +27,12 @@ def create_access_token(
 ) -> str:
     now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=expires_minutes)
+    jti = str(uuid.uuid4())
     payload = {
         "sub": subject,
         "email": email,
         "email_verified": email_verified,
+        "jti": jti,
         "iat": int(now.timestamp()),
         "exp": int(expires_at.timestamp()),
     }
@@ -41,4 +44,12 @@ def generate_verification_token() -> str:
 
 
 def verification_token_expiry(hours: int = 24) -> datetime:
+    return datetime.now(UTC) + timedelta(hours=hours)
+
+
+def generate_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def password_reset_token_expiry(hours: int = 1) -> datetime:
     return datetime.now(UTC) + timedelta(hours=hours)
