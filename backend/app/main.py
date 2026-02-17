@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import jwt
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,9 @@ from app.schemas import (
     ApiErrorDetail,
     AskRequest,
     AskResponse,
+    CreditBalanceResponse,
+    CreditTransactionItem,
+    CreditTransactionListResponse,
     ErrorResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
@@ -329,6 +332,62 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
     db.commit()
 
     return VerifyEmailResponse(status="verified")
+
+
+@app.get(
+    "/api/v1/credits/balance",
+    response_model=CreditBalanceResponse,
+    responses={401: {"model": ErrorResponse}},
+)
+def get_credits_balance(
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> CreditBalanceResponse:
+    wallet = db.scalar(select(CreditWallet).where(CreditWallet.user_id == auth_context.user_id))
+    if wallet is None:
+        return CreditBalanceResponse(balance=0, updated_at=None)
+    return CreditBalanceResponse(balance=wallet.balance, updated_at=wallet.updated_at)
+
+
+@app.get(
+    "/api/v1/credits/transactions",
+    response_model=CreditTransactionListResponse,
+    responses={401: {"model": ErrorResponse}},
+)
+def get_credit_transactions(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> CreditTransactionListResponse:
+    transactions = db.scalars(
+        select(CreditTransaction)
+        .where(CreditTransaction.user_id == auth_context.user_id)
+        .order_by(CreditTransaction.created_at.desc(), CreditTransaction.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    total = db.scalar(
+        select(func.count(CreditTransaction.id)).where(
+            CreditTransaction.user_id == auth_context.user_id
+        )
+    )
+
+    items = [
+        CreditTransactionItem(
+            id=str(tx.id),
+            action=tx.action,
+            amount=tx.amount,
+            reason_code=tx.reason_code,
+            request_id=tx.request_id,
+            question_id=str(tx.question_id) if tx.question_id is not None else None,
+            order_id=str(tx.order_id) if tx.order_id is not None else None,
+            created_at=tx.created_at,
+        )
+        for tx in transactions
+    ]
+    return CreditTransactionListResponse(items=items, total=total or 0)
 
 
 @app.post(

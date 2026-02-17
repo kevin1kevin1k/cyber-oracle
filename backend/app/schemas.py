@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -128,3 +129,24 @@ class ResetPasswordRequest(BaseModel):
 
 class ResetPasswordResponse(BaseModel):
     status: Literal["password_reset"]
+
+
+class CreditBalanceResponse(BaseModel):
+    balance: int
+    updated_at: datetime | None
+
+
+class CreditTransactionItem(BaseModel):
+    id: str
+    action: Literal["reserve", "capture", "refund", "grant", "purchase"]
+    amount: int
+    reason_code: str
+    request_id: str
+    question_id: str | None
+    order_id: str | None
+    created_at: datetime
+
+
+class CreditTransactionListResponse(BaseModel):
+    items: list[CreditTransactionItem]
+    total: int

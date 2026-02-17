@@ -41,6 +41,16 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
   - returns `402` with `INSUFFICIENT_CREDIT` when balance is not enough
   - duplicate retries with same `Idempotency-Key` replay previous successful response and do not double-charge
 
+## Credits APIs
+- `GET /api/v1/credits/balance`
+  - requires bearer token
+  - returns current wallet balance and `updated_at`
+  - if wallet does not exist yet, returns `balance=0` and `updated_at=null`
+- `GET /api/v1/credits/transactions`
+  - requires bearer token
+  - query params: `limit` (1-100, default 20), `offset` (default 0)
+  - returns user-scoped transaction list (newest first) and total count
+
 ## Database
 - Primary DB: PostgreSQL
 - Default local URL: `postgresql+psycopg://postgres:postgres@localhost:5432/elin`

@@ -33,8 +33,8 @@
   - [x] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
   - [x] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
-  - [ ] Backend：`GET /api/v1/credits/balance`
-  - [ ] Backend：`GET /api/v1/credits/transactions`
+  - [x] Backend：`GET /api/v1/credits/balance`
+  - [x] Backend：`GET /api/v1/credits/transactions`
   - [ ] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
   - [ ] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
   - [ ] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
