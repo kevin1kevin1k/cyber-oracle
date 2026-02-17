@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
+import { getCreditsBalance } from "@/lib/credits";
 
 type AskResponse = {
   answer: string;
@@ -16,19 +17,51 @@ type AskResponse = {
 
 export default function HomePage() {
   const router = useRouter();
-  const authSession = getAuthSession();
+  const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AskResponse | null>(null);
   const [pendingAskKey, setPendingAskKey] = useState<string | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
   const isVerified = !!authSession?.emailVerified;
   const canSubmit = useMemo(
-    () => question.trim().length > 0 && !loading && isLoggedIn && isVerified,
-    [question, loading, isLoggedIn, isVerified]
+    () => authLoaded && question.trim().length > 0 && !loading && isLoggedIn && isVerified,
+    [authLoaded, question, loading, isLoggedIn, isVerified]
   );
+
+  useEffect(() => {
+    setAuthSession(getAuthSession());
+    setAuthLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!authLoaded || !isLoggedIn) {
+      setCreditBalance(null);
+      return;
+    }
+
+    let active = true;
+    async function loadBalance() {
+      try {
+        const payload = await getCreditsBalance();
+        if (active) {
+          setCreditBalance(payload.balance);
+        }
+      } catch {
+        if (active) {
+          setCreditBalance(null);
+        }
+      }
+    }
+    void loadBalance();
+    return () => {
+      active = false;
+    };
+  }, [authLoaded, isLoggedIn]);
 
   async function handleLogout() {
     try {
@@ -41,6 +74,7 @@ export default function HomePage() {
     } finally {
       setPendingAskKey(null);
       clearAuthSession();
+      setAuthSession(null);
       router.replace("/login");
     }
   }
@@ -49,6 +83,11 @@ export default function HomePage() {
     event.preventDefault();
     setError(null);
     setResult(null);
+
+    if (!authLoaded) {
+      setError("登入狀態載入中，請稍後再試。");
+      return;
+    }
 
     if (!isLoggedIn) {
       setError("請先登入後再提問。");
@@ -108,7 +147,9 @@ export default function HomePage() {
 
       <section className="card">
         <div className="auth-bar">
-          {isLoggedIn ? (
+          {!authLoaded ? (
+            <p>登入狀態載入中...</p>
+          ) : isLoggedIn ? (
             <>
               <p>
                 目前狀態：已登入（{isVerified ? "已驗證" : "未驗證"}）
@@ -127,6 +168,12 @@ export default function HomePage() {
               尚未登入，請先 <Link href="/login">登入</Link> 或 <Link href="/register">註冊</Link>。
             </p>
           )}
+          {isLoggedIn && (
+            <p>
+              目前點數：{creditBalance === null ? "讀取中..." : `${creditBalance} 點`} ·{" "}
+              <Link href="/wallet">前往點數錢包</Link>
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -141,14 +188,24 @@ export default function HomePage() {
               setQuestion(e.target.value);
             }}
             placeholder="請輸入你想詢問的問題"
-            disabled={!isLoggedIn || !isVerified}
+            disabled={!authLoaded || !isLoggedIn || !isVerified}
           />
           <button type="submit" disabled={!canSubmit}>
             {loading ? "送出中..." : "送出問題"}
           </button>
         </form>
 
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error">
+            {error}
+            {error.includes("點數不足") && (
+              <>
+                {" "}
+                <Link href="/wallet?from=ask-402">立即前往購點</Link>
+              </>
+            )}
+          </p>
+        )}
 
         {result && (
           <div className="answer">

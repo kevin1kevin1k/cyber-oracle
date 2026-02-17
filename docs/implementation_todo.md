@@ -32,22 +32,22 @@
   - [x] Backend：失敗流程 `reserve -> refund`（冪等保護）
   - [x] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
   - [x] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
-- [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
+- [x] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
   - [x] Backend：`GET /api/v1/credits/balance`
   - [x] Backend：`GET /api/v1/credits/transactions`
   - [x] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
   - [x] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
   - [x] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
-  - [ ] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
-  - [ ] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
-  - [ ] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口
-  - [ ] 測試：建單、入帳、餘額/流水一致性
-  - [ ] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
+  - [x] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
+  - [x] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
+  - [x] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口
+  - [x] 測試：建單、入帳、餘額/流水一致性
+  - [x] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
 - [ ] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
   - [x] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
-  - [ ] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
+  - [x] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
   - [x] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
-  - [ ] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
+  - [x] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
 
 ## P1（高價值 / MVP 完整）
 - [ ] 實作 RAG Top-3 + rerank + 百分比（總和 100）
@@ -63,8 +63,8 @@
   - [x] backend lint（Ruff）導入與 blocking
   - [x] frontend lint（ESLint）導入與 blocking
   - [x] pre-commit hooks（pre-commit stage）導入
-  - [ ] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
-  - [ ] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
+  - [x] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
+  - [x] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
     - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
 
 ## Test Cases（必測）
@@ -77,7 +77,7 @@
 - [x] 提問失敗流程：reserve -> refund
 - [ ] `ask` 回傳三層百分比固定 3 筆且總和 100
 - [ ] 前台不顯示內部演算法名稱/規則編號/來源摘要
-- [ ] 購點成功後餘額更新正確（含重試冪等）
+- [x] 購點成功後餘額更新正確（含重試冪等）
 - [ ] 歷史紀錄可查完整問答與交易流水
 - [ ] 延伸問題可保存為 pending，啟用後狀態改 used 並扣點
 
