@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import jwt
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from app.db import get_db
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
+from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
 from app.models.user import User
@@ -21,6 +23,7 @@ from app.schemas import (
     ApiErrorDetail,
     AskRequest,
     AskResponse,
+    CreateOrderRequest,
     CreditBalanceResponse,
     CreditTransactionItem,
     CreditTransactionListResponse,
@@ -30,10 +33,12 @@ from app.schemas import (
     LayerPercentage,
     LoginRequest,
     LoginResponse,
+    OrderResponse,
     RegisterRequest,
     RegisterResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
+    SimulatePaidResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
 )
@@ -58,10 +63,28 @@ app.add_middleware(
 )
 
 CREDIT_COST_PER_ASK = 1
+ORDER_AMOUNT_TWD_BY_PACKAGE_SIZE = {
+    1: 168,
+    3: 358,
+    5: 518,
+}
 
 
 def _build_mock_answer_text(question: str) -> str:
     return f"（Mock）已收到你的問題：{question}。目前為開發環境回覆。"
+
+
+def _to_order_response(order: Order) -> OrderResponse:
+    return OrderResponse(
+        id=str(order.id),
+        user_id=str(order.user_id),
+        package_size=order.package_size,
+        amount_twd=order.amount_twd,
+        status=order.status,
+        idempotency_key=order.idempotency_key,
+        created_at=order.created_at,
+        paid_at=order.paid_at,
+    )
 
 
 def _to_ask_response(question: Question, answer: Answer) -> AskResponse:
@@ -137,6 +160,23 @@ def _refund_reserved_credit(
         )
     )
     db.commit()
+
+
+def _get_or_create_wallet_for_update(db: Session, user_id: UUID) -> CreditWallet:
+    db.execute(
+        pg_insert(CreditWallet)
+        .values(user_id=user_id, balance=0)
+        .on_conflict_do_nothing(index_elements=[CreditWallet.user_id])
+    )
+    wallet = db.scalar(
+        select(CreditWallet).where(CreditWallet.user_id == user_id).with_for_update()
+    )
+    if wallet is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "WALLET_NOT_AVAILABLE", "message": "Wallet is not available"},
+        )
+    return wallet
 
 
 @app.get("/api/v1/health")
@@ -388,6 +428,145 @@ def get_credit_transactions(
         for tx in transactions
     ]
     return CreditTransactionListResponse(items=items, total=total or 0)
+
+
+@app.post(
+    "/api/v1/orders",
+    response_model=OrderResponse,
+    responses={401: {"model": ApiErrorDetail}, 409: {"model": ApiErrorDetail}},
+)
+def create_order(
+    payload: CreateOrderRequest,
+    response: Response,
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> OrderResponse:
+    existing = db.scalar(
+        select(Order).where(
+            Order.user_id == auth_context.user_id,
+            Order.idempotency_key == payload.idempotency_key,
+        )
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return _to_order_response(existing)
+
+    order = Order(
+        user_id=auth_context.user_id,
+        package_size=payload.package_size,
+        amount_twd=ORDER_AMOUNT_TWD_BY_PACKAGE_SIZE[payload.package_size],
+        status="pending",
+        idempotency_key=payload.idempotency_key,
+    )
+    db.add(order)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        existing = db.scalar(
+            select(Order).where(
+                Order.user_id == auth_context.user_id,
+                Order.idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing is not None:
+            response.status_code = status.HTTP_200_OK
+            return _to_order_response(existing)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ORDER_IDEMPOTENCY_CONFLICT",
+                "message": "Conflicting duplicate order request",
+            },
+        ) from exc
+
+    db.refresh(order)
+    response.status_code = status.HTTP_201_CREATED
+    return _to_order_response(order)
+
+
+@app.post(
+    "/api/v1/orders/{order_id}/simulate-paid",
+    response_model=SimulatePaidResponse,
+    responses={
+        401: {"model": ApiErrorDetail},
+        403: {"model": ApiErrorDetail},
+        404: {"model": ApiErrorDetail},
+        409: {"model": ApiErrorDetail},
+    },
+)
+def simulate_order_paid(
+    order_id: UUID,
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> SimulatePaidResponse:
+    if settings.app_env == "prod":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FORBIDDEN_IN_PRODUCTION",
+                "message": "simulate-paid is disabled in production",
+            },
+        )
+
+    order = db.scalar(
+        select(Order)
+        .where(Order.id == order_id, Order.user_id == auth_context.user_id)
+        .with_for_update()
+    )
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+
+    wallet = _get_or_create_wallet_for_update(db=db, user_id=auth_context.user_id)
+
+    if order.status == "paid":
+        return SimulatePaidResponse(order=_to_order_response(order), wallet_balance=wallet.balance)
+
+    if order.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ORDER_STATUS_INVALID_FOR_PAYMENT",
+                "message": "Only pending orders can be marked as paid",
+            },
+        )
+
+    request_id = str(uuid4())
+    tx_idempotency_key = f"order:{order.id}:purchase"
+    existing_purchase = db.scalar(
+        select(CreditTransaction).where(
+            CreditTransaction.user_id == auth_context.user_id,
+            CreditTransaction.action == "purchase",
+            CreditTransaction.idempotency_key == tx_idempotency_key,
+        )
+    )
+    if existing_purchase is None:
+        wallet.balance += order.package_size
+        db.add(wallet)
+        db.add(
+            CreditTransaction(
+                user_id=auth_context.user_id,
+                order_id=order.id,
+                action="purchase",
+                amount=order.package_size,
+                reason_code="ORDER_PAID",
+                idempotency_key=tx_idempotency_key,
+                request_id=request_id,
+            )
+        )
+
+    order.status = "paid"
+    if order.paid_at is None:
+        order.paid_at = datetime.now(UTC)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    db.refresh(wallet)
+
+    return SimulatePaidResponse(order=_to_order_response(order), wallet_balance=wallet.balance)
 
 
 @app.post(

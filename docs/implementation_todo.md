@@ -35,9 +35,9 @@
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
   - [x] Backend：`GET /api/v1/credits/balance`
   - [x] Backend：`GET /api/v1/credits/transactions`
-  - [ ] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
-  - [ ] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
-  - [ ] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
+  - [x] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
+  - [x] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
+  - [x] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
   - [ ] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
   - [ ] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
   - [ ] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口

@@ -150,3 +150,32 @@ class CreditTransactionItem(BaseModel):
 class CreditTransactionListResponse(BaseModel):
     items: list[CreditTransactionItem]
     total: int
+
+
+class CreateOrderRequest(BaseModel):
+    package_size: Literal[1, 3, 5]
+    idempotency_key: str = Field(..., min_length=1, max_length=128)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str) -> str:
+        key = value.strip()
+        if not key:
+            raise ValueError("idempotency_key must not be empty")
+        return key
+
+
+class OrderResponse(BaseModel):
+    id: str
+    user_id: str
+    package_size: Literal[1, 3, 5]
+    amount_twd: Literal[168, 358, 518]
+    status: Literal["pending", "paid", "failed", "refunded"]
+    idempotency_key: str
+    created_at: datetime
+    paid_at: datetime | None
+
+
+class SimulatePaidResponse(BaseModel):
+    order: OrderResponse
+    wallet_balance: int

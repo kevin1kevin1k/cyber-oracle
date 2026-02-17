@@ -51,6 +51,17 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
   - query params: `limit` (1-100, default 20), `offset` (default 0)
   - returns user-scoped transaction list (newest first) and total count
 
+## Orders APIs
+- `POST /api/v1/orders`
+  - requires bearer token
+  - creates pending order for package size `1|3|5` and mapped amount `168|358|518`
+  - request requires `idempotency_key`; duplicate key for same user replays existing order
+- `POST /api/v1/orders/{id}/simulate-paid`
+  - requires bearer token
+  - marks pending order as paid, grants credits to wallet, and writes `purchase` credit transaction
+  - idempotent for already-paid orders (no duplicate credit grant)
+  - disabled when `APP_ENV=prod` (returns `FORBIDDEN_IN_PRODUCTION`)
+
 ## Database
 - Primary DB: PostgreSQL
 - Default local URL: `postgresql+psycopg://postgres:postgres@localhost:5432/elin`
