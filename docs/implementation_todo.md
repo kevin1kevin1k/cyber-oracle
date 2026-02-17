@@ -31,7 +31,7 @@
   - [x] Backend：成功流程 `reserve -> persist question/answer -> capture`
   - [x] Backend：失敗流程 `reserve -> refund`（冪等保護）
   - [x] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
-  - [ ] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
+  - [x] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
 - [ ] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
   - [ ] Backend：`GET /api/v1/credits/balance`
   - [ ] Backend：`GET /api/v1/credits/transactions`
@@ -44,9 +44,9 @@
   - [ ] 測試：建單、入帳、餘額/流水一致性
   - [ ] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
 - [ ] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
-  - [ ] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
+  - [x] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
   - [ ] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
-  - [ ] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
+  - [x] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
   - [ ] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
 
 ## P1（高價值 / MVP 完整）

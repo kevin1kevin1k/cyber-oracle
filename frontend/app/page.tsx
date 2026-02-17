@@ -21,6 +21,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AskResponse | null>(null);
+  const [pendingAskKey, setPendingAskKey] = useState<string | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
   const isVerified = !!authSession?.emailVerified;
@@ -38,6 +39,7 @@ export default function HomePage() {
     } catch {
       // Ignore logout failures and clear local state anyway.
     } finally {
+      setPendingAskKey(null);
       clearAuthSession();
       router.replace("/login");
     }
@@ -64,13 +66,19 @@ export default function HomePage() {
     }
 
     setLoading(true);
+    const askKey = pendingAskKey ?? crypto.randomUUID();
+    if (!pendingAskKey) {
+      setPendingAskKey(askKey);
+    }
     try {
       const data = await apiRequest<AskResponse>("/api/v1/ask", {
         method: "POST",
         auth: true,
+        headers: { "Idempotency-Key": askKey },
         body: JSON.stringify({ question, lang: "zh", mode: "analysis" }),
       });
       setResult(data);
+      setPendingAskKey(null);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === "UNAUTHORIZED") {
@@ -126,7 +134,12 @@ export default function HomePage() {
           <textarea
             id="question"
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={(e) => {
+              if (e.target.value !== question) {
+                setPendingAskKey(null);
+              }
+              setQuestion(e.target.value);
+            }}
             placeholder="請輸入你想詢問的問題"
             disabled={!isLoggedIn || !isVerified}
           />
