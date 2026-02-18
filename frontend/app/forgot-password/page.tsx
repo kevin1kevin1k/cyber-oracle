@@ -56,11 +56,11 @@ export default function ForgotPasswordPage() {
         {error && <p className="error">{error}</p>}
         {result && (
           <div className="answer">
-            <p>已送出重設請求（若帳號存在）。</p>
+            <p>若帳號存在，請查收 Email 內的重設密碼連結。</p>
             {resetToken && (
               <>
                 <p>
-                  <strong>開發環境重設 token：</strong>
+                  <strong>開發環境重設 token（僅 dev/test）：</strong>
                 </p>
                 <p className="token-box">{resetToken}</p>
                 <p>

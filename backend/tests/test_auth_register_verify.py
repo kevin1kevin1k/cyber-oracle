@@ -89,6 +89,27 @@ def test_register_success(client: TestClient, db_session: Session) -> None:
     assert user.password_hash != "Password123"
 
 
+def test_register_in_prod_does_not_return_verification_token(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "app_env", "prod")
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "prod-user@example.com", "password": "Password123"},
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["email"] == "prod-user@example.com"
+    assert payload["verification_token"] is None
+
+    user = db_session.scalar(select(User).where(User.email == "prod-user@example.com"))
+    assert user is not None
+    assert user.verify_token is not None
+
+
 def test_register_duplicate_email_returns_409(client: TestClient, db_session: Session) -> None:
     db_session.add(
         User(

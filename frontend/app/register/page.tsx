@@ -10,7 +10,7 @@ type RegisterResponse = {
   user_id: string;
   email: string;
   email_verified: boolean;
-  verification_token: string;
+  verification_token?: string | null;
 };
 
 export default function RegisterPage() {
@@ -19,17 +19,24 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSubmittedEmail(null);
     setLoading(true);
     try {
       const payload = await apiRequest<RegisterResponse>("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      router.replace(`/verify-email?token=${encodeURIComponent(payload.verification_token)}`);
+      const token = payload.verification_token?.trim();
+      if (token) {
+        router.replace(`/verify-email?token=${encodeURIComponent(token)}`);
+        return;
+      }
+      setSubmittedEmail(payload.email);
     } catch (err) {
       if (err instanceof ApiError && err.code === "EMAIL_ALREADY_EXISTS") {
         setError("此 Email 已註冊，請直接登入。");
@@ -68,6 +75,9 @@ export default function RegisterPage() {
           </button>
         </form>
         {error && <p className="error">{error}</p>}
+        {submittedEmail && (
+          <p className="success">註冊成功，請查收 {submittedEmail} 的驗證信件。</p>
+        )}
         <p className="helper-links">
           <Link href="/login">已有帳號？前往登入</Link>
         </p>

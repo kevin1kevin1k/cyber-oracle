@@ -85,6 +85,29 @@ test("register -> verify -> login -> ask -> logout", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
+test("register success without verification token shows check-email message", async ({ page }) => {
+  await page.route("**/api/v1/auth/register", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user_id: "u-2",
+        email: "prod@example.com",
+        email_verified: false,
+        verification_token: null,
+      }),
+    });
+  });
+
+  await page.goto("/register");
+  await page.getByLabel("Email").fill("prod@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "註冊" }).click();
+
+  await expect(page).toHaveURL(/\/register/);
+  await expect(page.getByText("註冊成功，請查收 prod@example.com 的驗證信件。")).toBeVisible();
+});
+
 test("forgot -> reset password flow", async ({ page }) => {
   await page.route("**/api/v1/auth/forgot-password", async (route) => {
     await route.fulfill({
@@ -112,7 +135,7 @@ test("forgot -> reset password flow", async ({ page }) => {
   await page.getByLabel("Email").fill("user@example.com");
   await page.getByRole("button", { name: "送出" }).click();
 
-  await expect(page.getByText("已送出重設請求（若帳號存在）。")).toBeVisible();
+  await expect(page.getByText("若帳號存在，請查收 Email 內的重設密碼連結。")).toBeVisible();
   await page.getByRole("link", { name: "帶入 token 前往重設密碼" }).click();
 
   await expect(page).toHaveURL(/\/reset-password\?token=reset-token-xyz/);
@@ -167,6 +190,13 @@ test("ask handles 401 by redirecting to login", async ({ page }) => {
       }),
     });
   });
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 3, updated_at: "2026-02-18T12:00:00Z" }),
+    });
+  });
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("user401@example.com");
@@ -199,6 +229,13 @@ test("ask handles 403 email verification required", async ({ page }) => {
       body: JSON.stringify({
         detail: { code: "EMAIL_NOT_VERIFIED", message: "Email verification required" },
       }),
+    });
+  });
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 3, updated_at: "2026-02-18T12:00:00Z" }),
     });
   });
 

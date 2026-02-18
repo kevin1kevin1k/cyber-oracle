@@ -100,8 +100,8 @@
 ## Production Readiness（Dev -> Production）
 
 ### 安全與帳務一致性（高優先）
-- [ ] Auth：`POST /api/v1/auth/register` production 不回傳 `verification_token`
-- [ ] Auth：`POST /api/v1/auth/forgot-password` production 僅回 `202 accepted`，不回傳 `reset_token`
+- [x] Auth：`POST /api/v1/auth/register` production 不回傳 `verification_token`
+- [x] Auth：`POST /api/v1/auth/forgot-password` production 僅回 `202 accepted`，不回傳 `reset_token`
 - [ ] Auth：導入 email provider（SES/SendGrid/Postmark 擇一）發送驗證信與重設信
 - [ ] Auth：新增 resend-verification 流程（重發時舊 token 失效）
 - [ ] Secrets：移除弱預設 `JWT_SECRET`，production 啟動時必填且強度校驗

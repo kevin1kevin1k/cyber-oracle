@@ -59,7 +59,7 @@ class RegisterResponse(BaseModel):
     user_id: str
     email: str
     email_verified: bool
-    verification_token: str
+    verification_token: str | None = None
 
 
 class LoginRequest(BaseModel):

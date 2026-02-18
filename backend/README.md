@@ -16,7 +16,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
 ## Auth APIs (MVP progress)
 - `POST /api/v1/auth/register`
   - creates user with hashed password
-  - returns `verification_token` for dev flow
+  - returns `verification_token` only in `dev`/`test`; production returns `null`
 - `POST /api/v1/auth/login`
   - verifies email/password
   - returns HS256 bearer token with `email_verified` + `jti` claims
@@ -27,7 +27,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
   - revokes current session by token `jti` and returns `204`
 - `POST /api/v1/auth/forgot-password`
   - always returns `202` to avoid user enumeration
-  - returns `reset_token` only in `dev`/`test` app env
+  - returns `reset_token` only in `dev`/`test` app env; production returns `null`
 - `POST /api/v1/auth/reset-password`
   - resets password by token, token is single-use with expiration
 

@@ -213,11 +213,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
         ) from exc
     db.refresh(user)
 
+    response_token = token if settings.app_env in {"dev", "test"} else None
     return RegisterResponse(
         user_id=str(user.id),
         email=user.email,
         email_verified=user.email_verified,
-        verification_token=token,
+        verification_token=response_token,
     )
 
 
