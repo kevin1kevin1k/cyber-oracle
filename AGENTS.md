@@ -75,6 +75,7 @@ Pull requests should include:
 
 ## Response Format & Language
 - For every implementation report response, always use Traditional Chinese.
+- For `/review` slash command responses, always use Traditional Chinese (technical terms may remain in English).
 - For every implementation report response, always include these sections in order:
   1. `實作結果摘要` (clear summary + impacted area)
   2. `修改檔案` (reviewer scan order: docs/config -> backend -> frontend -> tests/helpers; include one-line summary per file)
