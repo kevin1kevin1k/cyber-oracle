@@ -14,6 +14,7 @@ class Followup(Base):
         CheckConstraint("status IN ('pending', 'used')", name="ck_followups_status_valid"),
         Index("ix_followups_user_id_created_at", "user_id", "created_at"),
         Index("ix_followups_question_id", "question_id"),
+        Index("ix_followups_status_created_at", "status", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -28,7 +29,13 @@ class Followup(Base):
         nullable=False,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    origin_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    used_question_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("questions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

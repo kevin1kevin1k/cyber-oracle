@@ -36,11 +36,19 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
 - `POST /api/v1/ask`
   - requires authenticated + verified email
   - supports `Idempotency-Key` request header
+  - response now includes `followup_options` (3 distinct followup buttons)
   - credit flow:
     - success: `reserve -> persist question/answer -> capture`
     - processing failure: `reserve -> refund`
   - returns `402` with `INSUFFICIENT_CREDIT` when balance is not enough
   - duplicate retries with same `Idempotency-Key` replay previous successful response and do not double-charge
+
+## Followup APIs
+- `POST /api/v1/followups/{id}/ask`
+  - requires authenticated + verified email
+  - asks the selected followup in the same topic and charges 1 credit
+  - followup item is one-time use (`pending -> used`)
+  - returns `FOLLOWUP_NOT_FOUND` / `FOLLOWUP_OWNER_MISMATCH` / `FOLLOWUP_ALREADY_USED` when invalid
 
 ## Credits APIs
 - `GET /api/v1/credits/balance`

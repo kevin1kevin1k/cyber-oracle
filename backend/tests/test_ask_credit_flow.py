@@ -16,6 +16,7 @@ from app.main import app
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
+from app.models.followup import Followup
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -52,6 +53,7 @@ def engine():
         CreditWallet.__table__,
         Order.__table__,
         CreditTransaction.__table__,
+        Followup.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
@@ -67,6 +69,7 @@ def db_session(engine):
         session.query(CreditTransaction).delete()
         session.query(Order).delete()
         session.query(Answer).delete()
+        session.query(Followup).delete()
         session.query(Question).delete()
         session.query(SessionRecord).delete()
         session.query(CreditWallet).delete()
@@ -165,6 +168,8 @@ def test_ask_success_reserve_and_capture(client: TestClient, db_session: Session
     assert response.status_code == 200
     payload = response.json()
     assert payload["source"] == "mock"
+    assert len(payload["followup_options"]) == 3
+    assert len({option["content"] for option in payload["followup_options"]}) == 3
 
     wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
     assert wallet is not None
@@ -183,6 +188,10 @@ def test_ask_success_reserve_and_capture(client: TestClient, db_session: Session
     answer = db_session.scalar(select(Answer).where(Answer.question_id == question.id))
     assert answer is not None
     assert (answer.main_pct, answer.secondary_pct, answer.reference_pct) == (70, 20, 10)
+    followups = db_session.scalars(
+        select(Followup).where(Followup.question_id == question.id)
+    ).all()
+    assert len(followups) == 3
 
 
 def test_ask_retry_same_idempotency_key_no_double_charge(

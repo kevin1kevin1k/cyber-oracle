@@ -16,6 +16,7 @@ from app.main import app
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
+from app.models.followup import Followup
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -52,6 +53,7 @@ def engine():
         CreditWallet.__table__,
         Order.__table__,
         CreditTransaction.__table__,
+        Followup.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
@@ -65,6 +67,7 @@ def db_session(engine):
     session = SessionLocal()
     try:
         session.query(CreditTransaction).delete()
+        session.query(Followup).delete()
         session.query(Answer).delete()
         session.query(Question).delete()
         session.query(Order).delete()
@@ -186,3 +189,4 @@ def test_ask_verified_email_returns_200(client: TestClient, db_session: Session)
     payload = response.json()
     assert payload["source"] == "mock"
     assert len(payload["layer_percentages"]) == 3
+    assert len(payload["followup_options"]) == 3

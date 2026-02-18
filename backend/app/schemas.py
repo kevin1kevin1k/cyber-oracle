@@ -28,11 +28,17 @@ class LayerPercentage(BaseModel):
     pct: int
 
 
+class FollowupOption(BaseModel):
+    id: str
+    content: str
+
+
 class AskResponse(BaseModel):
     answer: str
     source: Literal["rag", "rule", "openai", "mock"]
     layer_percentages: list[LayerPercentage]
     request_id: str
+    followup_options: list[FollowupOption]
 
 
 class AskHistoryItem(BaseModel):

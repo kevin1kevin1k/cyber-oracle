@@ -15,6 +15,7 @@ from app.db import get_db
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
+from app.models.followup import Followup
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -30,6 +31,7 @@ from app.schemas import (
     CreditTransactionItem,
     CreditTransactionListResponse,
     ErrorResponse,
+    FollowupOption,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LayerPercentage,
@@ -71,6 +73,7 @@ ORDER_AMOUNT_TWD_BY_PACKAGE_SIZE = {
     5: 518,
 }
 ASK_HISTORY_PREVIEW_MAX_LENGTH = 160
+FOLLOWUP_OPTIONS_COUNT = 3
 
 
 def _build_mock_answer_text(question: str) -> str:
@@ -90,7 +93,13 @@ def _to_order_response(order: Order) -> OrderResponse:
     )
 
 
-def _to_ask_response(question: Question, answer: Answer) -> AskResponse:
+def _to_ask_response(db: Session, question: Question, answer: Answer) -> AskResponse:
+    followup_rows = db.scalars(
+        select(Followup)
+        .where(Followup.question_id == question.id)
+        .order_by(Followup.created_at.asc(), Followup.id.asc())
+        .limit(FOLLOWUP_OPTIONS_COUNT)
+    ).all()
     return AskResponse(
         answer=answer.answer_text,
         source=question.source,
@@ -100,6 +109,9 @@ def _to_ask_response(question: Question, answer: Answer) -> AskResponse:
             LayerPercentage(label="參照層", pct=answer.reference_pct),
         ],
         request_id=question.request_id,
+        followup_options=[
+            FollowupOption(id=str(row.id), content=row.content) for row in followup_rows
+        ],
     )
 
 
@@ -127,7 +139,194 @@ def _find_existing_ask_response(
     answer = db.scalar(select(Answer).where(Answer.question_id == question.id))
     if answer is None:
         return None
-    return _to_ask_response(question, answer)
+    return _to_ask_response(db=db, question=question, answer=answer)
+
+
+def _build_followup_contents(question_text: str) -> list[str]:
+    normalized = " ".join(question_text.strip().split())
+    subject = normalized[:40] if normalized else "這個主題"
+    return [
+        f"若聚焦「{subject}」，最關鍵的原因是什麼？",
+        f"延續「{subject}」，下一步最有效的行動是什麼？",
+        f"針對「{subject}」，目前最大的風險與避坑建議是什麼？",
+    ]
+
+
+def _ensure_followups_for_question(
+    db: Session,
+    *,
+    question: Question,
+    user_id: UUID,
+    request_id: str,
+) -> None:
+    existing = db.scalars(
+        select(Followup)
+        .where(Followup.question_id == question.id)
+        .order_by(Followup.created_at.asc(), Followup.id.asc())
+    ).all()
+    if len(existing) >= FOLLOWUP_OPTIONS_COUNT:
+        return
+
+    used_contents = {row.content for row in existing}
+    for content in _build_followup_contents(question.question_text):
+        if content in used_contents:
+            continue
+        db.add(
+            Followup(
+                question_id=question.id,
+                user_id=user_id,
+                content=content,
+                origin_request_id=request_id,
+                status="pending",
+            )
+        )
+        used_contents.add(content)
+        if len(used_contents) >= FOLLOWUP_OPTIONS_COUNT:
+            break
+
+
+def _execute_ask(
+    *,
+    db: Session,
+    user_id: UUID,
+    question_text: str,
+    lang: str,
+    mode: str,
+    idempotency_key: str,
+) -> tuple[AskResponse, UUID]:
+    replayed = _find_existing_ask_response(
+        db=db,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+    )
+    if replayed is not None:
+        existing_question_id = db.scalar(
+            select(Question.id).where(
+                Question.user_id == user_id,
+                Question.idempotency_key == idempotency_key,
+                Question.status == "succeeded",
+            )
+        )
+        if existing_question_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "ASK_REPLAY_FAILED", "message": "Unable to replay ask result"},
+            )
+        return replayed, existing_question_id
+
+    request_id = str(uuid4())
+
+    wallet = db.scalar(
+        select(CreditWallet)
+        .where(CreditWallet.user_id == user_id)
+        .with_for_update()
+    )
+    if wallet is None:
+        wallet = CreditWallet(user_id=user_id, balance=0)
+        db.add(wallet)
+        db.flush()
+
+    if wallet.balance < CREDIT_COST_PER_ASK:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={"code": "INSUFFICIENT_CREDIT", "message": "Insufficient credit balance"},
+        )
+
+    wallet.balance -= CREDIT_COST_PER_ASK
+    db.add(wallet)
+    db.add(
+        CreditTransaction(
+            user_id=user_id,
+            action="reserve",
+            amount=-CREDIT_COST_PER_ASK,
+            reason_code="ASK_RESERVED",
+            idempotency_key=idempotency_key,
+            request_id=request_id,
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        replayed = _find_existing_ask_response(
+            db=db,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+        )
+        if replayed is not None:
+            existing_question_id = db.scalar(
+                select(Question.id).where(
+                    Question.user_id == user_id,
+                    Question.idempotency_key == idempotency_key,
+                    Question.status == "succeeded",
+                )
+            )
+            if existing_question_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail={"code": "ASK_REPLAY_FAILED", "message": "Unable to replay ask result"},
+                ) from exc
+            return replayed, existing_question_id
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Duplicate request is in progress"},
+        ) from exc
+
+    try:
+        question = Question(
+            user_id=user_id,
+            question_text=question_text,
+            lang=lang,
+            mode=mode,
+            status="succeeded",
+            source="mock",
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        db.add(question)
+        db.flush()
+
+        answer = Answer(
+            question_id=question.id,
+            answer_text=_build_mock_answer_text(question_text),
+            main_pct=70,
+            secondary_pct=20,
+            reference_pct=10,
+        )
+        db.add(answer)
+        _ensure_followups_for_question(
+            db,
+            question=question,
+            user_id=user_id,
+            request_id=request_id,
+        )
+        db.add(
+            CreditTransaction(
+                user_id=user_id,
+                question_id=question.id,
+                action="capture",
+                amount=-CREDIT_COST_PER_ASK,
+                reason_code="ASK_CAPTURED",
+                idempotency_key=idempotency_key,
+                request_id=request_id,
+            )
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        _refund_reserved_credit(
+            db=db,
+            user_id=user_id,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "ASK_PROCESSING_FAILED", "message": "Failed to process ask request"},
+        ) from exc
+
+    return _to_ask_response(db=db, question=question, answer=answer), question.id
 
 
 def _refund_reserved_credit(
@@ -661,107 +860,88 @@ def ask(
         )
     if not normalized_key:
         normalized_key = str(uuid4())
-
-    replayed = _find_existing_ask_response(
+    response, _ = _execute_ask(
         db=db,
         user_id=auth_context.user_id,
+        question_text=payload.question,
+        lang=payload.lang,
+        mode=payload.mode,
         idempotency_key=normalized_key,
     )
-    if replayed is not None:
-        return replayed
+    return response
 
-    request_id = str(uuid4())
 
-    wallet = db.scalar(
-        select(CreditWallet)
-        .where(CreditWallet.user_id == auth_context.user_id)
-        .with_for_update()
-    )
-    if wallet is None:
-        wallet = CreditWallet(user_id=auth_context.user_id, balance=0)
-        db.add(wallet)
-        db.flush()
-
-    if wallet.balance < CREDIT_COST_PER_ASK:
-        db.rollback()
+@app.post(
+    "/api/v1/followups/{followup_id}/ask",
+    response_model=AskResponse,
+    responses={
+        401: {"model": ApiErrorDetail},
+        402: {"model": ApiErrorDetail},
+        403: {"model": ApiErrorDetail},
+        404: {"model": ApiErrorDetail},
+        409: {"model": ApiErrorDetail},
+        500: {"model": ApiErrorDetail},
+    },
+)
+def ask_followup(
+    followup_id: UUID,
+    auth_context: AuthContext = Depends(require_verified_email),
+    db: Session = Depends(get_db),
+) -> AskResponse:
+    followup = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
+    if followup is None:
         raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={"code": "INSUFFICIENT_CREDIT", "message": "Insufficient credit balance"},
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "FOLLOWUP_NOT_FOUND", "message": "Followup not found"},
         )
-
-    wallet.balance -= CREDIT_COST_PER_ASK
-    db.add(wallet)
-    db.add(
-        CreditTransaction(
-            user_id=auth_context.user_id,
-            action="reserve",
-            amount=-CREDIT_COST_PER_ASK,
-            reason_code="ASK_RESERVED",
-            idempotency_key=normalized_key,
-            request_id=request_id,
+    if followup.user_id != auth_context.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FOLLOWUP_OWNER_MISMATCH",
+                "message": "Followup does not belong to user",
+            },
         )
-    )
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        replayed = _find_existing_ask_response(
-            db=db,
-            user_id=auth_context.user_id,
-            idempotency_key=normalized_key,
-        )
-        if replayed is not None:
-            return replayed
+    if followup.status != "pending":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Duplicate request is in progress"},
-        ) from exc
+            detail={"code": "FOLLOWUP_ALREADY_USED", "message": "Followup has already been used"},
+        )
+
+    parent_question = db.scalar(select(Question).where(Question.id == followup.question_id))
+    if parent_question is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PARENT_QUESTION_NOT_FOUND", "message": "Parent question not found"},
+        )
+
+    followup.status = "used"
+    followup.used_at = datetime.now(UTC)
+    db.add(followup)
+    db.commit()
 
     try:
-        question = Question(
-            user_id=auth_context.user_id,
-            question_text=payload.question,
-            lang=payload.lang,
-            mode=payload.mode,
-            status="succeeded",
-            source="mock",
-            request_id=request_id,
-            idempotency_key=normalized_key,
-        )
-        db.add(question)
-        db.flush()
-
-        answer = Answer(
-            question_id=question.id,
-            answer_text=_build_mock_answer_text(payload.question),
-            main_pct=70,
-            secondary_pct=20,
-            reference_pct=10,
-        )
-        db.add(answer)
-        db.add(
-            CreditTransaction(
-                user_id=auth_context.user_id,
-                question_id=question.id,
-                action="capture",
-                amount=-CREDIT_COST_PER_ASK,
-                reason_code="ASK_CAPTURED",
-                idempotency_key=normalized_key,
-                request_id=request_id,
-            )
-        )
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        _refund_reserved_credit(
+        response, question_id = _execute_ask(
             db=db,
             user_id=auth_context.user_id,
-            request_id=request_id,
-            idempotency_key=normalized_key,
+            question_text=followup.content,
+            lang=parent_question.lang,
+            mode=parent_question.mode,
+            idempotency_key=f"followup:{followup.id}",
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "ASK_PROCESSING_FAILED", "message": "Failed to process ask request"},
-        ) from exc
+    except HTTPException as exc:
+        restore = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
+        if restore is not None and restore.status == "used" and restore.used_question_id is None:
+            restore.status = "pending"
+            restore.used_at = None
+            db.add(restore)
+            db.commit()
+        raise exc
 
-    return _to_ask_response(question=question, answer=answer)
+    tracked = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
+    if tracked is not None:
+        tracked.used_question_id = question_id
+        db.add(tracked)
+        db.commit()
+
+    return response

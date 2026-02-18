@@ -63,14 +63,15 @@
   - [x] 測試：frontend history e2e（未登入導轉、載入與追加）
   - [ ] 後續：歷史詳情頁（完整答案、關聯交易、延伸問題樹與對應回覆）
 - [ ] 實作延伸問題三按鈕互動與即點即問扣點（同主題追問）
-  - [ ] Backend：`ask` 回應帶出 3 個互異 `followup_options`
-  - [ ] Backend：新增 followup 點擊提問流程（掛在原問題主題下）
-  - [ ] Backend：followup 點擊與一般提問共用 `reserve/capture/refund`，每次扣 1 點
-  - [ ] Backend：一個問題支援 0..N 延伸問題關聯
+  - [x] Backend：`ask` 回應帶出 3 個互異 `followup_options`
+  - [x] Backend：新增 followup 點擊提問流程（掛在原問題主題下）
+  - [x] Backend：followup 點擊與一般提問共用 `reserve/capture/refund`，每次扣 1 點
+  - [x] Backend：一個問題支援 0..N 延伸問題關聯
   - [ ] Frontend：回答尾端渲染 3 個延伸問題按鈕
   - [ ] Frontend：點擊任一按鈕即送出追問、顯示回覆與即時扣點
   - [ ] Frontend：歷史問答詳細頁呈現延伸問題鏈與對應回答
-  - [ ] 測試：followup 三按鈕顯示、點擊扣點、子問答建立、失敗回補
+  - [x] 測試：Backend followup API（404/403/409、點擊扣點、子問答建立、餘額不足回復 pending）
+  - [ ] 測試：Frontend followup 三按鈕顯示與點擊互動
 - [ ] 實作後台最小可用：使用者、文件庫、訂單/點數流水查詢
 
 ## P2（穩定性 / 營運效率）
