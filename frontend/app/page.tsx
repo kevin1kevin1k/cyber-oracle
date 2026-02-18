@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
-import { getCreditsBalance } from "@/lib/credits";
+import { getCreditsBalance } from "@/lib/billing";
 import { buildLoginPathWithNext } from "@/lib/navigation";
 
 type AskResponse = {

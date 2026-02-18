@@ -117,7 +117,7 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_tes
 ```
 
 Safety note:
-- `backend/tests/test_user_schema.py` is destructive for target tables.
+- `backend/tests/destructive/test_user_schema_destructive.py` is destructive for target tables.
 - Never point `TEST_DATABASE_URL` to primary DB `elin`.
 
 ## Lint and Hooks

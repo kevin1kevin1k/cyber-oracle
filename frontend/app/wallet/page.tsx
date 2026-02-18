@@ -12,7 +12,7 @@ import {
   simulateOrderPaid,
   type CreditBalanceResponse,
   type CreditTransactionItem,
-} from "@/lib/credits";
+} from "@/lib/billing";
 import { getAuthSession } from "@/lib/auth";
 import { buildLoginPathWithNext } from "@/lib/navigation";
 

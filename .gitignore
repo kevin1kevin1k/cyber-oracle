@@ -15,6 +15,7 @@ frontend/npm-debug.log*
 frontend/.turbo
 frontend/playwright-report
 frontend/test-results
+frontend/tsconfig.tsbuildinfo
 
 # Python
 **/__pycache__/

@@ -152,7 +152,7 @@ cd backend
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test uv run pytest -q
 ```
 
-Safety note: `backend/tests/test_user_schema.py` is destructive by design (`drop/create` target tables).
+Safety note: `backend/tests/destructive/test_user_schema_destructive.py` is destructive by design (`drop/create` target tables).
 Never point `TEST_DATABASE_URL` to primary database `elin`.
 
 ## Environment Variables
