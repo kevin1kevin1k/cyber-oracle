@@ -21,6 +21,8 @@ from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas import (
     ApiErrorDetail,
+    AskHistoryItem,
+    AskHistoryListResponse,
     AskRequest,
     AskResponse,
     CreateOrderRequest,
@@ -68,6 +70,7 @@ ORDER_AMOUNT_TWD_BY_PACKAGE_SIZE = {
     3: 358,
     5: 518,
 }
+ASK_HISTORY_PREVIEW_MAX_LENGTH = 160
 
 
 def _build_mock_answer_text(question: str) -> str:
@@ -98,6 +101,12 @@ def _to_ask_response(question: Question, answer: Answer) -> AskResponse:
         ],
         request_id=question.request_id,
     )
+
+
+def _build_answer_preview(answer_text: str) -> str:
+    if len(answer_text) <= ASK_HISTORY_PREVIEW_MAX_LENGTH:
+        return answer_text
+    return f"{answer_text[:ASK_HISTORY_PREVIEW_MAX_LENGTH]}..."
 
 
 def _find_existing_ask_response(
@@ -429,6 +438,65 @@ def get_credit_transactions(
         for tx in transactions
     ]
     return CreditTransactionListResponse(items=items, total=total or 0)
+
+
+@app.get(
+    "/api/v1/history/questions",
+    response_model=AskHistoryListResponse,
+    responses={401: {"model": ErrorResponse}},
+)
+def get_ask_history(
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> AskHistoryListResponse:
+    rows = db.execute(
+        select(Question, Answer)
+        .join(Answer, Answer.question_id == Question.id)
+        .where(Question.user_id == auth_context.user_id, Question.status == "succeeded")
+        .order_by(Question.created_at.desc(), Question.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    question_ids = [question.id for question, _ in rows]
+    charged_map: dict[UUID, int] = {}
+    if question_ids:
+        capture_rows = db.execute(
+            select(CreditTransaction.question_id, func.sum(CreditTransaction.amount))
+            .where(
+                CreditTransaction.user_id == auth_context.user_id,
+                CreditTransaction.action == "capture",
+                CreditTransaction.question_id.in_(question_ids),
+            )
+            .group_by(CreditTransaction.question_id)
+        ).all()
+        charged_map = {
+            question_id: abs(int(total_amount or 0))
+            for question_id, total_amount in capture_rows
+            if question_id is not None
+        }
+
+    total = db.scalar(
+        select(func.count(Question.id)).where(
+            Question.user_id == auth_context.user_id,
+            Question.status == "succeeded",
+        )
+    )
+
+    items = [
+        AskHistoryItem(
+            question_id=str(question.id),
+            question_text=question.question_text,
+            answer_preview=_build_answer_preview(answer.answer_text),
+            source=question.source,
+            charged_credits=charged_map.get(question.id, 0),
+            created_at=question.created_at,
+        )
+        for question, answer in rows
+    ]
+    return AskHistoryListResponse(items=items, total=total or 0)
 
 
 @app.post(

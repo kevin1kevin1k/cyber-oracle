@@ -51,6 +51,15 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
   - query params: `limit` (1-100, default 20), `offset` (default 0)
   - returns user-scoped transaction list (newest first) and total count
 
+## History APIs
+- `GET /api/v1/history/questions`
+  - requires bearer token
+  - query params: `limit` (1-50, default 20), `offset` (default 0)
+  - returns user-scoped ask history (newest first)
+  - each item includes:
+    - `question_id`, `question_text`, `answer_preview`, `source`, `charged_credits`, `created_at`
+  - `charged_credits` is derived from `capture` credit transactions for that question
+
 ## Orders APIs
 - `POST /api/v1/orders`
   - requires bearer token

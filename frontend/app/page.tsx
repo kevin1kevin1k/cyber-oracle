@@ -194,7 +194,7 @@ export default function HomePage() {
             <p className="credit-line">
               目前點數：<span className="credit-count">{creditBalance === null ? "讀取中..." : `${creditBalance} 點`}</span>
               {creditDelta !== null && <span className="credit-delta">{creditDelta}</span>} ·{" "}
-              <Link href="/wallet">前往點數錢包</Link>
+              <Link href="/wallet">前往點數錢包</Link> · <Link href="/history">歷史問答</Link>
             </p>
           )}
         </div>

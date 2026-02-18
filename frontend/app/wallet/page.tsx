@@ -164,7 +164,7 @@ export default function WalletPage() {
           {balance?.updated_at ? formatDatetime(balance.updated_at) : "尚無紀錄"}
         </p>
         <p className="helper-links">
-          <Link href="/">返回提問頁</Link>
+          <Link href="/">返回提問頁</Link> · <Link href="/history">歷史問答</Link>
         </p>
       </section>
 

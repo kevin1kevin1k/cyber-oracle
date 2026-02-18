@@ -35,6 +35,20 @@ class AskResponse(BaseModel):
     request_id: str
 
 
+class AskHistoryItem(BaseModel):
+    question_id: str
+    question_text: str
+    answer_preview: str
+    source: Literal["rag", "rule", "openai", "mock"]
+    charged_credits: int
+    created_at: datetime
+
+
+class AskHistoryListResponse(BaseModel):
+    items: list[AskHistoryItem]
+    total: int
+
+
 class ErrorResponse(BaseModel):
     code: Literal["UNAUTHORIZED", "EMAIL_NOT_VERIFIED", "INSUFFICIENT_CREDIT"]
     message: str

@@ -54,6 +54,14 @@
 - [ ] 實作 RAG Top-3 + rerank + 百分比（總和 100）
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
 - [ ] 實作歷史問答頁（問題/答案/時間/扣點）
+  - [x] Backend：`GET /api/v1/history/questions`（使用者隔離 + limit/offset + newest-first）
+  - [x] Backend：回傳 `answer_preview` 與 `charged_credits`
+  - [x] Frontend：新增 `/history` 頁（列表顯示問題/答案摘要/時間/扣點）
+  - [x] Frontend：登入保護與 return path（`/login?next=%2Fhistory`）
+  - [x] Frontend：`載入更多`（offset pagination）
+  - [x] 測試：backend history endpoint（401、分頁、排序、使用者隔離）
+  - [x] 測試：frontend history e2e（未登入導轉、載入與追加）
+  - [ ] 後續：歷史詳情頁（完整答案與關聯交易完整檢視）
 - [ ] 實作延伸問題保存與啟用（啟用再扣 1 點）
 - [ ] 實作後台最小可用：使用者、文件庫、訂單/點數流水查詢
 
