@@ -1,6 +1,7 @@
 # Backend
 
 FastAPI backend for ELIN 神域引擎。
+Root README only provides monorepo navigation; backend operational details are maintained here as the single source of truth.
 
 ## Local Development
 ```bash
