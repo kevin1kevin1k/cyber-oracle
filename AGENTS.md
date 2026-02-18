@@ -5,7 +5,7 @@ This repository is a monorepo with separate frontend and backend services:
 - `frontend/`: Next.js (App Router + TypeScript) UI.
 - `backend/`: FastAPI service with `uv` dependency management.
 - `docker-compose.yml`: local orchestration for both services.
-- `PRD.md`: product scope and pipeline requirements.
+- `docs/PRD.md`: product scope and pipeline requirements.
 
 Frontend app code lives in `frontend/app/`. Backend API code lives in `backend/app/` (`main.py`, `schemas.py`, `config.py`). Keep API contracts and UI integration changes aligned.
 
@@ -57,7 +57,7 @@ Use Conventional Commits:
 
 Pull requests should include:
 - clear summary and impacted area (`frontend`, `backend`, `infra`)
-- linked issue or requirement context (`PRD.md` section)
+- linked issue or requirement context (`docs/PRD.md` section)
 - test evidence (commands + key output)
 - UI screenshots for frontend changes
 - changed files list in reviewer scan order (top-down): show high-level docs/config first, then backend, then frontend, then tests/helpers
