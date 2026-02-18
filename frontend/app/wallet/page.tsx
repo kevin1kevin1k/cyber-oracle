@@ -14,6 +14,7 @@ import {
   type CreditTransactionItem,
 } from "@/lib/credits";
 import { getAuthSession } from "@/lib/auth";
+import { buildLoginPathWithNext } from "@/lib/navigation";
 
 const PACKAGE_OPTIONS: Array<{ size: 1 | 3 | 5; amountTwd: 168 | 358 | 518 }> = [
   { size: 1, amountTwd: 168 },
@@ -74,7 +75,7 @@ export default function WalletPage() {
     }
 
     if (!isLoggedIn) {
-      router.replace("/login");
+      router.replace(buildLoginPathWithNext("/wallet"));
       return;
     }
 
@@ -89,7 +90,7 @@ export default function WalletPage() {
           return;
         }
         if (err instanceof ApiError && err.status === 401) {
-          router.replace("/login");
+          router.replace(buildLoginPathWithNext("/wallet"));
           return;
         }
         setError(err instanceof Error ? err.message : "讀取錢包資料失敗");
@@ -121,7 +122,7 @@ export default function WalletPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) {
-          router.replace("/login");
+          router.replace(buildLoginPathWithNext("/wallet"));
           return;
         }
         if (err.code === "FORBIDDEN_IN_PRODUCTION") {

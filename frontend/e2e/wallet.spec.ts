@@ -148,6 +148,45 @@ test("wallet purchase updates balance and transactions", async ({ page }) => {
   await expect(page.getByText("購點入帳 +3 點")).toBeVisible();
 });
 
+test("wallet redirects to login with next and returns after login", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-wallet-next",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 2, updated_at: "2026-02-18T12:00:00Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/transactions?limit=20&offset=0", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  await page.goto("/wallet");
+  await expect(page).toHaveURL(/\/login\?next=%2Fwallet$/);
+
+  await page.getByLabel("Email").fill("wallet-next@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/wallet");
+  await expect(page.getByText("目前餘額：2 點")).toBeVisible();
+});
+
 test("ask 402 provides wallet cta", async ({ page }) => {
   await page.route("**/api/v1/credits/balance", async (route) => {
     await route.fulfill({

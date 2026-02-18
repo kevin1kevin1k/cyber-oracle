@@ -206,7 +206,11 @@ test("ask handles 401 by redirecting to login", async ({ page }) => {
 
   await page.getByLabel("問題內容").fill("401 測試");
   await page.getByRole("button", { name: "送出問題" }).click();
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).toHaveURL(/\/login\?next=%2F$/);
+  await page.getByLabel("Email").fill("user401@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
 });
 
 test("ask handles 403 email verification required", async ({ page }) => {
@@ -248,6 +252,35 @@ test("ask handles 403 email verification required", async ({ page }) => {
   await page.getByLabel("問題內容").fill("403 測試");
   await page.getByRole("button", { name: "送出問題" }).click();
   await expect(page.getByText("Email 尚未驗證，請先完成驗證後再提問。")).toBeVisible();
+});
+
+test("login next path rejects backslash payload and does not auto-forward on stale local token", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-safe-next",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("elin_access_token", "stale-token");
+    window.localStorage.setItem("elin_auth_email_verified", "true");
+    window.localStorage.setItem("elin_auth_email", "stale@example.com");
+  });
+
+  await page.goto("/login?next=%2F%5Cevil.com");
+  await expect(page).toHaveURL(/\/login\?next=%2F%5Cevil.com$/);
+  await expect(page.getByRole("heading", { name: "登入" })).toBeVisible();
+
+  await page.getByLabel("Email").fill("safe-next@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
 });
 
 test("ask handles 402 insufficient credit", async ({ page }) => {

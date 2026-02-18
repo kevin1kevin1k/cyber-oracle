@@ -113,7 +113,7 @@
 ### 使用者體驗與可營運性（高優先）
 - [ ] Frontend：驗證信/重設信改為「請查收 Email」文案（不顯示 token）
 - [ ] Frontend：forgot/reset/verify 失敗訊息統一（過期、無效、重試引導）
-- [ ] Frontend：登入失效（401）全站一致導回 `/login` 並保留 return path
+- [x] Frontend：登入失效（401）全站一致導回 `/login` 並保留 return path
 - [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL）
 - [ ] Observability：auth/交易事件新增 request_id 與審計記錄
 - [ ] Runbook：新增「發生 UndefinedColumn / 版本不一致」標準排障步驟

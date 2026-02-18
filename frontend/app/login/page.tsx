@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
-import { isAuthenticated, saveAuthSession } from "@/lib/auth";
+import { saveAuthSession } from "@/lib/auth";
+import { resolveSafeNext } from "@/lib/navigation";
 
 type LoginResponse = {
   access_token: string;
@@ -15,16 +16,12 @@ type LoginResponse = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (isAuthenticated()) {
-      router.replace("/");
-    }
-  }, [router]);
+  const nextPath = resolveSafeNext(searchParams.get("next"));
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +37,7 @@ export default function LoginPage() {
         emailVerified: payload.email_verified,
         email,
       });
-      router.replace("/");
+      router.replace(nextPath);
     } catch (err) {
       if (err instanceof ApiError && err.code === "INVALID_CREDENTIALS") {
         setError("帳號或密碼錯誤。");

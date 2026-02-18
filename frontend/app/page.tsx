@@ -7,6 +7,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { apiRequest, ApiError } from "@/lib/api";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
 import { getCreditsBalance } from "@/lib/credits";
+import { buildLoginPathWithNext } from "@/lib/navigation";
 
 type AskResponse = {
   answer: string;
@@ -87,7 +88,7 @@ export default function HomePage() {
       setPendingAskKey(null);
       clearAuthSession();
       setAuthSession(null);
-      router.replace("/login");
+      router.replace(buildLoginPathWithNext("/"));
     }
   }
 
@@ -143,7 +144,7 @@ export default function HomePage() {
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === "UNAUTHORIZED") {
           setError("尚未登入或登入資訊失效，請重新登入。");
-          router.replace("/login");
+          router.replace(buildLoginPathWithNext("/"));
           return;
         }
         if (err.code === "EMAIL_NOT_VERIFIED") {
