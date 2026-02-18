@@ -64,9 +64,9 @@ Pull requests should include:
 - one-line summary per changed file so reviewers can predict each diff before opening it (avoid surprise files in later sections)
 - after the changed files summary, include manual test steps for any behavior not fully covered by automation (or best validated by humans), with expected results for each step
 - for important backend changes (DB/schema/API/runtime behavior), update `backend/README.md` in the same change set
-- after each implementation batch, review `docs/implementation_todo.md` and update checklist/progress notes when status has changed
-- in `docs/implementation_todo.md`, represent partial progress as checkbox subtasks (subitems) instead of plain text progress lines like `進度：...`
-- in `docs/implementation_todo.md`, if all subtasks under a parent task are checked, the parent task must also be checked in the same update
+- after each implementation batch, review `docs/TODO.md` and update checklist/progress notes when status has changed
+- in `docs/TODO.md`, represent partial progress as checkbox subtasks (subitems) instead of plain text progress lines like `進度：...`
+- in `docs/TODO.md`, if all subtasks under a parent task are checked, the parent task must also be checked in the same update
 - when introducing new libraries/packages, include a short explainer in the reply covering each package's purpose and practical alternatives
 - when reporting verification commands, always provide fully executable commands with concrete values (never placeholders like `...`)
 - when commands require entering subdirectories (for example `backend`/`frontend`), include a final command to return to project root (for example `cd ..`)
