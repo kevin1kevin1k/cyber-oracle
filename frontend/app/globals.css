@@ -83,6 +83,22 @@ button:disabled {
   border: 1px solid #d7e6fa;
 }
 
+.followup-section {
+  margin-top: 14px;
+}
+
+.followup-buttons {
+  display: grid;
+  gap: 8px;
+}
+
+.followup-button {
+  width: 100%;
+  text-align: left;
+  margin-top: 0;
+  background: #0d3f85;
+}
+
 .error {
   margin-top: 10px;
   color: #b42318;

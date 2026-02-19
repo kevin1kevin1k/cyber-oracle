@@ -49,6 +49,7 @@ test("register -> verify -> login -> ask -> logout", async ({ page }) => {
           { label: "參照層", pct: 10 },
         ],
         request_id: "req-123",
+        followup_options: [],
       }),
     });
   });
@@ -362,6 +363,11 @@ test("ask success updates credit balance immediately", async ({ page }) => {
           { label: "參照層", pct: 10 },
         ],
         request_id: "req-credit-live",
+        followup_options: [
+          { id: "f-credit-live-1", content: "再給我一個例子" },
+          { id: "f-credit-live-2", content: "請幫我列步驟" },
+          { id: "f-credit-live-3", content: "有沒有常見錯誤" },
+        ],
       }),
     });
   });
@@ -465,6 +471,7 @@ test("ask retry uses the same Idempotency-Key", async ({ page }) => {
           { label: "參照層", pct: 10 },
         ],
         request_id: "req-retry",
+        followup_options: [],
       }),
     });
   });
@@ -484,4 +491,165 @@ test("ask retry uses the same Idempotency-Key", async ({ page }) => {
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBeTruthy();
   expect(keys[0]).toBe(keys[1]);
+});
+
+test("ask response renders followup buttons and clicking one asks followup with immediate credit update", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-followup-success",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  let balanceCalls = 0;
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    balanceCalls += 1;
+    const balance = balanceCalls === 1 ? 5 : balanceCalls === 2 ? 4 : 3;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance, updated_at: "2026-02-19T00:00:00Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/ask", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        answer: "第一層回答",
+        source: "mock",
+        layer_percentages: [
+          { label: "主層", pct: 70 },
+          { label: "輔層", pct: 20 },
+          { label: "參照層", pct: 10 },
+        ],
+        request_id: "req-followup-entry",
+        followup_options: [
+          { id: "f1", content: "延伸 A" },
+          { id: "f2", content: "延伸 B" },
+          { id: "f3", content: "延伸 C" },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/followups/f1/ask", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        answer: "延伸回答 A",
+        source: "mock",
+        layer_percentages: [
+          { label: "主層", pct: 65 },
+          { label: "輔層", pct: 25 },
+          { label: "參照層", pct: 10 },
+        ],
+        request_id: "req-followup-a",
+        followup_options: [
+          { id: "f4", content: "下一步要做什麼？" },
+          { id: "f5", content: "風險有哪些？" },
+          { id: "f6", content: "如何驗證？" },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("followup-success@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByText("目前點數：5 點")).toBeVisible();
+
+  await page.getByLabel("問題內容").fill("主問題");
+  await page.getByRole("button", { name: "送出問題" }).click();
+  await expect(page.getByText("第一層回答")).toBeVisible();
+  await expect(page.getByRole("button", { name: "延伸 A" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "延伸 B" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "延伸 C" })).toBeVisible();
+  await expect(page.getByText("目前點數：4 點")).toBeVisible();
+
+  await page.getByRole("button", { name: "延伸 A" }).click();
+  await expect(page.getByText("延伸回答 A")).toBeVisible();
+  await expect(page.getByText("目前點數：3 點")).toBeVisible();
+  await expect(page.locator(".credit-delta")).toHaveText("-1");
+});
+
+test("followup ask 409 shows used message and does not decrement credit", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-followup-409",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 4, updated_at: "2026-02-19T00:00:00Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/ask", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        answer: "主回答",
+        source: "mock",
+        layer_percentages: [
+          { label: "主層", pct: 70 },
+          { label: "輔層", pct: 20 },
+          { label: "參照層", pct: 10 },
+        ],
+        request_id: "req-followup-409-entry",
+        followup_options: [
+          { id: "f-used", content: "已用過延伸題" },
+          { id: "f-open-1", content: "可用延伸 1" },
+          { id: "f-open-2", content: "可用延伸 2" },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/followups/f-used/ask", async (route) => {
+    await route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { code: "FOLLOWUP_ALREADY_USED", message: "Followup already used" },
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("followup-409@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByText("目前點數：4 點")).toBeVisible();
+
+  await page.getByLabel("問題內容").fill("主問題 409");
+  await page.getByRole("button", { name: "送出問題" }).click();
+  await expect(page.getByText("主回答")).toBeVisible();
+  await expect(page.getByText("目前點數：4 點")).toBeVisible();
+
+  await page.getByRole("button", { name: "已用過延伸題" }).click();
+  await expect(page.getByText("這個延伸問題已被使用，請改選其他按鈕。")).toBeVisible();
+  await expect(page.getByText("目前點數：4 點")).toBeVisible();
 });

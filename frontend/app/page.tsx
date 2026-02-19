@@ -5,16 +5,10 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { askFollowup, askQuestion, type AskResponse } from "@/lib/ask";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
 import { getCreditsBalance } from "@/lib/billing";
 import { buildLoginPathWithNext } from "@/lib/navigation";
-
-type AskResponse = {
-  answer: string;
-  source: "rag" | "rule" | "openai" | "mock";
-  layer_percentages: { label: "主層" | "輔層" | "參照層"; pct: number }[];
-  request_id: string;
-};
 
 export default function HomePage() {
   const router = useRouter();
@@ -27,6 +21,7 @@ export default function HomePage() {
   const [pendingAskKey, setPendingAskKey] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [creditDelta, setCreditDelta] = useState<number | null>(null);
+  const [activeFollowupId, setActiveFollowupId] = useState<string | null>(null);
   const creditDeltaTimerRef = useRef<number | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
@@ -92,6 +87,49 @@ export default function HomePage() {
     }
   }
 
+  const applyImmediateCreditDeduction = useCallback(() => {
+    setCreditBalance((prev) => (prev === null ? null : Math.max(0, prev - 1)));
+    setCreditDelta(-1);
+    if (creditDeltaTimerRef.current !== null) {
+      window.clearTimeout(creditDeltaTimerRef.current);
+    }
+    creditDeltaTimerRef.current = window.setTimeout(() => {
+      setCreditDelta(null);
+    }, 1000);
+    void refreshBalance();
+  }, [refreshBalance]);
+
+  function handleAskApiError(err: unknown) {
+    if (err instanceof ApiError) {
+      if (err.status === 401 || err.code === "UNAUTHORIZED") {
+        setError("尚未登入或登入資訊失效，請重新登入。");
+        router.replace(buildLoginPathWithNext("/"));
+        return;
+      }
+      if (err.code === "EMAIL_NOT_VERIFIED") {
+        setError("Email 尚未驗證，請先完成驗證後再提問。");
+        return;
+      }
+      if (err.code === "INSUFFICIENT_CREDIT") {
+        setError("點數不足，請先購點再提問。");
+        return;
+      }
+      if (err.status === 403) {
+        setError("這個延伸問題不屬於你的帳號。");
+        return;
+      }
+      if (err.status === 404) {
+        setError("延伸問題不存在或已失效，請重新提問。");
+        return;
+      }
+      if (err.status === 409) {
+        setError("這個延伸問題已被使用，請改選其他按鈕。");
+        return;
+      }
+    }
+    setError(err instanceof Error ? err.message : "發生未知錯誤");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -123,42 +161,31 @@ export default function HomePage() {
       setPendingAskKey(askKey);
     }
     try {
-      const data = await apiRequest<AskResponse>("/api/v1/ask", {
-        method: "POST",
-        auth: true,
-        headers: { "Idempotency-Key": askKey },
-        body: JSON.stringify({ question, lang: "zh", mode: "analysis" }),
-      });
+      const data = await askQuestion(question, askKey);
       setResult(data);
       setPendingAskKey(null);
-      setCreditBalance((prev) => (prev === null ? null : Math.max(0, prev - 1)));
-      setCreditDelta(-1);
-      if (creditDeltaTimerRef.current !== null) {
-        window.clearTimeout(creditDeltaTimerRef.current);
-      }
-      creditDeltaTimerRef.current = window.setTimeout(() => {
-        setCreditDelta(null);
-      }, 1000);
-      void refreshBalance();
+      applyImmediateCreditDeduction();
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401 || err.code === "UNAUTHORIZED") {
-          setError("尚未登入或登入資訊失效，請重新登入。");
-          router.replace(buildLoginPathWithNext("/"));
-          return;
-        }
-        if (err.code === "EMAIL_NOT_VERIFIED") {
-          setError("Email 尚未驗證，請先完成驗證後再提問。");
-          return;
-        }
-        if (err.code === "INSUFFICIENT_CREDIT") {
-          setError("點數不足，請先購點再提問。");
-          return;
-        }
-      }
-      setError(err instanceof Error ? err.message : "發生未知錯誤");
+      handleAskApiError(err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFollowupAsk(followupId: string) {
+    if (loading || activeFollowupId !== null) {
+      return;
+    }
+    setError(null);
+    setActiveFollowupId(followupId);
+    try {
+      const data = await askFollowup(followupId);
+      setResult(data);
+      applyImmediateCreditDeduction();
+    } catch (err) {
+      handleAskApiError(err);
+    } finally {
+      setActiveFollowupId(null);
     }
   }
 
@@ -252,6 +279,29 @@ export default function HomePage() {
                 <li key={layer.label}>{`${layer.label}: ${layer.pct}%`}</li>
               ))}
             </ul>
+            {Array.isArray(result.followup_options) && result.followup_options.length > 0 && (
+              <div className="followup-section">
+                <p>
+                  <strong>延伸問題：</strong>
+                </p>
+                <div className="followup-buttons">
+                  {result.followup_options.map((followup) => {
+                    const isActive = activeFollowupId === followup.id;
+                    return (
+                      <button
+                        key={followup.id}
+                        type="button"
+                        className="followup-button"
+                        disabled={loading || activeFollowupId !== null}
+                        onClick={() => void handleFollowupAsk(followup.id)}
+                      >
+                        {isActive ? "送出延伸問題中..." : followup.content}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
