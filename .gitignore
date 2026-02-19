@@ -10,6 +10,7 @@ backend/.env
 # Node / Next
 frontend/node_modules
 frontend/.next
+frontend/.next-e2e
 frontend/out
 frontend/npm-debug.log*
 frontend/.turbo

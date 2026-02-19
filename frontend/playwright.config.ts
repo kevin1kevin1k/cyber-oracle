@@ -20,7 +20,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx next dev -H 127.0.0.1 -p 3100",
+    command: "NEXT_DIST_DIR=.next-e2e npx next dev -H 127.0.0.1 -p 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
     cwd: ".",

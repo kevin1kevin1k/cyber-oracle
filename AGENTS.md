@@ -43,6 +43,8 @@ Backend local run:
 ## Testing Guidelines
 - Backend tests should use `pytest` under `backend/tests/` (create as needed).
 - Frontend tests should live under `frontend/` (for example `app/**/*.test.tsx`) when added.
+- Any change touching `frontend/` must run the full frontend test scope before reporting done (at minimum `cd frontend && npm run lint && npm run test:e2e && npm run build && cd ..`).
+- Any change touching `backend/` must run the full backend test scope before reporting done (at minimum `cd backend && TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test uv run pytest -q && cd ..`, plus migration verification when DB runtime contract changes).
 - Minimum API coverage for new endpoints:
   - success path
   - validation failure (4xx)

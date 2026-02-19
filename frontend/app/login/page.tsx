@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { saveAuthSession } from "@/lib/auth";
@@ -16,12 +16,16 @@ type LoginResponse = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const nextPath = resolveSafeNext(searchParams.get("next"));
+  const [nextPath, setNextPath] = useState("/");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setNextPath(resolveSafeNext(params.get("next")));
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
