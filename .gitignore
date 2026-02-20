@@ -11,6 +11,7 @@ backend/.env
 frontend/node_modules
 frontend/.next
 frontend/.next-e2e
+frontend/.next-docker
 frontend/out
 frontend/npm-debug.log*
 frontend/.turbo
