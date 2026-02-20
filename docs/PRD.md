@@ -146,6 +146,7 @@ sequenceDiagram
 - 安全：密碼雜湊、HTTPS、API Key 安全管理、Rate Limit、基本濫用防護。
 - 稽核：扣點、回補、付款回調需可追溯且不可竄改。
 - 隱私：個資最小化蒐集與刪除機制。
+- 開發穩定性（DevX）：本機 `git commit` 不應導致 docker backend 因檔案監看誤觸發而 shutdown/reload；`--reload` 監看範圍需限縮到應用程式碼目錄（例如 `app/`），並排除 `.venv`。
 
 ## 8. 資料與事件（建議）
 - 核心資料表：`users`、`sessions`、`questions`、`answers`、`credit_wallets`、`credit_transactions`、`orders`、`kb_documents`、`followups`。

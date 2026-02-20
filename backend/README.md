@@ -6,12 +6,12 @@ Root README only provides monorepo navigation; backend operational details are m
 ## Local Development
 ```bash
 uv sync
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*' --host 0.0.0.0 --port 8000
 ```
 
 Docker Compose backend startup runs migrations automatically before uvicorn:
 ```bash
-uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*' --host 0.0.0.0 --port 8000
 ```
 
 ## Auth APIs (MVP progress)
@@ -145,8 +145,8 @@ Run backend lint:
 uv run ruff check .
 ```
 
-Install and run pre-commit from backend environment:
+Install and run pre-commit without coupling to `backend/.venv`:
 ```bash
-uv run pre-commit install
-uv run pre-commit run --all-files
+uv tool install pre-commit && pre-commit install
+pre-commit run --all-files
 ```

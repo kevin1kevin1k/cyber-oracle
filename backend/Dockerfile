@@ -16,4 +16,4 @@ COPY alembic.ini ./alembic.ini
 
 EXPOSE 8000
 
-CMD ["sh", "-lc", "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+CMD ["sh", "-lc", "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*'"]

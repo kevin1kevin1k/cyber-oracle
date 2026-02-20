@@ -57,6 +57,10 @@ Use Conventional Commits:
 - `fix: handle empty config path`
 - `docs: add onboarding notes`
 
+Pre-commit hook stability rule:
+- Do not use `cd backend && uv sync && uv run pre-commit install && cd ..` as a commit-time recovery step.
+- Install pre-commit at system/tool level once (`uv tool install pre-commit && pre-commit install`) so commits do not depend on recreating `backend/.venv`.
+
 Pull requests should include:
 - clear summary and impacted area (`frontend`, `backend`, `infra`)
 - linked issue or requirement context (`docs/PRD.md` section)
