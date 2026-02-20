@@ -64,13 +64,15 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
 - `GET /api/v1/history/questions`
   - requires bearer token
   - query params: `limit` (1-50, default 20), `offset` (default 0)
-  - returns user-scoped ask history (newest first)
+  - returns user-scoped ask history root questions only (newest first)
+  - followup child questions are excluded from list
   - each item includes:
     - `question_id`, `question_text`, `answer_preview`, `source`, `charged_credits`, `created_at`
   - `charged_credits` is derived from `capture` credit transactions for that question
 - `GET /api/v1/history/questions/{question_id}`
   - requires bearer token
-  - returns full question detail for the authenticated user
+  - returns full root-conversation detail for the authenticated user
+  - when `{question_id}` is a followup child, response is normalized to its root conversation
   - `404 QUESTION_NOT_FOUND` when resource is missing or not owned by current user
   - response includes:
     - `root` question node (full `answer_text`, `layer_percentages`, `charged_credits`, `request_id`)

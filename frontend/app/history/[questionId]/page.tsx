@@ -107,6 +107,9 @@ export default function HistoryDetailPage() {
     try {
       const payload = await getAskHistoryDetail(questionId);
       setDetail(payload);
+      if (questionId !== payload.root.question_id) {
+        router.replace(`/history/${payload.root.question_id}`);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         router.replace(buildLoginPathWithNext(`/history/${questionId}`));

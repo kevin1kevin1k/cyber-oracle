@@ -55,6 +55,7 @@
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
 - [x] 實作歷史問答頁（問題/答案/時間/扣點）
   - [x] Backend：`GET /api/v1/history/questions`（使用者隔離 + limit/offset + newest-first）
+  - [x] Backend：`GET /api/v1/history/questions` 僅顯示每個對話串首題（排除延伸問題）
   - [x] Backend：回傳 `answer_preview` 與 `charged_credits`
   - [x] Frontend：新增 `/history` 頁（列表顯示問題/答案摘要/時間/扣點）
   - [x] Frontend：登入保護與 return path（`/login?next=%2Fhistory`）

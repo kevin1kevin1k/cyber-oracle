@@ -124,6 +124,33 @@ def _build_answer_preview(answer_text: str) -> str:
     return f"{answer_text[:ASK_HISTORY_PREVIEW_MAX_LENGTH]}..."
 
 
+def _resolve_root_question_id(
+    *,
+    db: Session,
+    user_id: UUID,
+    question_id: UUID,
+) -> UUID:
+    current_id = question_id
+    visited: set[UUID] = set()
+
+    while current_id not in visited:
+        visited.add(current_id)
+        parent_followup = db.scalar(
+            select(Followup)
+            .where(
+                Followup.user_id == user_id,
+                Followup.used_question_id == current_id,
+            )
+            .order_by(Followup.created_at.asc(), Followup.id.asc())
+            .limit(1)
+        )
+        if parent_followup is None:
+            return current_id
+        current_id = parent_followup.question_id
+
+    return current_id
+
+
 def _build_history_detail_node(
     *,
     question: Question,
@@ -689,10 +716,22 @@ def get_ask_history(
     auth_context: AuthContext = Depends(require_authenticated),
     db: Session = Depends(get_db),
 ) -> AskHistoryListResponse:
+    used_child_ids_subquery = (
+        select(Followup.used_question_id)
+        .where(
+            Followup.user_id == auth_context.user_id,
+            Followup.used_question_id.is_not(None),
+        )
+        .scalar_subquery()
+    )
     rows = db.execute(
         select(Question, Answer)
         .join(Answer, Answer.question_id == Question.id)
-        .where(Question.user_id == auth_context.user_id, Question.status == "succeeded")
+        .where(
+            Question.user_id == auth_context.user_id,
+            Question.status == "succeeded",
+            ~Question.id.in_(used_child_ids_subquery),
+        )
         .order_by(Question.created_at.desc(), Question.id.desc())
         .limit(limit)
         .offset(offset)
@@ -720,6 +759,7 @@ def get_ask_history(
         select(func.count(Question.id)).where(
             Question.user_id == auth_context.user_id,
             Question.status == "succeeded",
+            ~Question.id.in_(used_child_ids_subquery),
         )
     )
 
@@ -747,11 +787,31 @@ def get_ask_history_detail(
     auth_context: AuthContext = Depends(require_authenticated),
     db: Session = Depends(get_db),
 ) -> AskHistoryDetailResponse:
-    root_row = db.execute(
+    requested_row = db.execute(
         select(Question, Answer)
         .join(Answer, Answer.question_id == Question.id)
         .where(
             Question.id == question_id,
+            Question.user_id == auth_context.user_id,
+            Question.status == "succeeded",
+        )
+    ).first()
+    if requested_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "QUESTION_NOT_FOUND", "message": "Question not found"},
+        )
+
+    root_question_id = _resolve_root_question_id(
+        db=db,
+        user_id=auth_context.user_id,
+        question_id=requested_row[0].id,
+    )
+    root_row = db.execute(
+        select(Question, Answer)
+        .join(Answer, Answer.question_id == Question.id)
+        .where(
+            Question.id == root_question_id,
             Question.user_id == auth_context.user_id,
             Question.status == "succeeded",
         )

@@ -452,3 +452,94 @@ def test_history_detail_returns_tree_and_transactions(
 
     actions = [tx["action"] for tx in payload["transactions"]]
     assert actions == ["capture", "capture", "refund", "capture"]
+
+
+def test_history_list_excludes_followup_children(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, token = _create_user_with_token(db_session)
+    now = datetime.now(UTC)
+    root = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="主題第一題",
+        answer_text="主題第一題答案",
+        created_at=now - timedelta(minutes=2),
+        request_id="req-topic-root",
+        idempotency_key="k-topic-root",
+    )
+    child = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="主題延伸題",
+        answer_text="主題延伸答案",
+        created_at=now - timedelta(minutes=1),
+        request_id="req-topic-child",
+        idempotency_key="k-topic-child",
+    )
+    _create_followup_link(
+        db_session,
+        user_id=user.id,
+        parent_question_id=root.id,
+        child_question_id=child.id,
+        content="延伸按鈕",
+        created_at=now - timedelta(minutes=1),
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/api/v1/history/questions?limit=20&offset=0",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["question_id"] == str(root.id)
+    assert payload["items"][0]["question_text"] == "主題第一題"
+
+
+def test_history_detail_with_child_id_returns_root_conversation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, token = _create_user_with_token(db_session)
+    now = datetime.now(UTC)
+    root = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="根問題",
+        answer_text="根回答",
+        created_at=now - timedelta(minutes=2),
+        request_id="req-root-conv",
+        idempotency_key="k-root-conv",
+    )
+    child = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="子問題",
+        answer_text="子回答",
+        created_at=now - timedelta(minutes=1),
+        request_id="req-child-conv",
+        idempotency_key="k-child-conv",
+    )
+    _create_followup_link(
+        db_session,
+        user_id=user.id,
+        parent_question_id=root.id,
+        child_question_id=child.id,
+        content="延伸",
+        created_at=now - timedelta(minutes=1),
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/history/questions/{child.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["root"]["question_id"] == str(root.id)
+    assert len(payload["root"]["children"]) == 1
+    assert payload["root"]["children"][0]["question_id"] == str(child.id)

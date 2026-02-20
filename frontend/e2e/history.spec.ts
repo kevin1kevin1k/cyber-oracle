@@ -188,3 +188,110 @@ test("history detail redirects unauthenticated user to login with next", async (
   await page.goto("/history/q-root");
   await expect(page).toHaveURL(/\/login\?next=%2Fhistory%2Fq-root$/);
 });
+
+test("history detail child url auto-redirects to root url", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-history-child-redirect",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/history/questions/q-child", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        root: {
+          question_id: "q-root",
+          question_text: "主問題",
+          answer_text: "主回答",
+          source: "mock",
+          layer_percentages: [
+            { label: "主層", pct: 70 },
+            { label: "輔層", pct: 20 },
+            { label: "參照層", pct: 10 },
+          ],
+          charged_credits: 1,
+          request_id: "req-root",
+          created_at: "2026-02-20T10:00:00Z",
+          children: [
+            {
+              question_id: "q-child",
+              question_text: "子問題",
+              answer_text: "子回答",
+              source: "openai",
+              layer_percentages: [
+                { label: "主層", pct: 60 },
+                { label: "輔層", pct: 30 },
+                { label: "參照層", pct: 10 },
+              ],
+              charged_credits: 1,
+              request_id: "req-child",
+              created_at: "2026-02-20T10:01:00Z",
+              children: [],
+            },
+          ],
+        },
+        transactions: [],
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/history/questions/q-root", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        root: {
+          question_id: "q-root",
+          question_text: "主問題",
+          answer_text: "主回答",
+          source: "mock",
+          layer_percentages: [
+            { label: "主層", pct: 70 },
+            { label: "輔層", pct: 20 },
+            { label: "參照層", pct: 10 },
+          ],
+          charged_credits: 1,
+          request_id: "req-root",
+          created_at: "2026-02-20T10:00:00Z",
+          children: [
+            {
+              question_id: "q-child",
+              question_text: "子問題",
+              answer_text: "子回答",
+              source: "openai",
+              layer_percentages: [
+                { label: "主層", pct: 60 },
+                { label: "輔層", pct: 30 },
+                { label: "參照層", pct: 10 },
+              ],
+              charged_credits: 1,
+              request_id: "req-child",
+              created_at: "2026-02-20T10:01:00Z",
+              children: [],
+            },
+          ],
+        },
+        transactions: [],
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("history-child-redirect@example.com");
+  await page.getByLabel("密碼").fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/history/q-child");
+  await expect(page).toHaveURL("/history/q-root");
+  await expect(page.getByText("主回答")).toBeVisible();
+  await expect(page.getByText("子回答")).toBeVisible();
+});
