@@ -55,6 +55,33 @@ class AskHistoryListResponse(BaseModel):
     total: int
 
 
+class AskHistoryDetailNode(BaseModel):
+    question_id: str
+    question_text: str
+    answer_text: str
+    source: Literal["rag", "rule", "openai", "mock"]
+    layer_percentages: list[LayerPercentage]
+    charged_credits: int
+    request_id: str
+    created_at: datetime
+    children: list["AskHistoryDetailNode"]
+
+
+class AskHistoryDetailTransactionItem(BaseModel):
+    id: str
+    action: Literal["capture", "refund"]
+    amount: int
+    reason_code: str
+    question_id: str | None
+    request_id: str
+    created_at: datetime
+
+
+class AskHistoryDetailResponse(BaseModel):
+    root: AskHistoryDetailNode
+    transactions: list[AskHistoryDetailTransactionItem]
+
+
 class ErrorResponse(BaseModel):
     code: Literal["UNAUTHORIZED", "EMAIL_NOT_VERIFIED", "INSUFFICIENT_CREDIT"]
     message: str
@@ -199,3 +226,6 @@ class OrderResponse(BaseModel):
 class SimulatePaidResponse(BaseModel):
     order: OrderResponse
     wallet_balance: int
+
+
+AskHistoryDetailNode.model_rebuild()

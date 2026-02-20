@@ -22,6 +22,9 @@ from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas import (
     ApiErrorDetail,
+    AskHistoryDetailNode,
+    AskHistoryDetailResponse,
+    AskHistoryDetailTransactionItem,
     AskHistoryItem,
     AskHistoryListResponse,
     AskRequest,
@@ -119,6 +122,42 @@ def _build_answer_preview(answer_text: str) -> str:
     if len(answer_text) <= ASK_HISTORY_PREVIEW_MAX_LENGTH:
         return answer_text
     return f"{answer_text[:ASK_HISTORY_PREVIEW_MAX_LENGTH]}..."
+
+
+def _build_history_detail_node(
+    *,
+    question: Question,
+    answer: Answer,
+    charged_map: dict[UUID, int],
+    children_map: dict[UUID, list[UUID]],
+    qa_map: dict[UUID, tuple[Question, Answer]],
+) -> AskHistoryDetailNode:
+    child_nodes = [
+        _build_history_detail_node(
+            question=qa_map[child_id][0],
+            answer=qa_map[child_id][1],
+            charged_map=charged_map,
+            children_map=children_map,
+            qa_map=qa_map,
+        )
+        for child_id in children_map.get(question.id, [])
+        if child_id in qa_map
+    ]
+    return AskHistoryDetailNode(
+        question_id=str(question.id),
+        question_text=question.question_text,
+        answer_text=answer.answer_text,
+        source=question.source,
+        layer_percentages=[
+            LayerPercentage(label="主層", pct=answer.main_pct),
+            LayerPercentage(label="輔層", pct=answer.secondary_pct),
+            LayerPercentage(label="參照層", pct=answer.reference_pct),
+        ],
+        charged_credits=charged_map.get(question.id, 0),
+        request_id=question.request_id,
+        created_at=question.created_at,
+        children=child_nodes,
+    )
 
 
 def _find_existing_ask_response(
@@ -696,6 +735,126 @@ def get_ask_history(
         for question, answer in rows
     ]
     return AskHistoryListResponse(items=items, total=total or 0)
+
+
+@app.get(
+    "/api/v1/history/questions/{question_id}",
+    response_model=AskHistoryDetailResponse,
+    responses={401: {"model": ErrorResponse}, 404: {"model": ApiErrorDetail}},
+)
+def get_ask_history_detail(
+    question_id: UUID,
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> AskHistoryDetailResponse:
+    root_row = db.execute(
+        select(Question, Answer)
+        .join(Answer, Answer.question_id == Question.id)
+        .where(
+            Question.id == question_id,
+            Question.user_id == auth_context.user_id,
+            Question.status == "succeeded",
+        )
+    ).first()
+    if root_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "QUESTION_NOT_FOUND", "message": "Question not found"},
+        )
+
+    qa_map: dict[UUID, tuple[Question, Answer]] = {root_row[0].id: root_row}
+    children_map: dict[UUID, list[UUID]] = {}
+    frontier: list[UUID] = [root_row[0].id]
+    visited: set[UUID] = {root_row[0].id}
+
+    while frontier:
+        followup_rows = db.scalars(
+            select(Followup)
+            .where(
+                Followup.user_id == auth_context.user_id,
+                Followup.question_id.in_(frontier),
+                Followup.used_question_id.is_not(None),
+            )
+            .order_by(Followup.created_at.asc(), Followup.id.asc())
+        ).all()
+        if not followup_rows:
+            break
+
+        next_ids: list[UUID] = []
+        for followup in followup_rows:
+            child_id = followup.used_question_id
+            if child_id is None:
+                continue
+            parent_id = followup.question_id
+            if child_id not in children_map.get(parent_id, []):
+                children_map.setdefault(parent_id, []).append(child_id)
+            if child_id not in visited:
+                visited.add(child_id)
+                next_ids.append(child_id)
+
+        if not next_ids:
+            break
+
+        child_rows = db.execute(
+            select(Question, Answer)
+            .join(Answer, Answer.question_id == Question.id)
+            .where(
+                Question.user_id == auth_context.user_id,
+                Question.status == "succeeded",
+                Question.id.in_(next_ids),
+            )
+        ).all()
+        for question, answer in child_rows:
+            qa_map[question.id] = (question, answer)
+        frontier = [question.id for question, _ in child_rows]
+
+    tree_question_ids = list(qa_map.keys())
+    capture_rows = db.execute(
+        select(CreditTransaction.question_id, func.sum(CreditTransaction.amount))
+        .where(
+            CreditTransaction.user_id == auth_context.user_id,
+            CreditTransaction.action == "capture",
+            CreditTransaction.question_id.in_(tree_question_ids),
+        )
+        .group_by(CreditTransaction.question_id)
+    ).all()
+    charged_map = {
+        question_id: abs(int(total_amount or 0))
+        for question_id, total_amount in capture_rows
+        if question_id is not None
+    }
+
+    tx_rows = db.scalars(
+        select(CreditTransaction)
+        .where(
+            CreditTransaction.user_id == auth_context.user_id,
+            CreditTransaction.question_id.in_(tree_question_ids),
+            CreditTransaction.action.in_(["capture", "refund"]),
+        )
+        .order_by(CreditTransaction.created_at.asc(), CreditTransaction.id.asc())
+    ).all()
+    transactions = [
+        AskHistoryDetailTransactionItem(
+            id=str(tx.id),
+            action=tx.action,  # type: ignore[arg-type]
+            amount=tx.amount,
+            reason_code=tx.reason_code,
+            question_id=str(tx.question_id) if tx.question_id is not None else None,
+            request_id=tx.request_id,
+            created_at=tx.created_at,
+        )
+        for tx in tx_rows
+    ]
+
+    root_question, root_answer = root_row
+    root = _build_history_detail_node(
+        question=root_question,
+        answer=root_answer,
+        charged_map=charged_map,
+        children_map=children_map,
+        qa_map=qa_map,
+    )
+    return AskHistoryDetailResponse(root=root, transactions=transactions)
 
 
 @app.post(

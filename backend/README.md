@@ -68,6 +68,14 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --host 0.0.0
   - each item includes:
     - `question_id`, `question_text`, `answer_preview`, `source`, `charged_credits`, `created_at`
   - `charged_credits` is derived from `capture` credit transactions for that question
+- `GET /api/v1/history/questions/{question_id}`
+  - requires bearer token
+  - returns full question detail for the authenticated user
+  - `404 QUESTION_NOT_FOUND` when resource is missing or not owned by current user
+  - response includes:
+    - `root` question node (full `answer_text`, `layer_percentages`, `charged_credits`, `request_id`)
+    - recursive `children` nodes built from followup ask relationships
+    - `transactions` list (`capture`/`refund`) for all questions in this followup tree
 
 ## Orders APIs
 - `POST /api/v1/orders`

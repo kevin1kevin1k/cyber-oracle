@@ -53,7 +53,7 @@
 ## P1（高價值 / MVP 完整）
 - [ ] 實作 RAG Top-3 + rerank + 百分比（總和 100）
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
-- [ ] 實作歷史問答頁（問題/答案/時間/扣點）
+- [x] 實作歷史問答頁（問題/答案/時間/扣點）
   - [x] Backend：`GET /api/v1/history/questions`（使用者隔離 + limit/offset + newest-first）
   - [x] Backend：回傳 `answer_preview` 與 `charged_credits`
   - [x] Frontend：新增 `/history` 頁（列表顯示問題/答案摘要/時間/扣點）
@@ -61,15 +61,15 @@
   - [x] Frontend：`載入更多`（offset pagination）
   - [x] 測試：backend history endpoint（401、分頁、排序、使用者隔離）
   - [x] 測試：frontend history e2e（未登入導轉、載入與追加）
-  - [ ] 後續：歷史詳情頁（完整答案、關聯交易、延伸問題樹與對應回覆）
-- [ ] 實作延伸問題三按鈕互動與即點即問扣點（同主題追問）
+  - [x] 後續：歷史詳情頁（完整答案、關聯交易、延伸問題樹與對應回覆）
+- [x] 實作延伸問題三按鈕互動與即點即問扣點（同主題追問）
   - [x] Backend：`ask` 回應帶出 3 個互異 `followup_options`
   - [x] Backend：新增 followup 點擊提問流程（掛在原問題主題下）
   - [x] Backend：followup 點擊與一般提問共用 `reserve/capture/refund`，每次扣 1 點
   - [x] Backend：一個問題支援 0..N 延伸問題關聯
   - [x] Frontend：回答尾端渲染 3 個延伸問題按鈕
   - [x] Frontend：點擊任一按鈕即送出追問、顯示回覆與即時扣點
-  - [ ] Frontend：歷史問答詳細頁呈現延伸問題鏈與對應回答
+  - [x] Frontend：歷史問答詳細頁呈現延伸問題鏈與對應回答
   - [x] 測試：Backend followup API（404/403/409、點擊扣點、子問答建立、餘額不足回復 pending）
   - [x] 測試：Frontend followup 三按鈕顯示與點擊互動
 - [ ] 實作後台最小可用：使用者、文件庫、訂單/點數流水查詢
@@ -96,16 +96,16 @@
 - [ ] `ask` 回傳三層百分比固定 3 筆且總和 100
 - [ ] 前台不顯示內部演算法名稱/規則編號/來源摘要
 - [x] 購點成功後餘額更新正確（含重試冪等）
-- [ ] 歷史紀錄可查完整問答與交易流水
+- [x] 歷史紀錄可查完整問答與交易流水
 - [x] 每次回答尾端固定顯示 3 個互異延伸問題按鈕
 - [x] 點擊任一延伸問題按鈕需建立同主題子問答並扣 1 點（失敗回補）
-- [ ] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答
+- [x] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答
 
 ## 驗收定義
 - [ ] 通過 PRD v0.4 第 9 節驗收標準
 - [ ] 每個完成項目附測試證據（命令、輸出、截圖或 API 回應）
 - [ ] 文件與實作一致（README / API schema / UI 文案同步）
-  - [ ] 更新 `backend/README.md`（API、錯誤碼、env）
+  - [x] 更新 `backend/README.md`（API、錯誤碼、env）
   - [ ] 更新 `frontend` 相關說明（含 API 契約、環境變數、畫面流程）
   - [ ] 更新本文件完成勾選與子項
   - [ ] 補齊 backend/frontend 驗證命令與人工測試步驟（可直接執行）

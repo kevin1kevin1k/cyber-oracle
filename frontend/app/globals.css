@@ -158,6 +158,25 @@ ul {
   margin: 2px 0;
 }
 
+.history-detail-tree {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.history-detail-node {
+  border: 1px solid #d7e6fa;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.history-detail-node p {
+  margin: 2px 0;
+}
+
 .package-grid {
   display: grid;
   gap: 10px;

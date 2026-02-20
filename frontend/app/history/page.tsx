@@ -164,6 +164,9 @@ export default function HistoryPage() {
                   <strong>時間：</strong>
                   {formatDatetime(item.created_at)}
                 </p>
+                <p className="helper-links">
+                  <Link href={`/history/${item.question_id}`}>查看詳情</Link>
+                </p>
               </li>
             ))}
           </ul>

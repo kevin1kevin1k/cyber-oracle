@@ -15,6 +15,7 @@ from app.db import Base, get_db
 from app.main import app
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
+from app.models.followup import Followup
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -48,6 +49,7 @@ def engine():
         SessionRecord.__table__,
         Question.__table__,
         Answer.__table__,
+        Followup.__table__,
         Order.__table__,
         CreditTransaction.__table__,
     ]
@@ -64,6 +66,7 @@ def db_session(engine):
     try:
         session.query(CreditTransaction).delete()
         session.query(Order).delete()
+        session.query(Followup).delete()
         session.query(Answer).delete()
         session.query(Question).delete()
         session.query(SessionRecord).delete()
@@ -152,6 +155,29 @@ def _create_question_with_answer(
         )
     )
     return question
+
+
+def _create_followup_link(
+    db_session: Session,
+    *,
+    user_id,
+    parent_question_id,
+    child_question_id,
+    content: str,
+    created_at: datetime,
+) -> Followup:
+    followup = Followup(
+        user_id=user_id,
+        question_id=parent_question_id,
+        content=content,
+        origin_request_id=f"req-followup-{uuid.uuid4()}",
+        status="used",
+        used_question_id=child_question_id,
+        used_at=created_at,
+        created_at=created_at,
+    )
+    db_session.add(followup)
+    return followup
 
 
 def test_history_requires_authentication(client: TestClient) -> None:
@@ -266,3 +292,163 @@ def test_history_returns_user_only_with_preview_pagination_and_charged_credits(
     assert len(payload2["items"]) == 1
     assert payload2["items"][0]["question_id"] == str(oldest.id)
     assert payload2["items"][0]["charged_credits"] == 0
+
+
+def test_history_detail_requires_authentication(client: TestClient) -> None:
+    response = client.get(f"/api/v1/history/questions/{uuid.uuid4()}")
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+def test_history_detail_returns_404_for_missing_or_foreign_question(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, token = _create_user_with_token(db_session)
+    other_user, _ = _create_user_with_token(db_session)
+    now = datetime.now(UTC)
+    foreign_question = _create_question_with_answer(
+        db_session,
+        user_id=other_user.id,
+        question_text="其他人題目",
+        answer_text="其他人答案",
+        created_at=now,
+        request_id="req-foreign",
+        idempotency_key="k-foreign",
+    )
+    db_session.commit()
+
+    missing = client.get(
+        f"/api/v1/history/questions/{uuid.uuid4()}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "QUESTION_NOT_FOUND"
+
+    foreign = client.get(
+        f"/api/v1/history/questions/{foreign_question.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert foreign.status_code == 404
+    assert foreign.json()["detail"]["code"] == "QUESTION_NOT_FOUND"
+    assert user.id != other_user.id
+
+
+def test_history_detail_returns_tree_and_transactions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, token = _create_user_with_token(db_session)
+    now = datetime.now(UTC)
+
+    root = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="主問題",
+        answer_text="主回答完整內容",
+        created_at=now - timedelta(minutes=3),
+        request_id="req-root",
+        idempotency_key="k-root",
+    )
+    child_a = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="延伸問題 A",
+        answer_text="延伸回答 A",
+        created_at=now - timedelta(minutes=2),
+        request_id="req-child-a",
+        idempotency_key="k-child-a",
+    )
+    child_b = _create_question_with_answer(
+        db_session,
+        user_id=user.id,
+        question_text="延伸問題 B",
+        answer_text="延伸回答 B",
+        created_at=now - timedelta(minutes=1),
+        request_id="req-child-b",
+        idempotency_key="k-child-b",
+    )
+    _create_followup_link(
+        db_session,
+        user_id=user.id,
+        parent_question_id=root.id,
+        child_question_id=child_a.id,
+        content="延伸按鈕 A",
+        created_at=now - timedelta(minutes=2),
+    )
+    _create_followup_link(
+        db_session,
+        user_id=user.id,
+        parent_question_id=child_a.id,
+        child_question_id=child_b.id,
+        content="延伸按鈕 B",
+        created_at=now - timedelta(minutes=1),
+    )
+    db_session.add_all(
+        [
+            CreditTransaction(
+                user_id=user.id,
+                question_id=root.id,
+                action="capture",
+                amount=-1,
+                reason_code="ASK_CAPTURED",
+                idempotency_key="cap-root",
+                request_id="req-cap-root",
+                created_at=now - timedelta(minutes=3),
+            ),
+            CreditTransaction(
+                user_id=user.id,
+                question_id=child_a.id,
+                action="capture",
+                amount=-1,
+                reason_code="ASK_CAPTURED",
+                idempotency_key="cap-child-a",
+                request_id="req-cap-child-a",
+                created_at=now - timedelta(minutes=2),
+            ),
+            CreditTransaction(
+                user_id=user.id,
+                question_id=child_a.id,
+                action="refund",
+                amount=1,
+                reason_code="ASK_REFUNDED",
+                idempotency_key="refund-child-a",
+                request_id="req-refund-child-a",
+                created_at=now - timedelta(minutes=1),
+            ),
+            CreditTransaction(
+                user_id=user.id,
+                question_id=child_b.id,
+                action="capture",
+                amount=-1,
+                reason_code="ASK_CAPTURED",
+                idempotency_key="cap-child-b",
+                request_id="req-cap-child-b",
+                created_at=now - timedelta(seconds=30),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/history/questions/{root.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["root"]["question_id"] == str(root.id)
+    assert payload["root"]["question_text"] == "主問題"
+    assert payload["root"]["answer_text"] == "主回答完整內容"
+    assert payload["root"]["charged_credits"] == 1
+    assert len(payload["root"]["children"]) == 1
+
+    first_child = payload["root"]["children"][0]
+    assert first_child["question_id"] == str(child_a.id)
+    assert first_child["charged_credits"] == 1
+    assert len(first_child["children"]) == 1
+    assert first_child["children"][0]["question_id"] == str(child_b.id)
+    assert first_child["children"][0]["charged_credits"] == 1
+
+    actions = [tx["action"] for tx in payload["transactions"]]
+    assert actions == ["capture", "capture", "refund", "capture"]
