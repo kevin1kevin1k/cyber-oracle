@@ -78,9 +78,9 @@
 ## P2（穩定性 / 營運效率）
 - [ ] 建立可觀測性：request_id、錯誤率、延遲、交易審計事件
 - [ ] 安全強化：rate limit、輸入防護、key management、個資刪除流程
-- [ ] 開發流程穩定化：避免 commit 觸發 backend docker reload/shutdown
+- [x] 開發流程穩定化：避免 commit 觸發 backend docker reload/shutdown
   - [x] Backend docker `uvicorn --reload` 監看限縮至 `app/` 並排除 `.venv/.git/__pycache__`
-  - [ ] pre-commit 改用系統層安裝（`uv tool install pre-commit && pre-commit install`），commit 流程不再依賴 `cd backend && uv sync`
+  - [x] pre-commit 改用系統層安裝（`uv tool install pre-commit && pre-commit install`），commit 流程不再依賴 `cd backend && uv sync`
 - [x] 建立測試與 CI：backend 單元/整合、frontend 關鍵流程測試、自動化檢查
   - [x] backend lint（Ruff）導入與 blocking
   - [x] frontend lint（ESLint）導入與 blocking
