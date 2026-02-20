@@ -127,9 +127,8 @@
 - [x] Auth：`POST /api/v1/auth/forgot-password` production 僅回 `202 accepted`，不回傳 `reset_token`
 - [ ] Auth：導入 email provider（SES/SendGrid/Postmark 擇一）發送驗證信與重設信
 - [ ] Auth：新增 resend-verification 流程（重發時舊 token 失效）
-- [ ] Secrets：移除弱預設 `JWT_SECRET`，production 啟動時必填且強度校驗
+- [x] Secrets：移除弱預設 `JWT_SECRET`，production 啟動時必填且強度校驗
 - [ ] Auth：規劃 access token 儲存策略（MVP localStorage -> production cookie/httpOnly）
-- [ ] Billing：`simulate-paid` 僅限非 production（環境守衛 + 權限限制）
 - [ ] Billing：production 串接實際金流 callback 與簽章驗證
 - [ ] DB：部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
 

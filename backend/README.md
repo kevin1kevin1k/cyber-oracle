@@ -103,6 +103,12 @@ Environment variables:
 - `JWT_ALGORITHM`: JWT algorithm (default `HS256`)
 - `JWT_EXP_MINUTES`: access token expiration in minutes (default `60`)
 
+Production security baseline:
+- when `APP_ENV=prod`, backend startup validates `JWT_SECRET` and fails fast if:
+  - value is empty
+  - value equals development default (`dev-only-change-me-please-replace-32+`)
+  - value length is shorter than 32 characters
+
 ## Migrations (Alembic)
 Run on host:
 ```bash
