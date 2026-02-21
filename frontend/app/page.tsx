@@ -9,6 +9,7 @@ import { askFollowup, askQuestion, type AskResponse } from "@/lib/ask";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
 import { getCreditsBalance } from "@/lib/billing";
 import { buildLoginPathWithNext } from "@/lib/navigation";
+import AppTopNav from "@/components/AppTopNav";
 
 export default function HomePage() {
   const router = useRouter();
@@ -191,6 +192,7 @@ export default function HomePage() {
 
   return (
     <main>
+      <AppTopNav />
       <h1>ELIN 神域引擎 MVP</h1>
       <p>輸入問題後，系統會呼叫 FastAPI 後端並回傳結果。</p>
 
@@ -220,8 +222,7 @@ export default function HomePage() {
           {isLoggedIn && (
             <p className="credit-line">
               目前點數：<span className="credit-count">{creditBalance === null ? "讀取中..." : `${creditBalance} 點`}</span>
-              {creditDelta !== null && <span className="credit-delta">{creditDelta}</span>} ·{" "}
-              <Link href="/wallet">前往點數錢包</Link> · <Link href="/history">歷史問答</Link>
+              {creditDelta !== null && <span className="credit-delta">{creditDelta}</span>}
             </p>
           )}
         </div>

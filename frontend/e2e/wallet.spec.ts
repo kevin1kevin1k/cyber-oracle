@@ -304,3 +304,45 @@ test("home does not emit hydration mismatch when auth exists in localStorage", a
   await expect(page.getByText("目前點數：2 點")).toBeVisible();
   expect(hydrationSignals).toHaveLength(0);
 });
+
+test("top nav is shared across home wallet history and active state is correct", async ({ page }) => {
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 5, updated_at: "2026-02-21T09:00:00Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/transactions?limit=20&offset=0", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  await page.route("**/api/v1/history/questions?limit=20&offset=0", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  await loginVerifiedUser(page, "wallet-nav@example.com");
+  await expect(page.getByTestId("app-top-nav")).toBeVisible();
+  await expect(page.getByRole("link", { name: "提問" })).toHaveAttribute("aria-current", "page");
+
+  await page.getByRole("link", { name: "點數錢包" }).click();
+  await expect(page).toHaveURL("/wallet");
+  await expect(page.getByRole("link", { name: "點數錢包" })).toHaveAttribute("aria-current", "page");
+
+  await page.getByRole("link", { name: "歷史問答" }).click();
+  await expect(page).toHaveURL("/history");
+  await expect(page.getByRole("link", { name: "歷史問答" })).toHaveAttribute("aria-current", "page");
+
+  await page.getByRole("link", { name: "提問" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("link", { name: "提問" })).toHaveAttribute("aria-current", "page");
+});

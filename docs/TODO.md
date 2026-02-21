@@ -53,13 +53,13 @@
 ## P1（高價值 / MVP 完整）
 - [ ] 實作 RAG Top-3 + rerank + 百分比（總和 100）
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
-- [ ] 前端導覽一致化：提問/錢包/歷史頁共用頂部 nav bar
-  - [ ] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
-  - [ ] Frontend：在 `/`、`/wallet`、`/history` 三頁套用同一導覽區塊與一致文案順序
-  - [ ] Frontend：移除三頁內文區分散的 `helper-links`（避免重複導覽）
-  - [ ] Frontend：導覽目前頁有 active state（可辨識所在頁）
-  - [ ] Frontend：手機寬度下導覽不換行破版，保留可點擊性
-  - [ ] 測試：frontend e2e 覆蓋三頁互相跳轉（`/` -> `/wallet` -> `/history` -> `/`）
+- [x] 前端導覽一致化：提問/錢包/歷史頁共用頂部 nav bar
+  - [x] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
+  - [x] Frontend：在 `/`、`/wallet`、`/history` 三頁套用同一導覽區塊與一致文案順序
+  - [x] Frontend：移除三頁內文區分散的 `helper-links`（避免重複導覽）
+  - [x] Frontend：導覽目前頁有 active state（可辨識所在頁）
+  - [x] Frontend：手機寬度下導覽不換行破版，保留可點擊性
+  - [x] 測試：frontend e2e 覆蓋三頁互相跳轉（`/` -> `/wallet` -> `/history` -> `/`）
 - [x] 實作歷史問答頁（問題/答案/時間/扣點）
   - [x] Backend：`GET /api/v1/history/questions`（使用者隔離 + limit/offset + newest-first）
   - [x] Backend：`GET /api/v1/history/questions` 僅顯示每個對話串首題（排除延伸問題）
@@ -106,7 +106,7 @@
 - [x] 提問失敗流程：reserve -> refund
 - [ ] `ask` 回傳三層百分比固定 3 筆且總和 100
 - [ ] 前台不顯示內部演算法名稱/規則編號/來源摘要
-- [ ] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
+- [x] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
 - [x] 購點成功後餘額更新正確（含重試冪等）
 - [x] 歷史紀錄可查完整問答與交易流水
 - [x] 每次回答尾端固定顯示 3 個互異延伸問題按鈕

@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api";
 import { getAuthSession } from "@/lib/auth";
 import { getAskHistory, type AskHistoryItem } from "@/lib/history";
 import { buildLoginPathWithNext } from "@/lib/navigation";
+import AppTopNav from "@/components/AppTopNav";
 
 const PAGE_SIZE = 20;
 
@@ -121,6 +122,7 @@ export default function HistoryPage() {
 
   return (
     <main>
+      <AppTopNav />
       <h1>歷史問答</h1>
       <p>查看已完成提問紀錄，包含問題、答案摘要、扣點與時間。</p>
 
@@ -128,9 +130,6 @@ export default function HistoryPage() {
         <p>
           <strong>總筆數：</strong>
           {loading ? "載入中..." : `${total} 筆`}
-        </p>
-        <p className="helper-links">
-          <Link href="/">返回提問頁</Link> · <Link href="/wallet">前往點數錢包</Link>
         </p>
       </section>
 

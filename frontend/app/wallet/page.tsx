@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -15,6 +14,7 @@ import {
 } from "@/lib/billing";
 import { getAuthSession } from "@/lib/auth";
 import { buildLoginPathWithNext } from "@/lib/navigation";
+import AppTopNav from "@/components/AppTopNav";
 
 const PACKAGE_OPTIONS: Array<{ size: 1 | 3 | 5; amountTwd: 168 | 358 | 518 }> = [
   { size: 1, amountTwd: 168 },
@@ -151,6 +151,7 @@ export default function WalletPage() {
 
   return (
     <main>
+      <AppTopNav />
       <h1>點數錢包</h1>
       <p>檢視目前餘額、交易流水，並購買 1/3/5 題包。</p>
 
@@ -162,9 +163,6 @@ export default function WalletPage() {
         <p>
           <strong>最後更新：</strong>
           {balance?.updated_at ? formatDatetime(balance.updated_at) : "尚無紀錄"}
-        </p>
-        <p className="helper-links">
-          <Link href="/">返回提問頁</Link> · <Link href="/history">歷史問答</Link>
         </p>
       </section>
 
