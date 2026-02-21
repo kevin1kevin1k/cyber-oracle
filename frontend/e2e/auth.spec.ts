@@ -76,7 +76,7 @@ test("register -> verify -> login -> ask -> logout", async ({ page }) => {
   await page.getByRole("button", { name: "登入" }).click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByText("目前狀態：已登入（已驗證）")).toBeVisible();
+  await expect(page.getByTestId("account-menu-trigger")).toBeVisible();
 
   await page.getByLabel("問題內容").fill("今天該聚焦什麼？");
   await page.getByRole("button", { name: "送出問題" }).click();
@@ -175,7 +175,7 @@ test("unverified login enters home but ask is disabled", async ({ page }) => {
   await page.getByRole("button", { name: "登入" }).click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByText("目前狀態：已登入（未驗證）")).toBeVisible();
+  await expect(page.getByText("你已登入但尚未驗證 Email。")).toBeVisible();
   await expect(page.getByLabel("問題內容")).toBeDisabled();
 });
 

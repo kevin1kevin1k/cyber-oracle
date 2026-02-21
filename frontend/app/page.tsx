@@ -186,9 +186,6 @@ export default function HomePage() {
             <p>登入狀態載入中...</p>
           ) : isLoggedIn ? (
             <>
-              <p>
-                目前狀態：已登入（{isVerified ? "已驗證" : "未驗證"}）
-              </p>
               {!isVerified && (
                 <p className="error-inline">
                   你已登入但尚未驗證 Email。請前往 <Link href="/verify-email">Email 驗證</Link>

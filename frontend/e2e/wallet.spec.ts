@@ -300,7 +300,7 @@ test("home does not emit hydration mismatch when auth exists in localStorage", a
   });
 
   await page.goto("/");
-  await expect(page.getByText("目前狀態：已登入（已驗證）")).toBeVisible();
+  await expect(page.getByTestId("account-menu-trigger")).toBeVisible();
   await expect(page.getByText("目前點數：2 點")).toBeVisible();
   expect(hydrationSignals).toHaveLength(0);
 });
