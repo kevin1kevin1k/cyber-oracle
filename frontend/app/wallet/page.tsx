@@ -153,7 +153,6 @@ export default function WalletPage() {
     <main>
       <AppTopNav />
       <h1>點數錢包</h1>
-      <p>檢視目前餘額、交易流水，並購買 1/3/5 題包。</p>
 
       <section className="card">
         <p>

@@ -124,7 +124,6 @@ export default function HistoryPage() {
     <main>
       <AppTopNav />
       <h1>歷史問答</h1>
-      <p>查看已完成提問紀錄，包含問題、答案摘要、扣點與時間。</p>
 
       <section className="card history-header">
         <p>

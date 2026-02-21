@@ -178,7 +178,6 @@ export default function HomePage() {
     <main>
       <AppTopNav />
       <h1>ELIN 神域引擎 MVP</h1>
-      <p>輸入問題後，系統會呼叫 FastAPI 後端並回傳結果。</p>
 
       <section className="card">
         <div className="auth-bar">
