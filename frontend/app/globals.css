@@ -25,7 +25,13 @@ main {
   border-radius: 12px;
   border: 1px solid #d7e6fa;
   background: #f3f8ff;
-  overflow-x: auto;
+}
+
+.top-nav-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .top-nav-list {
@@ -35,6 +41,7 @@ main {
   margin: 0;
   padding: 0;
   min-width: max-content;
+  overflow-x: auto;
 }
 
 .top-nav-link {
@@ -63,6 +70,57 @@ main {
   border-color: #0f4fa8;
   background: #0f4fa8;
   color: #fff;
+}
+
+.top-nav-account {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.top-nav-auth-links {
+  margin: 0;
+}
+
+.account-trigger {
+  margin-top: 0;
+  background: #ffffff;
+  color: #0d3f85;
+  border: 1px solid #c6d8f1;
+  font-weight: 700;
+}
+
+.account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 220px;
+  border: 1px solid #d7e6fa;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(17, 33, 56, 0.16);
+  padding: 10px;
+  z-index: 20;
+}
+
+.account-email {
+  margin: 0 0 8px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.account-action {
+  width: 100%;
+  margin-top: 6px;
+  background: #eef5ff;
+  color: #0d3f85;
+  border: 1px solid #d7e6fa;
+  text-align: left;
+}
+
+.account-action-danger {
+  background: #fff1f2;
+  color: #b42318;
+  border-color: #f3c7cc;
 }
 
 .card {
@@ -293,5 +351,15 @@ ul {
 @media (max-width: 640px) {
   main {
     padding: 28px 14px;
+  }
+
+  .top-nav-main {
+    align-items: flex-start;
+  }
+
+  .account-menu {
+    left: auto;
+    right: 0;
+    width: min(86vw, 280px);
   }
 }

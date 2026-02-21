@@ -333,6 +333,10 @@ test("top nav is shared across home wallet history and active state is correct",
   await loginVerifiedUser(page, "wallet-nav@example.com");
   await expect(page.getByTestId("app-top-nav")).toBeVisible();
   await expect(page.getByRole("link", { name: "提問" })).toHaveAttribute("aria-current", "page");
+  await page.getByTestId("account-menu-trigger").click();
+  await expect(page.getByTestId("account-menu")).toContainText("wallet-nav@example.com");
+  await expect(page.getByRole("menuitem", { name: "個人檔案（即將推出）" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "設定（即將推出）" })).toBeVisible();
 
   await page.getByRole("link", { name: "點數錢包" }).click();
   await expect(page).toHaveURL("/wallet");

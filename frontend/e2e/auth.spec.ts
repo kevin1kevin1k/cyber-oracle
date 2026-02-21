@@ -82,8 +82,18 @@ test("register -> verify -> login -> ask -> logout", async ({ page }) => {
   await page.getByRole("button", { name: "送出問題" }).click();
   await expect(page.getByText("這是回覆")).toBeVisible();
 
-  await page.getByRole("button", { name: "登出" }).click();
+  await page.getByTestId("account-menu-trigger").click();
+  await expect(page.getByTestId("account-menu")).toContainText("new@example.com");
+  await page.getByRole("menuitem", { name: "登出" }).click();
   await expect(page).toHaveURL(/\/login/);
+});
+
+test("home top nav shows login and register links when unauthenticated", async ({ page }) => {
+  await page.goto("/");
+  const topNav = page.getByTestId("app-top-nav");
+  await expect(topNav).toBeVisible();
+  await expect(topNav.getByRole("link", { name: "登入" })).toBeVisible();
+  await expect(topNav.getByRole("link", { name: "註冊" })).toBeVisible();
 });
 
 test("register success without verification token shows check-email message", async ({ page }) => {

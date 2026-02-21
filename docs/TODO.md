@@ -59,7 +59,11 @@
   - [x] Frontend：移除三頁內文區分散的 `helper-links`（避免重複導覽）
   - [x] Frontend：導覽目前頁有 active state（可辨識所在頁）
   - [x] Frontend：手機寬度下導覽不換行破版，保留可點擊性
+  - [x] Frontend：導覽列右上角改為帳號下拉選單（顯示 email 與登出）
+  - [x] Frontend：未登入時導覽列右上角顯示登入/註冊連結
+  - [x] Frontend：帳號選單結構預留後續擴充（個人檔案、設定）
   - [x] 測試：frontend e2e 覆蓋三頁互相跳轉（`/` -> `/wallet` -> `/history` -> `/`）
+  - [x] 測試：frontend e2e 覆蓋帳號選單開合、email 顯示與登出流程
 - [x] 實作歷史問答頁（問題/答案/時間/扣點）
   - [x] Backend：`GET /api/v1/history/questions`（使用者隔離 + limit/offset + newest-first）
   - [x] Backend：`GET /api/v1/history/questions` 僅顯示每個對話串首題（排除延伸問題）
@@ -107,6 +111,8 @@
 - [ ] `ask` 回傳三層百分比固定 3 筆且總和 100
 - [ ] 前台不顯示內部演算法名稱/規則編號/來源摘要
 - [x] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
+- [x] 導覽列帳號選單需顯示 email，並可由三個主頁執行登出
+- [x] 未登入時導覽列右上角需顯示登入與註冊入口
 - [x] 購點成功後餘額更新正確（含重試冪等）
 - [x] 歷史紀錄可查完整問答與交易流水
 - [x] 每次回答尾端固定顯示 3 個互異延伸問題按鈕

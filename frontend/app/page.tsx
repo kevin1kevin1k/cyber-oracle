@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { apiRequest, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { askFollowup, askQuestion, type AskResponse } from "@/lib/ask";
-import { clearAuthSession, getAuthSession } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth";
 import { getCreditsBalance } from "@/lib/billing";
 import { buildLoginPathWithNext } from "@/lib/navigation";
 import AppTopNav from "@/components/AppTopNav";
@@ -71,22 +71,6 @@ export default function HomePage() {
       }
     };
   }, []);
-
-  async function handleLogout() {
-    try {
-      await apiRequest<void>("/api/v1/auth/logout", {
-        method: "POST",
-        auth: true,
-      });
-    } catch {
-      // Ignore logout failures and clear local state anyway.
-    } finally {
-      setPendingAskKey(null);
-      clearAuthSession();
-      setAuthSession(null);
-      router.replace(buildLoginPathWithNext("/"));
-    }
-  }
 
   const applyImmediateCreditDeduction = useCallback(() => {
     setCreditBalance((prev) => (prev === null ? null : Math.max(0, prev - 1)));
@@ -210,9 +194,6 @@ export default function HomePage() {
                   你已登入但尚未驗證 Email。請前往 <Link href="/verify-email">Email 驗證</Link>
                 </p>
               )}
-              <button type="button" onClick={handleLogout} className="secondary-button">
-                登出
-              </button>
             </>
           ) : (
             <p>
