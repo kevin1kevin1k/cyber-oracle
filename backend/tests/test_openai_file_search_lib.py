@@ -158,7 +158,7 @@ def test_two_stage_response_uses_file_search_tool_and_maps_top_matches(
     env_file = tmp_path / ".env"
     env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
 
-    client = OpenAIFileSearchClient(model="gpt-4.1-mini", env_file=env_file)
+    client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11", env_file=env_file)
     result = client.run_two_stage_response(
         question="問題",
         manifest_path=manifest_path,

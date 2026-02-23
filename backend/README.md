@@ -229,7 +229,7 @@ from pathlib import Path
 
 from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
-client = OpenAIFileSearchClient(model="gpt-4.1-mini")
+client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11")
 result = client.run_two_stage_response(
     question="請根據 cyber oracle 文件回答我的問題",
     manifest_path=Path("openai_integration/input_files_manifest.json"),

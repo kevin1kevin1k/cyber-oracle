@@ -24,7 +24,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gpt-4.1-mini",
+        default="gpt-5.2-2025-12-11",
         help="Responses API model name",
     )
     parser.add_argument(

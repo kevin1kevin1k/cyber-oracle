@@ -99,7 +99,7 @@ class OpenAIFileSearchClient:
         self,
         *,
         api_key: str | None = None,
-        model: str = "gpt-4.1-mini",
+        model: str = "gpt-5.2-2025-12-11",
         vector_store_id: str | None = None,
         env_file: Path | None = None,
     ) -> None:

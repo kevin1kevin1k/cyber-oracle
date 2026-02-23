@@ -55,7 +55,7 @@ def test_main_parses_manifest_path_and_debug_flag(
     assert "first_response_id=" not in out
     assert "second_response_id=" not in out
 
-    assert called["init_model"] == "gpt-4.1-mini"
+    assert called["init_model"] == "gpt-5.2-2025-12-11"
     kwargs = called["kwargs"]
     assert kwargs["question"] == "問題"
     assert kwargs["manifest_path"] == manifest_path.resolve()
