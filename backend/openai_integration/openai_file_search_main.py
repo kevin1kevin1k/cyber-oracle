@@ -12,7 +12,7 @@ from openai_integration.openai_file_search_lib import (
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Run two-stage Responses flow from uploaded manifest + vector store top-k, "
+            "Run two-stage Responses flow from uploaded manifest + tools.file_search top-k, "
             "then generate final response text"
         ),
     )
@@ -30,18 +30,18 @@ def main() -> None:
     parser.add_argument(
         "--system-prompt",
         default=None,
-        help="Optional system prompt",
+        help="Optional system prompt for second-stage response",
     )
     parser.add_argument(
         "--top-k",
         type=int,
         default=3,
-        help="Top-k vector store matches (default: 3)",
+        help="Top-k file_search matches (default: 3)",
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Print intermediate ids and unmatched top matches",
+        help="Print intermediate ids, top matches and unmatched stats",
     )
     args = parser.parse_args()
 
@@ -52,6 +52,7 @@ def main() -> None:
         system_prompt=args.system_prompt,
         top_k=args.top_k,
         model=args.model,
+        debug=args.debug,
     )
 
     print(result.response_text)
@@ -59,9 +60,21 @@ def main() -> None:
         print("")
         print(f"first_response_id={result.first_response_id}")
         print(f"second_response_id={result.second_response_id}")
-        print(f"uploaded_count={len(result.uploaded_files)}")
+        print(f"first_stage_used_system_role={result.first_stage_used_system_role}")
+        print("step_logs:")
+        for line in result.debug_steps:
+            print(f"- {line}")
+        print(f"input_files_count={len(result.input_files)}")
         print(f"top_matches_count={len(result.top_matches)}")
         print(f"unmatched_top_matches_count={len(result.unmatched_top_matches)}")
+        for match in result.top_matches:
+            print(
+                "top_match="
+                f"filename:{match.filename or ''},"
+                f"vector_file_id:{match.vector_file_id},"
+                f"score:{match.score},"
+                f"mapped_input_file_id:{match.matched_input_file_id or ''}"
+            )
 
 
 if __name__ == "__main__":
