@@ -159,9 +159,38 @@ pre-commit run --all-files
 
 ## OpenAI File Search (cyber oracle)
 This repo includes helper scripts for a two-stage Responses flow:
-1) one-time vector store build from source directory
-2) one-time input files upload and JSON manifest persistence (path -> file_id)
+1) one-time vector store build + persist `rag_files` mapping in manifest
+2) one-time input files upload + persist `input_files` mapping in manifest
 3) query-time two-stage response (first request + top-k map + second request)
+
+```mermaid
+sequenceDiagram
+  participant Builder as 1. openai_vector_store_builder.py
+  participant Uploader as 2. openai_input_files_uploader.py
+  participant Main as 3. openai_file_search_main.py
+  participant Lib as 3.1 openai_file_search_lib.py
+  participant Env as .env
+  participant Manifest as input_files_manifest.json
+  participant VS as OpenAI Vector Store
+  participant Files as OpenAI Files
+  participant Resp as OpenAI Responses API
+
+  Builder->>VS: upload rag_files + create/update vector store
+  Builder->>Env: persist VECTOR_STORE_ID
+  Builder->>Manifest: write rag_files mapping
+
+  Uploader->>Files: upload input_files
+  Uploader->>Manifest: write input_files mapping (preserve existing rag_files)
+
+  Main->>Lib: run_two_stage_response(question)
+  Lib->>Env: read OPENAI_API_KEY + VECTOR_STORE_ID
+  Lib->>Manifest: read input_files + rag_files mapping
+  Lib->>Resp: 3.2 first responses.create + tools.file_search(top3)
+  Resp-->>Lib: top3 matches from vector store
+  Lib->>Manifest: 3.3 map top3 rag files -> input_files ids
+  Lib->>Resp: 3.4 second responses.create with mapped files
+  Resp-->>Main: final response_text
+```
 
 Environment variables:
 - `OPENAI_API_KEY`: OpenAI API key in repo root `.env` (builder/library do not read shell env vars)
@@ -169,22 +198,22 @@ Environment variables:
 
 Build or refresh vector store from local files:
 ```bash
-cd backend && uv run python -m openai_integration.openai_vector_store_builder --source-dir ~/Downloads/cyber_oracle_files/algorithms --vector-store-name "cyber-oracle-knowledge" && cd ..
+cd backend && uv run python -m openai_integration.openai_vector_store_builder --rag-files-dir ~/Downloads/cyber_oracle_files/algorithms --vector-store-name cyber-oracle-knowledge --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
 
 Dry-run (list eligible files only, no API calls):
 ```bash
-cd backend && uv run python -m openai_integration.openai_vector_store_builder --source-dir ~/Downloads/cyber_oracle_files/algorithms --dry-run && cd ..
+cd backend && uv run python -m openai_integration.openai_vector_store_builder --rag-files-dir ~/Downloads/cyber_oracle_files/algorithms --manifest-path openai_integration/input_files_manifest.json --dry-run && cd ..
 ```
 
-Upload reusable input files once and write manifest:
+Upload reusable `input_files` once and write manifest:
 ```bash
-cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path "openai_integration/input_files_manifest.json" && cd ..
+cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
 
-Ask one question with the reusable library via CLI (reads manifest, does not upload files):
+Ask one question with the reusable library via CLI (first stage uses `tools.file_search` with `max_num_results=3`):
 ```bash
-cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path "openai_integration/input_files_manifest.json" && cd ..
+cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
 
 Use library in backend code:
@@ -204,7 +233,11 @@ print(result.response_text)
 ```
 
 Troubleshooting:
-- If file search fails with missing manifest mapping, rerun uploader to rebuild manifest:
+- If file search fails with missing `rag_files` mapping, rerun vector store builder:
 ```bash
-cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path "openai_integration/input_files_manifest.json" && cd ..
+cd backend && uv run python -m openai_integration.openai_vector_store_builder --rag-files-dir ~/Downloads/cyber_oracle_files/algorithms --vector-store-name cyber-oracle-knowledge --manifest-path openai_integration/input_files_manifest.json && cd ..
+```
+- If file search fails with missing `input_files` mapping, rerun uploader:
+```bash
+cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
