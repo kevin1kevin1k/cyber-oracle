@@ -28,6 +28,8 @@ backend/.mypy_cache
 backend/*.pyc
 backend/.ruff_cache
 backend/.coverage
+backend/openai_integration/openai_playground.py
+backend/openai_integration/input_files_manifest.json
 
 # IDE
 .vscode
