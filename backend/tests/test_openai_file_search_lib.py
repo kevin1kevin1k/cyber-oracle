@@ -189,10 +189,10 @@ def test_two_stage_response_uses_file_search_tool_and_maps_top_matches(
         for item in second_request["input"][0]["content"]
         if item["type"] == "input_file"
     ]
-    assert second_file_ids == ["input_file_1", "input_file_2"]
+    assert second_file_ids == ["input_file_1", "input_file_2", "rag_file_1", "rag_file_2"]
 
 
-def test_first_stage_falls_back_to_user_role_when_system_role_fails(
+def test_first_stage_uses_system_prompt_and_user_question_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -227,9 +227,7 @@ def test_first_stage_falls_back_to_user_role_when_system_role_fails(
 
         def create(self, **kwargs):  # noqa: ANN003
             self.calls.append(kwargs)
-            if len(self.calls) == 1:
-                raise RuntimeError("system-role input_file unsupported")
-            if len(self.calls) == 2:
+            if kwargs.get("tools"):
                 output = [
                     {
                         "type": "file_search_call",
@@ -262,12 +260,16 @@ def test_first_stage_falls_back_to_user_role_when_system_role_fails(
     )
 
     assert result.response_text == "final"
-    assert result.first_stage_used_system_role is False
     assert result.debug_steps == []
     first_call = client._client.responses.calls[0]
-    second_call = client._client.responses.calls[1]
-    assert first_call["input"][0]["role"] == "system"
-    assert second_call["input"][0]["role"] == "user"
+    first_input = first_call["input"]
+    assert len(first_input) == 2
+    assert first_input[0]["role"] == "system"
+    assert first_input[1]["role"] == "user"
+    system_types = [item["type"] for item in first_input[0]["content"]]
+    user_types = [item["type"] for item in first_input[1]["content"]]
+    assert system_types == ["input_text"]
+    assert user_types == ["input_text", "input_file"]
 
 
 def test_debug_mode_records_step_logs(
@@ -301,8 +303,7 @@ def test_debug_mode_records_step_logs(
 
     class FakeResponses:
         def create(self, **kwargs):  # noqa: ANN003
-            role = kwargs["input"][0]["role"]
-            if role in {"system", "user"} and kwargs.get("tools"):
+            if kwargs.get("tools"):
                 output = [
                     {
                         "type": "file_search_call",
@@ -337,4 +338,178 @@ def test_debug_mode_records_step_logs(
 
     assert any(line.startswith("1.load_manifest: start") for line in result.debug_steps)
     assert any(line.startswith("1.load_manifest: done (") for line in result.debug_steps)
+    assert any(
+        line.startswith("2.first_stage_file_search: request_payload=")
+        for line in result.debug_steps
+    )
+    assert any(
+        line.startswith("3.extract_top_matches: raw_response=") for line in result.debug_steps
+    )
+    assert any(
+        line.startswith("5.second_stage_generate: request_payload=")
+        for line in result.debug_steps
+    )
     assert any(line.startswith("5.second_stage_generate: done (") for line in result.debug_steps)
+
+
+def test_map_falls_back_to_vector_file_id_when_input_mapping_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = {
+        "version": 2,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "input_files_dir": "/tmp/input",
+        "rag_files_dir": "/tmp/rag",
+        "input_files": [
+            {
+                "relative_path": "explainer.pdf",
+                "filename": "explainer.pdf",
+                "file_id": "input_explainer",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+        "rag_files": [
+            {
+                "relative_path": "rag_only.pdf",
+                "filename": "rag_only.pdf",
+                "file_id": "rag_file_only",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                output = [
+                    {
+                        "type": "file_search_call",
+                        "results": [
+                            {
+                                "file_id": "rag_file_only",
+                                "filename": "rag_only.pdf",
+                                "score": 0.9,
+                            }
+                        ],
+                    }
+                ]
+                return SimpleNamespace(id="resp_1", output=output, output_text="stage1")
+            return SimpleNamespace(id="resp_2", output=[], output_text="final")
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+
+    client = OpenAIFileSearchClient(env_file=env_file)
+    result = client.run_two_stage_response(
+        question="Q",
+        manifest_path=manifest_path,
+        top_k=3,
+        debug=True,
+    )
+
+    assert result.response_text == "final"
+    assert len(result.unmatched_top_matches) == 0
+    assert result.top_matches[0].matched_input_file_id == "rag_file_only"
+    assert not any("fallback_to_vector_file_id" in line for line in result.debug_steps)
+
+    second_request = client._client.responses.calls[1]
+    second_file_ids = [
+        item["file_id"]
+        for item in second_request["input"][0]["content"]
+        if item["type"] == "input_file"
+    ]
+    assert second_file_ids == ["input_explainer", "rag_file_only"]
+
+
+def test_map_does_not_fallback_to_non_pdf_vector_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = {
+        "version": 2,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "input_files_dir": "/tmp/input",
+        "rag_files_dir": "/tmp/rag",
+        "input_files": [
+            {
+                "relative_path": "explainer.pdf",
+                "filename": "explainer.pdf",
+                "file_id": "input_explainer",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+        "rag_files": [
+            {
+                "relative_path": "rag_only.md",
+                "filename": "rag_only.md",
+                "file_id": "rag_file_md",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                output = [
+                    {
+                        "type": "file_search_call",
+                        "results": [
+                            {
+                                "file_id": "rag_file_md",
+                                "filename": "rag_only.md",
+                                "score": 0.9,
+                            }
+                        ],
+                    }
+                ]
+                return SimpleNamespace(id="resp_1", output=output, output_text="stage1")
+            return SimpleNamespace(id="resp_2", output=[], output_text="final")
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+
+    client = OpenAIFileSearchClient(env_file=env_file)
+    result = client.run_two_stage_response(
+        question="Q",
+        manifest_path=manifest_path,
+        top_k=3,
+        debug=True,
+    )
+
+    assert result.response_text == "final"
+    assert len(result.unmatched_top_matches) == 0
+    assert not any("skipped_unsupported_extension" in line for line in result.debug_steps)
+
+    second_request = client._client.responses.calls[1]
+    second_file_ids = [
+        item["file_id"]
+        for item in second_request["input"][0]["content"]
+        if item["type"] == "input_file"
+    ]
+    assert second_file_ids == ["input_explainer", "rag_file_md"]

@@ -41,7 +41,7 @@ def main() -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Print intermediate ids, top matches and unmatched stats",
+        help="Print request inputs, step logs, top matches and unmatched stats",
     )
     args = parser.parse_args()
 
@@ -58,9 +58,6 @@ def main() -> None:
     print(result.response_text)
     if args.debug:
         print("")
-        print(f"first_response_id={result.first_response_id}")
-        print(f"second_response_id={result.second_response_id}")
-        print(f"first_stage_used_system_role={result.first_stage_used_system_role}")
         print("step_logs:")
         for line in result.debug_steps:
             print(f"- {line}")

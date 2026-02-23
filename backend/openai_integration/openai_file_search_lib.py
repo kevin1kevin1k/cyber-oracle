@@ -33,6 +33,36 @@ def _normalize_relative_path(path: str) -> str:
     return Path(path).as_posix().lstrip("./")
 
 
+def _append_request_payload_debug(
+    *,
+    debug_logs: list[str] | None,
+    stage: str,
+    payload: dict[str, Any],
+) -> None:
+    if debug_logs is None:
+        return
+    serialized = _serialize_debug_value(payload)
+    debug_logs.append(f"{stage}: request_payload={serialized}")
+
+
+def _serialize_debug_value(value: Any) -> str:
+    def _default(obj: Any) -> Any:
+        if hasattr(obj, "model_dump"):
+            try:
+                return obj.model_dump()
+            except Exception:
+                pass
+        object_dict = getattr(obj, "__dict__", None)
+        if isinstance(object_dict, dict):
+            return object_dict
+        return str(obj)
+
+    try:
+        return json.dumps(value, ensure_ascii=False, default=_default)
+    except Exception:
+        return json.dumps(str(value), ensure_ascii=False)
+
+
 @dataclass
 class UploadedFile:
     relative_path: str
@@ -61,7 +91,6 @@ class TwoStageSearchResult:
     input_files: list[UploadedFile]
     top_matches: list[TopMatch]
     unmatched_top_matches: list[TopMatch]
-    first_stage_used_system_role: bool
     debug_steps: list[str]
 
 
@@ -118,19 +147,23 @@ class OpenAIFileSearchClient:
         )
         input_file_ids = [item.file_id for item in manifest.input_files]
 
-        first_response, used_system_role = run_step(
+        first_response = run_step(
             "2.first_stage_file_search",
             lambda: self._create_first_stage_with_file_search(
                 question=question,
                 input_file_ids=input_file_ids,
                 top_k=top_k,
                 model=model,
+                debug_logs=debug_steps if debug else None,
             ),
         )
         first_response_id = getattr(first_response, "id", "")
         top_matches = run_step(
             "3.extract_top_matches",
-            lambda: self._extract_top_matches_from_response(first_response),
+            lambda: self._extract_top_matches_from_response(
+                first_response,
+                debug_logs=debug_steps if debug else None,
+            ),
         )
 
         matched_top_file_ids, unmatched_top_matches = run_step(
@@ -138,6 +171,8 @@ class OpenAIFileSearchClient:
             lambda: self._map_top_matches_to_uploaded_files(
                 top_matches=top_matches,
                 manifest=manifest,
+                top_k=top_k,
+                debug_logs=debug_steps if debug else None,
             ),
         )
 
@@ -149,6 +184,7 @@ class OpenAIFileSearchClient:
                 file_ids=second_file_ids,
                 system_prompt=system_prompt,
                 model=model,
+                debug_logs=debug_steps if debug else None,
             ),
         )
         second_response_id = getattr(second_response, "id", "")
@@ -161,7 +197,6 @@ class OpenAIFileSearchClient:
             input_files=manifest.input_files,
             top_matches=top_matches,
             unmatched_top_matches=unmatched_top_matches,
-            first_stage_used_system_role=used_system_role,
             debug_steps=debug_steps,
         )
 
@@ -223,15 +258,16 @@ class OpenAIFileSearchClient:
         input_file_ids: list[str],
         top_k: int,
         model: str | None,
-    ) -> tuple[Any, bool]:
+        debug_logs: list[str] | None = None,
+    ) -> Any:
         top_k = max(1, top_k)
-        content_items = [{"type": "input_text", "text": question}]
+
+        user_content_items: list[dict[str, Any]] = [{"type": "input_text", "text": question}]
         for file_id in input_file_ids:
-            content_items.append({"type": "input_file", "file_id": file_id})
+            user_content_items.append({"type": "input_file", "file_id": file_id})
 
         base_payload: dict[str, Any] = {
             "model": model or self._model,
-            "instructions": FIRST_STAGE_FILE_SEARCH_PROMPT,
             "tools": [
                 {
                     "type": "file_search",
@@ -239,23 +275,30 @@ class OpenAIFileSearchClient:
                     "max_num_results": top_k,
                 }
             ],
+            "input": [
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": FIRST_STAGE_FILE_SEARCH_PROMPT}],
+                },
+                {"role": "user", "content": user_content_items},
+            ],
         }
 
-        try:
-            response = self._client.responses.create(
-                **base_payload,
-                input=[{"role": "system", "content": content_items}],
-            )
-            return response, True
-        except Exception:
-            response = self._client.responses.create(
-                **base_payload,
-                input=[{"role": "user", "content": content_items}],
-            )
-            return response, False
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage="2.first_stage_file_search",
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
 
-    def _extract_top_matches_from_response(self, response: Any) -> list[TopMatch]:
-        max_candidates = 3
+    def _extract_top_matches_from_response(
+        self,
+        response: Any,
+        debug_logs: list[str] | None = None,
+    ) -> list[TopMatch]:
+        if debug_logs is not None:
+            serialized_response = _serialize_debug_value(response)
+            debug_logs.append(f"3.extract_top_matches: raw_response={serialized_response}")
         candidates: list[TopMatch] = []
 
         def walk(value: Any) -> None:
@@ -296,7 +339,7 @@ class OpenAIFileSearchClient:
             deduped.append(match)
 
         deduped.sort(key=lambda item: item.score if item.score is not None else -1.0, reverse=True)
-        return deduped[:max_candidates]
+        return deduped
 
     def _create_response_request(
         self,
@@ -305,50 +348,66 @@ class OpenAIFileSearchClient:
         file_ids: list[str],
         system_prompt: str | None,
         model: str | None,
+        debug_logs: list[str] | None = None,
     ) -> Any:
         content_items: list[dict[str, Any]] = [{"type": "input_text", "text": question}]
         for file_id in file_ids:
             content_items.append({"type": "input_file", "file_id": file_id})
 
-        return self._client.responses.create(
-            model=model or self._model,
-            instructions=system_prompt or "",
-            input=[
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "input": [
                 {
                     "role": "user",
                     "content": content_items,
                 }
             ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage="5.second_stage_generate",
+            payload=base_payload,
         )
+        return self._client.responses.create(**base_payload)
 
     def _map_top_matches_to_uploaded_files(
         self,
         *,
         top_matches: list[TopMatch],
         manifest: ManifestFiles,
+        top_k: int,
+        debug_logs: list[str] | None = None,
     ) -> tuple[list[str], list[TopMatch]]:
-        input_mapping = {
-            _normalize_relative_path(item.relative_path): item.file_id
-            for item in manifest.input_files
-        }
-        rag_by_file_id = {item.file_id: item.relative_path for item in manifest.rag_files}
-        rag_by_path = {item.relative_path: item.relative_path for item in manifest.rag_files}
+        rag_file_ids = {item.file_id for item in manifest.rag_files}
+        rag_file_id_by_path = {item.relative_path: item.file_id for item in manifest.rag_files}
 
         matched_ids: list[str] = []
         unmatched: list[TopMatch] = []
 
         for match in top_matches:
+            if len(matched_ids) >= max(1, top_k):
+                break
             normalized_filename = _normalize_relative_path(match.filename or "")
-            rag_relative_path = rag_by_file_id.get(match.vector_file_id)
-            if rag_relative_path is None and normalized_filename:
-                rag_relative_path = rag_by_path.get(normalized_filename)
+            mapped_id = None
+            if match.vector_file_id in rag_file_ids:
+                mapped_id = match.vector_file_id
+            elif normalized_filename:
+                mapped_id = rag_file_id_by_path.get(normalized_filename)
 
-            if rag_relative_path is None:
-                unmatched.append(match)
-                continue
-
-            mapped_id = input_mapping.get(rag_relative_path)
             if mapped_id is None:
+                if debug_logs is not None:
+                    rag_path_hit = (
+                        normalized_filename in rag_file_id_by_path if normalized_filename else False
+                    )
+                    debug_logs.append(
+                        "4.map_vs_to_input_files: unmatched_before_append "
+                        f"vector_file_id={match.vector_file_id} "
+                        f"filename={match.filename or ''} "
+                        f"normalized_filename={normalized_filename} "
+                        f"rag_file_id_hit={match.vector_file_id in rag_file_ids} "
+                        f"rag_path_hit={rag_path_hit}"
+                    )
                 unmatched.append(match)
                 continue
 

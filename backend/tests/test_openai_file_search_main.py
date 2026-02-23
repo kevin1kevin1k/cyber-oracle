@@ -25,7 +25,6 @@ def test_main_parses_manifest_path_and_debug_flag(
                 input_files=[SimpleNamespace(file_id="f1")],
                 top_matches=[],
                 unmatched_top_matches=[],
-                first_stage_used_system_role=True,
                 debug_steps=[
                     "1.load_manifest: start",
                     "1.load_manifest: done (1.23 ms)",
@@ -51,9 +50,10 @@ def test_main_parses_manifest_path_and_debug_flag(
 
     out = capsys.readouterr().out
     assert "final answer" in out
-    assert "first_stage_used_system_role=True" in out
     assert "step_logs:" in out
     assert "1.load_manifest: done" in out
+    assert "first_response_id=" not in out
+    assert "second_response_id=" not in out
 
     assert called["init_model"] == "gpt-4.1-mini"
     kwargs = called["kwargs"]
