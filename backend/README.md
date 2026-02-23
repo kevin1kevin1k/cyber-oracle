@@ -3,6 +3,13 @@
 FastAPI backend for ELIN 神域引擎。
 Root README only provides monorepo navigation; backend operational details are maintained here as the single source of truth.
 
+## Environment Setup
+```bash
+cp backend/.env.example backend/.env
+```
+
+Then update `backend/.env` with your local values (for example `OPENAI_API_KEY`, `DATABASE_URL`, `JWT_SECRET`).
+
 ## Local Development
 ```bash
 uv sync
@@ -193,7 +200,7 @@ sequenceDiagram
 ```
 
 Environment variables:
-- `OPENAI_API_KEY`: OpenAI API key in repo root `.env` (builder/library do not read shell env vars)
+- `OPENAI_API_KEY`: OpenAI API key in `backend/.env`
 - `VECTOR_STORE_ID`: vector store id used by file search (auto-written by vector store builder)
 
 Build or refresh vector store from local files:

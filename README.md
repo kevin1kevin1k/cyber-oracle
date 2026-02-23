@@ -59,6 +59,3 @@ npm run lint
 ## Service Docs
 - Backend detailed guide: `backend/README.md`
 - Frontend implementation currently documented in this root README and source comments.
-
-## Environment Variables
-Copy `.env.example` and adjust values as needed.

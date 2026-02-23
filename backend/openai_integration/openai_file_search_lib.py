@@ -10,6 +10,7 @@ from dotenv import dotenv_values
 from openai import OpenAI
 
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent / "input_files_manifest.json"
+DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 FIRST_STAGE_FILE_SEARCH_PROMPT = (
     "You are a retrieval step. Read the user question and the attached input files, "
     "then use file_search tool over the configured vector store to find the top 3 most "
@@ -73,8 +74,7 @@ class OpenAIFileSearchClient:
         vector_store_id: str | None = None,
         env_file: Path | None = None,
     ) -> None:
-        root_env = Path(__file__).resolve().parent.parent.parent / ".env"
-        candidate_env = env_file or root_env
+        candidate_env = env_file or DEFAULT_ENV_FILE
 
         resolved_api_key = api_key or _read_dotenv_value(candidate_env, "OPENAI_API_KEY")
         if not resolved_api_key:

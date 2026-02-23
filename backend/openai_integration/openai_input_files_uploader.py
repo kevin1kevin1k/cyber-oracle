@@ -11,7 +11,7 @@ from dotenv import dotenv_values
 from openai import OpenAI
 
 SUPPORTED_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
-DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
+DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent / "input_files_manifest.json"
 
 
