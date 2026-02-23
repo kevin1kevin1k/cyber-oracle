@@ -156,3 +156,55 @@ Install and run pre-commit without coupling to `backend/.venv`:
 uv tool install pre-commit && pre-commit install
 pre-commit run --all-files
 ```
+
+## OpenAI File Search (cyber oracle)
+This repo includes helper scripts for a two-stage Responses flow:
+1) one-time vector store build from source directory
+2) one-time input files upload and JSON manifest persistence (path -> file_id)
+3) query-time two-stage response (first request + top-k map + second request)
+
+Environment variables:
+- `OPENAI_API_KEY`: OpenAI API key in repo root `.env` (builder/library do not read shell env vars)
+- `VECTOR_STORE_ID`: vector store id used by file search (auto-written by vector store builder)
+
+Build or refresh vector store from local files:
+```bash
+cd backend && uv run python -m openai_integration.openai_vector_store_builder --source-dir ~/Downloads/cyber_oracle_files/algorithms --vector-store-name "cyber-oracle-knowledge" && cd ..
+```
+
+Dry-run (list eligible files only, no API calls):
+```bash
+cd backend && uv run python -m openai_integration.openai_vector_store_builder --source-dir ~/Downloads/cyber_oracle_files/algorithms --dry-run && cd ..
+```
+
+Upload reusable input files once and write manifest:
+```bash
+cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path "openai_integration/input_files_manifest.json" && cd ..
+```
+
+Ask one question with the reusable library via CLI (reads manifest, does not upload files):
+```bash
+cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path "openai_integration/input_files_manifest.json" && cd ..
+```
+
+Use library in backend code:
+```python
+from pathlib import Path
+
+from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
+
+client = OpenAIFileSearchClient(model="gpt-4.1-mini")
+result = client.run_two_stage_response(
+    question="請根據 cyber oracle 文件回答我的問題",
+    manifest_path=Path("openai_integration/input_files_manifest.json"),
+    system_prompt="你是 ELIN 文件助手。",
+    top_k=3,
+)
+print(result.response_text)
+```
+
+Troubleshooting:
+- If file search fails with missing manifest mapping, rerun uploader to rebuild manifest:
+```bash
+cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path "openai_integration/input_files_manifest.json" && cd ..
+```
