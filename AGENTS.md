@@ -71,6 +71,7 @@ Pull requests should include:
 - after the changed files summary, include manual test steps for any behavior not fully covered by automation (or best validated by humans), with expected results for each step
 - for important backend changes (DB/schema/API/runtime behavior), update `backend/README.md` in the same change set
 - after each implementation batch, review `docs/TODO.md` and update checklist/progress notes when status has changed
+- any update to `docs/PRD.md` must include a same-change-set version bump in the PRD document metadata
 - in `docs/TODO.md`, represent partial progress as checkbox subtasks (subitems) instead of plain text progress lines like `進度：...`
 - in `docs/TODO.md`, if all subtasks under a parent task are checked, the parent task must also be checked in the same update
 - when introducing new libraries/packages, include a short explainer in the reply covering each package's purpose and practical alternatives
