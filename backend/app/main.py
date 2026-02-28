@@ -93,14 +93,23 @@ def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str]:
     manifest_path = Path(settings.openai_manifest_path).resolve()
     try:
         client = OpenAIFileSearchClient(model=settings.openai_ask_model)
-        result = client.run_two_stage_response(
-            question=question,
-            manifest_path=manifest_path,
-            system_prompt=settings.openai_ask_system_prompt,
-            top_k=settings.openai_ask_top_k,
-            model=settings.openai_ask_model,
-            debug=False,
-        )
+        if settings.openai_ask_pipeline == "two_stage":
+            result = client.run_two_stage_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=settings.openai_ask_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+        else:
+            result = client.run_one_stage_response(
+                question=question,
+                manifest_path=manifest_path,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
     except ValueError as exc:
         raise AskOpenAIConfigError(str(exc)) from exc
     except Exception as exc:  # pragma: no cover - handled as integration boundary

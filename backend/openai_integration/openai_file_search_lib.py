@@ -94,6 +94,15 @@ class TwoStageSearchResult:
     debug_steps: list[str]
 
 
+@dataclass
+class OneStageSearchResult:
+    response_text: str
+    response_id: str
+    input_files: list[UploadedFile]
+    top_matches: list[TopMatch]
+    debug_steps: list[str]
+
+
 class OpenAIFileSearchClient:
     def __init__(
         self,
@@ -197,6 +206,61 @@ class OpenAIFileSearchClient:
             input_files=manifest.input_files,
             top_matches=top_matches,
             unmatched_top_matches=unmatched_top_matches,
+            debug_steps=debug_steps,
+        )
+
+    def run_one_stage_response(
+        self,
+        *,
+        question: str,
+        manifest_path: Path,
+        top_k: int = 3,
+        model: str | None = None,
+        debug: bool = False,
+    ) -> OneStageSearchResult:
+        debug_steps: list[str] = []
+
+        def run_step(step_name: str, func):  # noqa: ANN001
+            if debug:
+                debug_steps.append(f"{step_name}: start")
+            started = perf_counter()
+            result = func()
+            duration_ms = (perf_counter() - started) * 1000.0
+            if debug:
+                debug_steps.append(f"{step_name}: done ({duration_ms:.2f} ms)")
+            return result
+
+        manifest = run_step(
+            "1.load_manifest",
+            lambda: self.load_uploaded_files_manifest(manifest_path),
+        )
+        input_file_ids = [item.file_id for item in manifest.input_files]
+
+        response = run_step(
+            "2.one_stage_generate_with_file_search",
+            lambda: self._create_first_stage_with_file_search(
+                question=question,
+                input_file_ids=input_file_ids,
+                top_k=top_k,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        response_id = getattr(response, "id", "")
+        top_matches = run_step(
+            "3.extract_top_matches",
+            lambda: self._extract_top_matches_from_response(
+                response,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        response_text = getattr(response, "output_text", "") or ""
+
+        return OneStageSearchResult(
+            response_text=response_text,
+            response_id=response_id,
+            input_files=manifest.input_files,
+            top_matches=top_matches,
             debug_steps=debug_steps,
         )
 

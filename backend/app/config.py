@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,6 +13,7 @@ class Settings(BaseSettings):
     jwt_exp_minutes: int = 60
     openai_manifest_path: str = "openai_integration/input_files_manifest.json"
     openai_ask_model: str = "gpt-5.2-2025-12-11"
+    openai_ask_pipeline: Literal["one_stage", "two_stage"] = "one_stage"
     openai_ask_top_k: int = 3
     openai_ask_system_prompt: str = (
         "你是 ELIN 神域引擎問答助手，請根據提供檔案內容給出清楚可行的回答。"

@@ -12,8 +12,8 @@ from openai_integration.openai_file_search_lib import (
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Run two-stage Responses flow from uploaded manifest + tools.file_search top-k, "
-            "then generate final response text"
+            "Run one-stage or two-stage Responses flow from uploaded manifest and print "
+            "final response text"
         ),
     )
     parser.add_argument("--question", required=True, help="User question")
@@ -43,17 +43,33 @@ def main() -> None:
         action="store_true",
         help="Print request inputs, step logs, top matches and unmatched stats",
     )
+    parser.add_argument(
+        "--pipeline",
+        choices=["one_stage", "two_stage"],
+        default="two_stage",
+        help="Choose pipeline mode (default: two_stage)",
+    )
     args = parser.parse_args()
 
     client = OpenAIFileSearchClient(model=args.model)
-    result = client.run_two_stage_response(
-        question=args.question,
-        manifest_path=Path(args.manifest_path).resolve(),
-        system_prompt=args.system_prompt,
-        top_k=args.top_k,
-        model=args.model,
-        debug=args.debug,
-    )
+    manifest_path = Path(args.manifest_path).resolve()
+    if args.pipeline == "one_stage":
+        result = client.run_one_stage_response(
+            question=args.question,
+            manifest_path=manifest_path,
+            top_k=args.top_k,
+            model=args.model,
+            debug=args.debug,
+        )
+    else:
+        result = client.run_two_stage_response(
+            question=args.question,
+            manifest_path=manifest_path,
+            system_prompt=args.system_prompt,
+            top_k=args.top_k,
+            model=args.model,
+            debug=args.debug,
+        )
 
     print(result.response_text)
     if args.debug:
@@ -63,7 +79,9 @@ def main() -> None:
             print(f"- {line}")
         print(f"input_files_count={len(result.input_files)}")
         print(f"top_matches_count={len(result.top_matches)}")
-        print(f"unmatched_top_matches_count={len(result.unmatched_top_matches)}")
+        unmatched_top_matches = getattr(result, "unmatched_top_matches", None)
+        if unmatched_top_matches is not None:
+            print(f"unmatched_top_matches_count={len(unmatched_top_matches)}")
         for match in result.top_matches:
             print(
                 "top_match="

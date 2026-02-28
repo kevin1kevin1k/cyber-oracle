@@ -352,6 +352,93 @@ def test_debug_mode_records_step_logs(
     assert any(line.startswith("5.second_stage_generate: done (") for line in result.debug_steps)
 
 
+def test_one_stage_response_uses_single_file_search_request(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = {
+        "version": 2,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "input_files_dir": "/tmp/input",
+        "rag_files_dir": "/tmp/rag",
+        "input_files": [
+            {
+                "relative_path": "folder/a.md",
+                "filename": "folder/a.md",
+                "file_id": "input_file_1",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+        "rag_files": [
+            {
+                "relative_path": "folder/a.md",
+                "filename": "folder/a.md",
+                "file_id": "rag_file_1",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            output = [
+                {
+                    "type": "file_search_call",
+                    "results": [
+                        {
+                            "file_id": "rag_file_1",
+                            "filename": "folder/a.md",
+                            "score": 0.91,
+                        }
+                    ],
+                }
+            ]
+            return SimpleNamespace(id="resp_one", output=output, output_text="one stage answer")
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+
+    client = OpenAIFileSearchClient(env_file=env_file)
+    result = client.run_one_stage_response(
+        question="Q",
+        manifest_path=manifest_path,
+        top_k=3,
+        debug=True,
+    )
+
+    assert result.response_text == "one stage answer"
+    assert result.response_id == "resp_one"
+    assert len(result.top_matches) == 1
+    assert any(
+        line.startswith("2.one_stage_generate_with_file_search: start")
+        for line in result.debug_steps
+    )
+    assert any(
+        line.startswith("2.first_stage_file_search: request_payload=")
+        for line in result.debug_steps
+    )
+
+    fake_client = client._client
+    assert len(fake_client.responses.calls) == 1
+    request = fake_client.responses.calls[0]
+    assert request["tools"][0]["type"] == "file_search"
+    assert request["tools"][0]["vector_store_ids"] == ["vs_abc"]
+    assert request["tools"][0]["max_num_results"] == 3
+
+
 def test_map_falls_back_to_vector_file_id_when_input_mapping_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

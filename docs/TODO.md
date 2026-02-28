@@ -56,7 +56,7 @@
   - [x] Backend：建立 builder 寫入 rag_files + uploader 寫入 input_files 的 JSON manifest（path -> file_id）持久化
   - [x] Backend：完成雙階段 Responses 流程（first stage `tools.file_search` top3 + VS->UF map + second request 最終輸出）
   - [x] Backend：將 `POST /api/v1/ask` 串接實際 file_search 檢索與回答（非 mock）
-  - [ ] Backend：新增 one-stage 流程（直接回傳 first stage 文字結果）並與 two-stage 共用可切換介面
+  - [x] Backend：新增 one-stage 流程（直接回傳 first stage 文字結果）並與 two-stage 共用可切換介面
   - [ ] Backend：導入 OpenAI structured output（class/schema）統一回答欄位
   - [ ] Frontend：改為只顯示回答內容與延伸問題，不顯示來源/request id/三層比例
   - [ ] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板

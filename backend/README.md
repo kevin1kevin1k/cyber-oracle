@@ -43,7 +43,8 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
 - `POST /api/v1/ask`
   - requires authenticated + verified email
   - supports `Idempotency-Key` request header
-  - runtime uses OpenAI two-stage file search flow (`openai_integration/openai_file_search_lib.py`)
+  - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
+  - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
   - response now includes `followup_options` (3 distinct followup buttons)
   - credit flow:
@@ -207,6 +208,7 @@ sequenceDiagram
 Environment variables:
 - `OPENAI_API_KEY`: OpenAI API key in `backend/.env`
 - `VECTOR_STORE_ID`: vector store id used by file search (auto-written by vector store builder)
+- `OPENAI_ASK_PIPELINE`: ask pipeline mode (`one_stage` default, optional `two_stage`)
 
 Build or refresh vector store from local files:
 ```bash
@@ -223,9 +225,9 @@ Upload reusable `input_files` once and write manifest:
 cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
 
-Ask one question with the reusable library via CLI (first stage uses `tools.file_search` with `max_num_results=3`):
+Ask one question with the reusable library via CLI (`--pipeline two_stage|one_stage`, default `two_stage`):
 ```bash
-cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path openai_integration/input_files_manifest.json && cd ..
+cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path openai_integration/input_files_manifest.json --pipeline two_stage && cd ..
 ```
 
 Use library in backend code:
