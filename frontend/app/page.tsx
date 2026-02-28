@@ -241,22 +241,6 @@ export default function HomePage() {
               <strong>回答：</strong>
               {result.answer}
             </p>
-            <p>
-              <strong>來源：</strong>
-              {result.source}
-            </p>
-            <p>
-              <strong>Request ID：</strong>
-              {result.request_id}
-            </p>
-            <p>
-              <strong>三層比例：</strong>
-            </p>
-            <ul>
-              {result.layer_percentages.map((layer) => (
-                <li key={layer.label}>{`${layer.label}: ${layer.pct}%`}</li>
-              ))}
-            </ul>
             {Array.isArray(result.followup_options) && result.followup_options.length > 0 && (
               <div className="followup-section">
                 <p>

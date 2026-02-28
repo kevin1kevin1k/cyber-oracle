@@ -393,6 +393,9 @@ test("ask success updates credit balance immediately", async ({ page }) => {
   await page.getByRole("button", { name: "送出問題" }).click();
   await expect(page.getByText("目前點數：4 點")).toBeVisible();
   await expect(page.locator(".credit-delta")).toHaveText("-1");
+  await expect(page.getByText("來源：")).toHaveCount(0);
+  await expect(page.getByText("Request ID：")).toHaveCount(0);
+  await expect(page.getByText("三層比例：")).toHaveCount(0);
 });
 
 test("ask failure does not decrement credit balance", async ({ page }) => {
@@ -592,6 +595,9 @@ test("ask response renders followup buttons and clicking one asks followup with 
   await expect(page.getByText("延伸回答 A")).toBeVisible();
   await expect(page.getByText("目前點數：3 點")).toBeVisible();
   await expect(page.locator(".credit-delta")).toHaveText("-1");
+  await expect(page.getByText("來源：")).toHaveCount(0);
+  await expect(page.getByText("Request ID：")).toHaveCount(0);
+  await expect(page.getByText("三層比例：")).toHaveCount(0);
 });
 
 test("followup ask 409 shows used message and does not decrement credit", async ({ page }) => {

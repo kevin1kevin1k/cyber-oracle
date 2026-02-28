@@ -66,12 +66,12 @@ test("history loads items and supports load more", async ({ page }) => {
 
   await page.goto("/history");
   await expect(page.getByText("問題：第一題")).toBeVisible();
-  await expect(page.getByText("來源：Mock")).toBeVisible();
+  await expect(page.getByText("來源：")).toHaveCount(0);
   await expect(page.getByText("扣點：1 點")).toBeVisible();
 
   await page.getByRole("button", { name: "載入更多" }).click();
   await expect(page.getByText("問題：第二題")).toBeVisible();
-  await expect(page.getByText("來源：OPENAI")).toBeVisible();
+  await expect(page.getByText("來源：")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "查看詳情" }).first()).toBeVisible();
 });
 
@@ -182,6 +182,9 @@ test("history detail page renders question tree and transactions", async ({ page
   await expect(page.getByText("關聯交易")).toBeVisible();
   await expect(page.getByText("類型：扣點")).toBeVisible();
   await expect(page.getByText("類型：回補")).toBeVisible();
+  await expect(page.getByText("來源：")).toHaveCount(0);
+  await expect(page.getByText("Request ID：")).toHaveCount(0);
+  await expect(page.getByText("三層比例：")).toHaveCount(0);
 });
 
 test("history detail redirects unauthenticated user to login with next", async ({ page }) => {

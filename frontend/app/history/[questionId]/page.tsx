@@ -18,13 +18,6 @@ function formatDatetime(value: string): string {
   return new Date(value).toLocaleString("zh-TW", { hour12: false });
 }
 
-function formatSource(source: AskHistoryDetailNode["source"]): string {
-  if (source === "mock") {
-    return "Mock";
-  }
-  return source.toUpperCase();
-}
-
 function formatTransactionAction(action: AskHistoryDetailTransactionItem["action"]): string {
   if (action === "capture") {
     return "扣點";
@@ -44,24 +37,12 @@ function HistoryNode({ node, depth = 0 }: { node: AskHistoryDetailNode; depth?: 
         {node.answer_text}
       </p>
       <p>
-        <strong>來源：</strong>
-        {formatSource(node.source)}
-      </p>
-      <p>
         <strong>扣點：</strong>
         {node.charged_credits} 點
       </p>
       <p>
         <strong>時間：</strong>
         {formatDatetime(node.created_at)}
-      </p>
-      <p>
-        <strong>Request ID：</strong>
-        {node.request_id}
-      </p>
-      <p>
-        <strong>三層比例：</strong>
-        {node.layer_percentages.map((layer) => `${layer.label} ${layer.pct}%`).join(" / ")}
       </p>
       {node.children.length > 0 && (
         <ul className="history-detail-tree">
@@ -187,10 +168,6 @@ export default function HistoryDetailPage() {
                     <p>
                       <strong>Question ID：</strong>
                       {tx.question_id ?? "-"}
-                    </p>
-                    <p>
-                      <strong>Request ID：</strong>
-                      {tx.request_id}
                     </p>
                     <p>
                       <strong>時間：</strong>

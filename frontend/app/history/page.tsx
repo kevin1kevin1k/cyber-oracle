@@ -16,13 +16,6 @@ function formatDatetime(value: string): string {
   return new Date(value).toLocaleString("zh-TW", { hour12: false });
 }
 
-function formatSource(source: AskHistoryItem["source"]): string {
-  if (source === "mock") {
-    return "Mock";
-  }
-  return source.toUpperCase();
-}
-
 export default function HistoryPage() {
   const router = useRouter();
   const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
@@ -149,10 +142,6 @@ export default function HistoryPage() {
                 <p>
                   <strong>答案摘要：</strong>
                   {item.answer_preview}
-                </p>
-                <p>
-                  <strong>來源：</strong>
-                  {formatSource(item.source)}
                 </p>
                 <p>
                   <strong>扣點：</strong>
