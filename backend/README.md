@@ -46,7 +46,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
-  - response now includes `followup_options` (3 distinct followup buttons)
+  - response now includes `followup_options` (0..3 model-generated followup options)
   - credit flow:
     - success: `reserve -> persist question/answer -> capture`
     - processing failure: `reserve -> refund`
@@ -171,10 +171,10 @@ pre-commit run --all-files
 ```
 
 ## OpenAI File Search (cyber oracle)
-This repo includes helper scripts for a two-stage Responses flow:
+This repo includes helper scripts for one-stage/two-stage Responses flow:
 1) one-time vector store build + persist `rag_files` mapping in manifest
 2) one-time input files upload + persist `input_files` mapping in manifest
-3) query-time two-stage response (first request + top-k map + second request)
+3) query-time one-stage or two-stage response with structured output (`answer` + `followup_options`)
 
 ```mermaid
 sequenceDiagram

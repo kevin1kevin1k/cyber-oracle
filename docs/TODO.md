@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.4` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.6` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -88,7 +88,7 @@
   - [x] Backend：新增 followup 點擊提問流程（掛在原問題主題下）
   - [x] Backend：followup 點擊與一般提問共用 `reserve/capture/refund`，每次扣 1 點
   - [x] Backend：一個問題支援 0..N 延伸問題關聯
-  - [x] Frontend：回答尾端渲染 3 個延伸問題按鈕
+  - [x] Frontend：回答尾端渲染 0..3 個延伸問題按鈕
   - [x] Frontend：點擊任一按鈕即送出追問、顯示回覆與即時扣點
   - [x] Frontend：歷史問答詳細頁呈現延伸問題鏈與對應回答
   - [x] 測試：Backend followup API（404/403/409、點擊扣點、子問答建立、餘額不足回復 pending）
@@ -119,18 +119,18 @@
 - [x] 提問失敗流程：reserve -> refund
 - [ ] `ask` 回傳需符合 structured output schema（欄位完整且型別正確）
 - [x] 前台不顯示內部演算法名稱/規則編號/來源/request id/三層比例
-- [ ] 回答尾端三個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
+- [x] 回答尾端 0..3 個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
 - [x] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
 - [x] 導覽列帳號選單需顯示 email，並可由三個主頁執行登出
 - [x] 未登入時導覽列右上角需顯示登入與註冊入口
 - [x] 購點成功後餘額更新正確（含重試冪等）
 - [x] 歷史紀錄可查完整問答與交易流水
-- [x] 每次回答尾端固定顯示 3 個互異延伸問題按鈕
+- [ ] 每次回答尾端依回傳顯示 0..3 個延伸問題按鈕（若超過 1 個則互異）
 - [x] 點擊任一延伸問題按鈕需建立同主題子問答並扣 1 點（失敗回補）
 - [x] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答
 
 ## 驗收定義
-- [ ] 通過 PRD v0.4 第 9 節驗收標準
+- [ ] 通過 PRD v0.6 第 9 節驗收標準
 - [ ] 每個完成項目附測試證據（命令、輸出、截圖或 API 回應）
 - [ ] 文件與實作一致（README / API schema / UI 文案同步）
   - [x] 更新 `backend/README.md`（API、錯誤碼、env）

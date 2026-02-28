@@ -8,6 +8,7 @@ from typing import Any
 
 from dotenv import dotenv_values
 from openai import OpenAI
+from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent / "input_files_manifest.json"
 DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
@@ -16,6 +17,13 @@ FIRST_STAGE_FILE_SEARCH_PROMPT = (
     "then use file_search tool over the configured vector store to find the top 3 most "
     "relevant documents. Prioritize precision and relevance."
 )
+
+
+class AskStructuredOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str = Field(min_length=1)
+    followup_options: list[str] = Field(default_factory=list)
 
 
 def _read_dotenv_value(env_file: Path, key: str) -> str | None:
@@ -86,6 +94,7 @@ class TopMatch:
 @dataclass
 class TwoStageSearchResult:
     response_text: str
+    followup_options: list[str]
     first_response_id: str
     second_response_id: str
     input_files: list[UploadedFile]
@@ -97,6 +106,7 @@ class TwoStageSearchResult:
 @dataclass
 class OneStageSearchResult:
     response_text: str
+    followup_options: list[str]
     response_id: str
     input_files: list[UploadedFile]
     top_matches: list[TopMatch]
@@ -188,7 +198,7 @@ class OpenAIFileSearchClient:
         second_file_ids = self._dedupe_preserve_order(input_file_ids + matched_top_file_ids)
         second_response = run_step(
             "5.second_stage_generate",
-            lambda: self._create_response_request(
+            lambda: self._create_structured_response_request(
                 question=question,
                 file_ids=second_file_ids,
                 system_prompt=system_prompt,
@@ -198,9 +208,15 @@ class OpenAIFileSearchClient:
         )
         second_response_id = getattr(second_response, "id", "")
         response_text = getattr(second_response, "output_text", "") or ""
+        structured_output = self._parse_structured_output(
+            response_text,
+            debug_logs=debug_steps if debug else None,
+            stage="5.second_stage_generate",
+        )
 
         return TwoStageSearchResult(
-            response_text=response_text,
+            response_text=structured_output.answer,
+            followup_options=structured_output.followup_options,
             first_response_id=first_response_id,
             second_response_id=second_response_id,
             input_files=manifest.input_files,
@@ -214,6 +230,7 @@ class OpenAIFileSearchClient:
         *,
         question: str,
         manifest_path: Path,
+        system_prompt: str | None = None,
         top_k: int = 3,
         model: str | None = None,
         debug: bool = False,
@@ -238,9 +255,10 @@ class OpenAIFileSearchClient:
 
         response = run_step(
             "2.one_stage_generate_with_file_search",
-            lambda: self._create_first_stage_with_file_search(
+            lambda: self._create_one_stage_structured_with_file_search(
                 question=question,
                 input_file_ids=input_file_ids,
+                system_prompt=system_prompt,
                 top_k=top_k,
                 model=model,
                 debug_logs=debug_steps if debug else None,
@@ -255,9 +273,15 @@ class OpenAIFileSearchClient:
             ),
         )
         response_text = getattr(response, "output_text", "") or ""
+        structured_output = self._parse_structured_output(
+            response_text,
+            debug_logs=debug_steps if debug else None,
+            stage="2.one_stage_generate_with_file_search",
+        )
 
         return OneStageSearchResult(
-            response_text=response_text,
+            response_text=structured_output.answer,
+            followup_options=structured_output.followup_options,
             response_id=response_id,
             input_files=manifest.input_files,
             top_matches=top_matches,
@@ -355,6 +379,49 @@ class OpenAIFileSearchClient:
         )
         return self._client.responses.create(**base_payload)
 
+    def _create_one_stage_structured_with_file_search(
+        self,
+        *,
+        question: str,
+        input_file_ids: list[str],
+        system_prompt: str | None,
+        top_k: int,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+    ) -> Any:
+        top_k = max(1, top_k)
+
+        user_content_items: list[dict[str, Any]] = [{"type": "input_text", "text": question}]
+        for file_id in input_file_ids:
+            user_content_items.append({"type": "input_file", "file_id": file_id})
+
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "tools": [
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [self._vector_store_id],
+                    "max_num_results": top_k,
+                }
+            ],
+            "text": self._build_structured_text_format(),
+            "input": [
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": FIRST_STAGE_FILE_SEARCH_PROMPT}],
+                },
+                {"role": "user", "content": user_content_items},
+            ],
+        }
+
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage="2.one_stage_generate_with_file_search",
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
     def _extract_top_matches_from_response(
         self,
         response: Any,
@@ -405,7 +472,7 @@ class OpenAIFileSearchClient:
         deduped.sort(key=lambda item: item.score if item.score is not None else -1.0, reverse=True)
         return deduped
 
-    def _create_response_request(
+    def _create_structured_response_request(
         self,
         *,
         question: str,
@@ -421,6 +488,7 @@ class OpenAIFileSearchClient:
         base_payload: dict[str, Any] = {
             "model": model or self._model,
             "instructions": system_prompt or "",
+            "text": self._build_structured_text_format(),
             "input": [
                 {
                     "role": "user",
@@ -434,6 +502,65 @@ class OpenAIFileSearchClient:
             payload=base_payload,
         )
         return self._client.responses.create(**base_payload)
+
+    @staticmethod
+    def _build_structured_text_format() -> dict[str, Any]:
+        schema = {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string"},
+                "followup_options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["answer", "followup_options"],
+            "additionalProperties": False,
+        }
+        return {
+            "format": {
+                "type": "json_schema",
+                "name": "ask_structured_output",
+                "strict": True,
+                "schema": schema,
+            }
+        }
+
+    def _parse_structured_output(
+        self,
+        output_text: str,
+        *,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> AskStructuredOutput:
+        try:
+            payload = json.loads(output_text)
+            parsed = AskStructuredOutput.model_validate(payload)
+        except Exception as exc:
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: invalid_structured_output={output_text}")
+            raise RuntimeError("Structured output parse failed") from exc
+
+        return AskStructuredOutput(
+            answer=parsed.answer.strip(),
+            followup_options=self._normalize_followup_options(parsed.followup_options),
+        )
+
+    @staticmethod
+    def _normalize_followup_options(values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            candidate = value.strip()
+            if not candidate:
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+            if len(normalized) >= 3:
+                break
+        return normalized
 
     def _map_top_matches_to_uploaded_files(
         self,

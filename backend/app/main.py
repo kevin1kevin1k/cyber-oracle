@@ -89,7 +89,7 @@ class AskOpenAIRuntimeError(Exception):
     pass
 
 
-def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str]:
+def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
     manifest_path = Path(settings.openai_manifest_path).resolve()
     try:
         client = OpenAIFileSearchClient(model=settings.openai_ask_model)
@@ -106,6 +106,7 @@ def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str]:
             result = client.run_one_stage_response(
                 question=question,
                 manifest_path=manifest_path,
+                system_prompt=settings.openai_ask_system_prompt,
                 top_k=settings.openai_ask_top_k,
                 model=settings.openai_ask_model,
                 debug=False,
@@ -119,7 +120,7 @@ def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str]:
     if not answer_text:
         raise AskOpenAIRuntimeError("OpenAI response is empty")
     source = "rag" if result.top_matches else "openai"
-    return answer_text, source
+    return answer_text, source, result.followup_options
 
 
 def _to_order_response(order: Order) -> OrderResponse:
@@ -247,22 +248,13 @@ def _find_existing_ask_response(
     return _to_ask_response(db=db, question=question, answer=answer)
 
 
-def _build_followup_contents(question_text: str) -> list[str]:
-    normalized = " ".join(question_text.strip().split())
-    subject = normalized[:40] if normalized else "這個主題"
-    return [
-        f"若聚焦「{subject}」，最關鍵的原因是什麼？",
-        f"延續「{subject}」，下一步最有效的行動是什麼？",
-        f"針對「{subject}」，目前最大的風險與避坑建議是什麼？",
-    ]
-
-
 def _ensure_followups_for_question(
     db: Session,
     *,
     question: Question,
     user_id: UUID,
     request_id: str,
+    followup_contents: list[str],
 ) -> None:
     existing = db.scalars(
         select(Followup)
@@ -273,7 +265,9 @@ def _ensure_followups_for_question(
         return
 
     used_contents = {row.content for row in existing}
-    for content in _build_followup_contents(question.question_text):
+    for content in followup_contents:
+        if len(used_contents) >= FOLLOWUP_OPTIONS_COUNT:
+            break
         if content in used_contents:
             continue
         db.add(
@@ -286,10 +280,6 @@ def _ensure_followups_for_question(
             )
         )
         used_contents.add(content)
-        if len(used_contents) >= FOLLOWUP_OPTIONS_COUNT:
-            break
-
-
 def _execute_ask(
     *,
     db: Session,
@@ -379,7 +369,9 @@ def _execute_ask(
         ) from exc
 
     try:
-        answer_text, source = _generate_answer_from_openai_file_search(question_text)
+        answer_text, source, followup_contents = _generate_answer_from_openai_file_search(
+            question_text
+        )
         question = Question(
             user_id=user_id,
             question_text=question_text,
@@ -406,6 +398,7 @@ def _execute_ask(
             question=question,
             user_id=user_id,
             request_id=request_id,
+            followup_contents=followup_contents,
         )
         db.add(
             CreditTransaction(

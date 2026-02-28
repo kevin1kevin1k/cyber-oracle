@@ -141,7 +141,7 @@ def _count_tx(db_session: Session, user_id: uuid.UUID, action: str, key: str) ->
 def _stub_openai_ask(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.main._generate_answer_from_openai_file_search",
-        lambda _: ("測試回答（stub）", "rag"),
+        lambda _: ("測試回答（stub）", "rag", ["延伸 A", "延伸 B", "延伸 C"]),
     )
 
 
@@ -202,6 +202,41 @@ def test_ask_success_reserve_and_capture(client: TestClient, db_session: Session
     assert len(followups) == 3
 
 
+def test_ask_accepts_less_than_three_followups(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=2)
+    key = "ask-less-followups"
+
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: ("少量延伸測試", "rag", ["延伸 1", "延伸 2"]),
+    )
+
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["content"] for item in payload["followup_options"]] == ["延伸 1", "延伸 2"]
+
+    question = db_session.scalar(
+        select(Question).where(Question.user_id == user_id, Question.idempotency_key == key)
+    )
+    assert question is not None
+    followups = db_session.scalars(
+        select(Followup)
+        .where(Followup.question_id == question.id)
+        .order_by(Followup.created_at.asc(), Followup.id.asc())
+    ).all()
+    assert [item.content for item in followups] == ["延伸 1", "延伸 2"]
+
+
 def test_ask_retry_same_idempotency_key_no_double_charge(
     client: TestClient,
     db_session: Session,
@@ -241,7 +276,7 @@ def test_ask_failure_triggers_refund(
     token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=1)
     key = "ask-failure"
 
-    def _raise(_: str) -> tuple[str, str]:
+    def _raise(_: str) -> tuple[str, str, list[str]]:
         raise AskOpenAIRuntimeError("openai runtime failed")
 
     monkeypatch.setattr("app.main._generate_answer_from_openai_file_search", _raise)
@@ -272,7 +307,7 @@ def test_ask_openai_config_error_triggers_refund(
     token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=1)
     key = "ask-openai-config-error"
 
-    def _raise(_: str) -> tuple[str, str]:
+    def _raise(_: str) -> tuple[str, str, list[str]]:
         raise AskOpenAIConfigError("OPENAI_API_KEY is required")
 
     monkeypatch.setattr("app.main._generate_answer_from_openai_file_search", _raise)

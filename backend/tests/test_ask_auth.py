@@ -147,7 +147,7 @@ def _make_legacy_token_without_jti(email_verified: bool) -> str:
 def _stub_openai_ask(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.main._generate_answer_from_openai_file_search",
-        lambda _: ("測試回答（stub）", "rag"),
+        lambda _: ("測試回答（stub）", "rag", ["延伸 A", "延伸 B", "延伸 C"]),
     )
 
 
