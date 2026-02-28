@@ -51,16 +51,16 @@
   - [x] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
 
 ## P1（高價值 / MVP 完整）
-- [ ] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）
+- [x] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）
   - [x] Backend：建立 OpenAI file search 向量庫建置腳本與共用查詢 library（`backend/cyber oracle`）
   - [x] Backend：建立 builder 寫入 rag_files + uploader 寫入 input_files 的 JSON manifest（path -> file_id）持久化
   - [x] Backend：完成雙階段 Responses 流程（first stage `tools.file_search` top3 + VS->UF map + second request 最終輸出）
   - [x] Backend：將 `POST /api/v1/ask` 串接實際 file_search 檢索與回答（非 mock）
   - [x] Backend：新增 one-stage 流程（直接回傳 first stage 文字結果）並與 two-stage 共用可切換介面
-  - [ ] Backend：導入 OpenAI structured output（class/schema）統一回答欄位
+  - [x] Backend：導入 OpenAI structured output（class/schema）統一回答欄位
   - [x] Frontend：改為只顯示回答內容與延伸問題，不顯示來源/request id/三層比例
-  - [ ] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
-  - [ ] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
+  - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
+  - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
 - [x] 前端導覽一致化：提問/錢包/歷史頁共用頂部 nav bar
   - [x] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
@@ -117,7 +117,7 @@
 - [x] 餘額不足時提問失敗且不產生 capture
 - [x] 提問成功流程：reserve -> capture
 - [x] 提問失敗流程：reserve -> refund
-- [ ] `ask` 回傳需符合 structured output schema（欄位完整且型別正確）
+- [x] `ask` 回傳需符合 structured output schema（欄位完整且型別正確）
 - [x] 前台不顯示內部演算法名稱/規則編號/來源/request id/三層比例
 - [x] 回答尾端 0..3 個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
 - [x] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
