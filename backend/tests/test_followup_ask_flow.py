@@ -92,6 +92,14 @@ def client(db_session: Session):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_openai_ask(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: ("測試回答（stub）", "rag"),
+    )
+
+
 def _create_verified_user_with_wallet(db_session: Session, balance: int) -> tuple[User, str]:
     user = User(
         id=uuid.uuid4(),
@@ -191,7 +199,7 @@ def test_followup_ask_success_marks_used_and_deducts_credit(
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source"] == "mock"
+    assert payload["source"] == "rag"
     assert len(payload["followup_options"]) == 3
 
     db_followup = db_session.scalar(select(Followup).where(Followup.id == followup.id))

@@ -55,7 +55,7 @@
   - [x] Backend：建立 OpenAI file search 向量庫建置腳本與共用查詢 library（`backend/cyber oracle`）
   - [x] Backend：建立 builder 寫入 rag_files + uploader 寫入 input_files 的 JSON manifest（path -> file_id）持久化
   - [x] Backend：完成雙階段 Responses 流程（first stage `tools.file_search` top3 + VS->UF map + second request 最終輸出）
-  - [ ] Backend：將 `POST /api/v1/ask` 串接實際 file_search 檢索與回答（非 mock）
+  - [x] Backend：將 `POST /api/v1/ask` 串接實際 file_search 檢索與回答（非 mock）
   - [ ] Backend：回傳固定三層百分比且總和為 100（可驗證規則）
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
 - [x] 前端導覽一致化：提問/錢包/歷史頁共用頂部 nav bar

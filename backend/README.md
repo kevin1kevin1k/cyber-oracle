@@ -43,10 +43,15 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
 - `POST /api/v1/ask`
   - requires authenticated + verified email
   - supports `Idempotency-Key` request header
+  - runtime uses OpenAI two-stage file search flow (`openai_integration/openai_file_search_lib.py`)
+  - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
   - response now includes `followup_options` (3 distinct followup buttons)
   - credit flow:
     - success: `reserve -> persist question/answer -> capture`
     - processing failure: `reserve -> refund`
+  - integration errors:
+    - `500 OPENAI_NOT_CONFIGURED`: missing/invalid OpenAI settings or manifest
+    - `502 OPENAI_ASK_FAILED`: upstream OpenAI request failed or returned empty output
   - returns `402` with `INSUFFICIENT_CREDIT` when balance is not enough
   - duplicate retries with same `Idempotency-Key` replay previous successful response and do not double-charge
 

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import jwt
@@ -58,6 +59,7 @@ from app.security import (
     verification_token_expiry,
     verify_password,
 )
+from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
 app = FastAPI(title="ELIN Backend", version="0.1.0")
 
@@ -79,8 +81,36 @@ ASK_HISTORY_PREVIEW_MAX_LENGTH = 160
 FOLLOWUP_OPTIONS_COUNT = 3
 
 
-def _build_mock_answer_text(question: str) -> str:
-    return f"（Mock）已收到你的問題：{question}。目前為開發環境回覆。"
+class AskOpenAIConfigError(Exception):
+    pass
+
+
+class AskOpenAIRuntimeError(Exception):
+    pass
+
+
+def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str]:
+    manifest_path = Path(settings.openai_manifest_path).resolve()
+    try:
+        client = OpenAIFileSearchClient(model=settings.openai_ask_model)
+        result = client.run_two_stage_response(
+            question=question,
+            manifest_path=manifest_path,
+            system_prompt=settings.openai_ask_system_prompt,
+            top_k=settings.openai_ask_top_k,
+            model=settings.openai_ask_model,
+            debug=False,
+        )
+    except ValueError as exc:
+        raise AskOpenAIConfigError(str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - handled as integration boundary
+        raise AskOpenAIRuntimeError("OpenAI ask request failed") from exc
+
+    answer_text = (result.response_text or "").strip()
+    if not answer_text:
+        raise AskOpenAIRuntimeError("OpenAI response is empty")
+    source = "rag" if result.top_matches else "openai"
+    return answer_text, source
 
 
 def _to_order_response(order: Order) -> OrderResponse:
@@ -340,13 +370,14 @@ def _execute_ask(
         ) from exc
 
     try:
+        answer_text, source = _generate_answer_from_openai_file_search(question_text)
         question = Question(
             user_id=user_id,
             question_text=question_text,
             lang=lang,
             mode=mode,
             status="succeeded",
-            source="mock",
+            source=source,
             request_id=request_id,
             idempotency_key=idempotency_key,
         )
@@ -355,7 +386,7 @@ def _execute_ask(
 
         answer = Answer(
             question_id=question.id,
-            answer_text=_build_mock_answer_text(question_text),
+            answer_text=answer_text,
             main_pct=70,
             secondary_pct=20,
             reference_pct=10,
@@ -379,6 +410,30 @@ def _execute_ask(
             )
         )
         db.commit()
+    except AskOpenAIConfigError as exc:
+        db.rollback()
+        _refund_reserved_credit(
+            db=db,
+            user_id=user_id,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "OPENAI_NOT_CONFIGURED", "message": str(exc)},
+        ) from exc
+    except AskOpenAIRuntimeError as exc:
+        db.rollback()
+        _refund_reserved_credit(
+            db=db,
+            user_id=user_id,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "OPENAI_ASK_FAILED", "message": str(exc)},
+        ) from exc
     except Exception as exc:
         db.rollback()
         _refund_reserved_credit(
@@ -1063,6 +1118,8 @@ def simulate_order_paid(
         401: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
         402: {"model": ErrorResponse},
+        500: {"model": ApiErrorDetail},
+        502: {"model": ApiErrorDetail},
     },
 )
 def ask(

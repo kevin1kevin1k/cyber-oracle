@@ -143,6 +143,14 @@ def _make_legacy_token_without_jti(email_verified: bool) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+@pytest.fixture(autouse=True)
+def _stub_openai_ask(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: ("測試回答（stub）", "rag"),
+    )
+
+
 def test_ask_unauthorized_returns_401(client: TestClient) -> None:
     response = client.post(
         "/api/v1/ask",
@@ -187,6 +195,6 @@ def test_ask_verified_email_returns_200(client: TestClient, db_session: Session)
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source"] == "mock"
+    assert payload["source"] == "rag"
     assert len(payload["layer_percentages"]) == 3
     assert len(payload["followup_options"]) == 3

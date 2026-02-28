@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.db import Base, get_db
-from app.main import app
+from app.main import AskOpenAIConfigError, AskOpenAIRuntimeError, app
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
@@ -137,6 +137,14 @@ def _count_tx(db_session: Session, user_id: uuid.UUID, action: str, key: str) ->
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_openai_ask(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: ("測試回答（stub）", "rag"),
+    )
+
+
 def test_ask_insufficient_credit_returns_402(client: TestClient, db_session: Session) -> None:
     token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=0)
     key = "ask-insufficient"
@@ -167,7 +175,7 @@ def test_ask_success_reserve_and_capture(client: TestClient, db_session: Session
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source"] == "mock"
+    assert payload["source"] == "rag"
     assert len(payload["followup_options"]) == 3
     assert len({option["content"] for option in payload["followup_options"]}) == 3
 
@@ -233,10 +241,10 @@ def test_ask_failure_triggers_refund(
     token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=1)
     key = "ask-failure"
 
-    def _raise(_: str) -> str:
-        raise RuntimeError("mock generation failed")
+    def _raise(_: str) -> tuple[str, str]:
+        raise AskOpenAIRuntimeError("openai runtime failed")
 
-    monkeypatch.setattr("app.main._build_mock_answer_text", _raise)
+    monkeypatch.setattr("app.main._generate_answer_from_openai_file_search", _raise)
 
     response = client.post(
         "/api/v1/ask",
@@ -244,8 +252,39 @@ def test_ask_failure_triggers_refund(
         json={"question": "會失敗", "lang": "zh", "mode": "analysis"},
     )
 
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "OPENAI_ASK_FAILED"
+
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    assert wallet is not None
+    assert wallet.balance == 1
+
+    assert _count_tx(db_session, user_id, "reserve", key) == 1
+    assert _count_tx(db_session, user_id, "capture", key) == 0
+    assert _count_tx(db_session, user_id, "refund", key) == 1
+
+
+def test_ask_openai_config_error_triggers_refund(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=1)
+    key = "ask-openai-config-error"
+
+    def _raise(_: str) -> tuple[str, str]:
+        raise AskOpenAIConfigError("OPENAI_API_KEY is required")
+
+    monkeypatch.setattr("app.main._generate_answer_from_openai_file_search", _raise)
+
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={"question": "設定缺失", "lang": "zh", "mode": "analysis"},
+    )
+
     assert response.status_code == 500
-    assert response.json()["detail"]["code"] == "ASK_PROCESSING_FAILED"
+    assert response.json()["detail"]["code"] == "OPENAI_NOT_CONFIGURED"
 
     wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
     assert wallet is not None
