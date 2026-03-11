@@ -7,7 +7,6 @@ import { apiRequest } from "@/lib/api";
 
 type ForgotPasswordResponse = {
   status: "accepted";
-  reset_token?: string | null;
 };
 
 export default function ForgotPasswordPage() {
@@ -34,8 +33,6 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  const resetToken = result?.reset_token ?? "";
-
   return (
     <main>
       <h1>忘記密碼</h1>
@@ -57,19 +54,6 @@ export default function ForgotPasswordPage() {
         {result && (
           <div className="answer">
             <p>若帳號存在，請查收 Email 內的重設密碼連結。</p>
-            {resetToken && (
-              <>
-                <p>
-                  <strong>開發環境重設 token（僅 dev/test）：</strong>
-                </p>
-                <p className="token-box">{resetToken}</p>
-                <p>
-                  <Link href={`/reset-password?token=${encodeURIComponent(resetToken)}`}>
-                    帶入 token 前往重設密碼
-                  </Link>
-                </p>
-              </>
-            )}
           </div>
         )}
         <p className="helper-links">

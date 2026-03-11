@@ -4,13 +4,14 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { INVALID_OR_EXPIRED_LINK_MESSAGE } from "@/lib/auth-messages";
 
 type VerifyEmailResponse = {
   status: "verified";
 };
 
 export default function VerifyEmailPage() {
-  const [token, setToken] = useState("");
+  const [tokenFromQuery, setTokenFromQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -18,7 +19,7 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     const tokenFromQuery = new URLSearchParams(window.location.search).get("token");
     if (tokenFromQuery) {
-      setToken(tokenFromQuery);
+      setTokenFromQuery(tokenFromQuery);
     }
   }, []);
 
@@ -30,12 +31,12 @@ export default function VerifyEmailPage() {
     try {
       await apiRequest<VerifyEmailResponse>("/api/v1/auth/verify-email", {
         method: "POST",
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token: tokenFromQuery }),
       });
       setSuccess(true);
     } catch (err) {
       if (err instanceof ApiError && err.code === "INVALID_OR_EXPIRED_TOKEN") {
-        setError("驗證 token 無效或已過期。");
+        setError(INVALID_OR_EXPIRED_LINK_MESSAGE);
       } else {
         setError(err instanceof Error ? err.message : "驗證失敗");
       }
@@ -48,18 +49,21 @@ export default function VerifyEmailPage() {
     <main>
       <h1>Email 驗證</h1>
       <section className="card">
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="token">驗證 Token</label>
-          <textarea
-            id="token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="請貼上 verification token"
-          />
-          <button type="submit" disabled={loading || !token.trim()}>
-            {loading ? "驗證中..." : "送出驗證"}
-          </button>
-        </form>
+        {tokenFromQuery ? (
+          <form onSubmit={handleSubmit}>
+            <p>已偵測到驗證連結，請送出完成 Email 驗證。</p>
+            <button type="submit" disabled={loading}>
+              {loading ? "驗證中..." : "送出驗證"}
+            </button>
+          </form>
+        ) : (
+          <div className="answer">
+            <p>未偵測到驗證連結，請從 Email 中點擊驗證連結後再試一次。</p>
+            <p>
+              <Link href="/register">返回註冊</Link>
+            </p>
+          </div>
+        )}
         {error && <p className="error">{error}</p>}
         {success && <p className="success">Email 驗證成功，請前往登入。</p>}
         <p className="helper-links">

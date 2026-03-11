@@ -147,13 +147,52 @@ test("forgot -> reset password flow", async ({ page }) => {
   await page.getByRole("button", { name: "送出" }).click();
 
   await expect(page.getByText("若帳號存在，請查收 Email 內的重設密碼連結。")).toBeVisible();
-  await page.getByRole("link", { name: "帶入 token 前往重設密碼" }).click();
-
-  await expect(page).toHaveURL(/\/reset-password\?token=reset-token-xyz/);
+  await expect(page.getByText("開發環境重設 token（僅 dev/test）：")).toHaveCount(0);
+  await page.goto("/reset-password?token=reset-token-xyz");
   await page.getByLabel("新密碼").fill("NewPassword123");
   await page.getByRole("button", { name: "重設密碼" }).click();
   await expect(page.getByText("密碼已重設，請使用新密碼登入。"))
     .toBeVisible();
+});
+
+test("verify and reset pages show guidance when token is missing", async ({ page }) => {
+  await page.goto("/verify-email");
+  await expect(page.getByText("未偵測到驗證連結，請從 Email 中點擊驗證連結後再試一次。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "送出驗證" })).toHaveCount(0);
+
+  await page.goto("/reset-password");
+  await expect(page.getByText("未偵測到重設連結，請從 Email 中點擊重設連結後再試一次。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "重設密碼" })).toHaveCount(0);
+});
+
+test("verify and reset invalid tokens share unified error message", async ({ page }) => {
+  await page.route("**/api/v1/auth/verify-email", async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { code: "INVALID_OR_EXPIRED_TOKEN", message: "Token is invalid or expired" },
+      }),
+    });
+  });
+  await page.route("**/api/v1/auth/reset-password", async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { code: "INVALID_OR_EXPIRED_TOKEN", message: "Token is invalid or expired" },
+      }),
+    });
+  });
+
+  await page.goto("/verify-email?token=bad-token");
+  await page.getByRole("button", { name: "送出驗證" }).click();
+  await expect(page.getByText("連結無效或已過期，請重新申請。")).toBeVisible();
+
+  await page.goto("/reset-password?token=bad-token");
+  await page.getByLabel("新密碼").fill("NewPassword123");
+  await page.getByRole("button", { name: "重設密碼" }).click();
+  await expect(page.getByText("連結無效或已過期，請重新申請。")).toBeVisible();
 });
 
 test("unverified login enters home but ask is disabled", async ({ page }) => {
