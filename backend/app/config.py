@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     openai_ask_system_prompt: str = (
         "你是 ELIN 神域引擎問答助手，請根據提供檔案內容給出清楚可行的回答。"
     )
+    messenger_enabled: bool = False
+    meta_verify_token: str | None = None
+    meta_page_access_token: str | None = None
+    meta_app_secret: str | None = None
+    messenger_verify_signature: bool = False
+    messenger_outbound_mode: Literal["noop", "meta_graph"] = "noop"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
@@ -33,6 +39,18 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET must not use development default when APP_ENV=prod")
             if len(jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must be at least 32 characters when APP_ENV=prod")
+        return self
+
+    @model_validator(mode="after")
+    def validate_messenger_settings(self) -> "Settings":
+        if self.messenger_enabled and not (self.meta_verify_token or "").strip():
+            raise ValueError("META_VERIFY_TOKEN is required when MESSENGER_ENABLED=true")
+
+        if self.messenger_outbound_mode == "meta_graph":
+            if not (self.meta_page_access_token or "").strip():
+                raise ValueError(
+                    "META_PAGE_ACCESS_TOKEN is required when MESSENGER_OUTBOUND_MODE=meta_graph"
+                )
         return self
 
     @property

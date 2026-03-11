@@ -2,6 +2,7 @@ from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
+from app.models.messenger_identity import MessengerIdentity
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -12,6 +13,7 @@ __all__ = [
     "CreditTransaction",
     "CreditWallet",
     "Followup",
+    "MessengerIdentity",
     "Order",
     "Question",
     "SessionRecord",

@@ -115,12 +115,39 @@ Environment variables:
 - `JWT_SECRET`: HS256 signing secret for access token
 - `JWT_ALGORITHM`: JWT algorithm (default `HS256`)
 - `JWT_EXP_MINUTES`: access token expiration in minutes (default `60`)
+- `MESSENGER_ENABLED`: enable Messenger webhook routes (`false` by default)
+- `META_VERIFY_TOKEN`: webhook verify token (required when `MESSENGER_ENABLED=true`)
+- `META_PAGE_ACCESS_TOKEN`: required when `MESSENGER_OUTBOUND_MODE=meta_graph`
+- `META_APP_SECRET`: used for `X-Hub-Signature-256` validation
+- `MESSENGER_VERIFY_SIGNATURE`: enable webhook signature validation (`false` by default)
+- `MESSENGER_OUTBOUND_MODE`: outbound client mode (`noop` or `meta_graph`)
 
 Production security baseline:
 - when `APP_ENV=prod`, backend startup validates `JWT_SECRET` and fails fast if:
   - value is empty
   - value equals development default (`dev-only-change-me-please-replace-32+`)
   - value length is shorter than 32 characters
+
+## Messenger Integration (Skeleton)
+This repository now includes a non-invasive Messenger channel adapter skeleton under `app/messenger/`.
+
+Endpoints:
+- `GET /api/v1/messenger/webhook`
+  - Meta webhook verification endpoint (`hub.mode`, `hub.verify_token`, `hub.challenge`)
+  - returns challenge in `text/plain` when verify token matches
+- `POST /api/v1/messenger/webhook`
+  - parses basic Messenger events (`message`, `quick reply`, `postback`)
+  - resolves/creates `messenger_identities` mapping
+  - dispatches outgoing payloads through pluggable client abstraction (`noop` by default)
+
+Schema/Model:
+- `messenger_identities` table stores `platform/psid/page_id` and optional `user_id` link.
+- Unlinked state is supported (`user_id=NULL`, `status=unlinked`) for pre-linking interactions.
+
+Current status (explicitly non-production-complete):
+- implemented: webhook adapter routes, identity mapping table, service/client/security skeleton, tests
+- not implemented yet: production Graph send API, full webhook replay protection, policy/compliance hardening
+- not implemented yet: Messenger WebView account linking and Messenger in-flow Stripe checkout
 
 ## Migrations (Alembic)
 Run on host:

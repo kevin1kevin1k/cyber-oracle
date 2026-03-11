@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.auth import AuthContext, require_authenticated, require_verified_email
 from app.config import settings
 from app.db import get_db
+from app.messenger.routes import router as messenger_router
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
@@ -70,6 +71,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(messenger_router, prefix="/api/v1/messenger", tags=["messenger"])
 
 CREDIT_COST_PER_ASK = 1
 ORDER_AMOUNT_TWD_BY_PACKAGE_SIZE = {

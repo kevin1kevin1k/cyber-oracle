@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.6` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.8` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -109,6 +109,25 @@
   - [x] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
     - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
 
+## Messenger / Channel Adapter（MVP 主流程）
+- [x] 建立 Messenger backend adapter 基礎骨架（routes/schemas/service/client/security/constants）
+- [x] 新增 webhook routes（GET verify + POST event ingest）
+- [x] 新增 `messenger_identities` 資料模型與 migration（支援 `user_id` nullable）
+- [x] 建立 service adapter 介面（event->command、identity resolve/create、outgoing message build）
+- [x] 建立 outbound client abstraction（`noop` / `meta_graph` placeholder）
+- [x] 新增 Messenger config/env 設定與驗證（`MESSENGER_ENABLED` 等）
+- [x] 新增 webhook 與 identity 基礎測試（verify、message parse、error branches）
+- [x] 將 Messenger skeleton 邊界與未完成項目回填至 `docs/PRD.md` 與本文件
+- [ ] 完成 Messenger Send API 實作（非 stub），支援文字與 quick replies/buttons
+- [ ] 完成 Messenger inbound ask flow（message -> ask domain -> response text/followups）
+- [ ] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
+- [ ] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
+- [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
+- [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
+- [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
+- [ ] 完成 webhook signature hardening（replay protection、failure audit）
+- [ ] 完成 Meta 平台政策與合規要求檢查清單落地
+
 ## Test Cases（必測）
 - [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
 - [x] `register` 成功建立 user，重複 email 回傳 409
@@ -128,9 +147,15 @@
 - [ ] 每次回答尾端依回傳顯示 0..3 個延伸問題按鈕（若超過 1 個則互異）
 - [x] 點擊任一延伸問題按鈕需建立同主題子問答並扣 1 點（失敗回補）
 - [x] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答
+- [x] `GET /api/v1/messenger/webhook` challenge verify 成功/失敗分支
+- [x] `POST /api/v1/messenger/webhook` 可解析 message/postback/quick reply
+- [ ] 使用者可從 Messenger 直接發問並收到答案回覆（不需切到獨立 web 問答頁）
+- [ ] 點數不足時 Messenger 內可被導向 WebView 購點
+- [ ] WebView 付款成功後可在 Messenger 收到購點成功通知且餘額生效
+- [ ] 未綁定與已綁定使用者的行為差異符合產品定義
 
 ## 驗收定義
-- [ ] 通過 PRD v0.6 第 9 節驗收標準
+- [ ] 通過 PRD v0.8 第 9 節驗收標準
 - [ ] 每個完成項目附測試證據（命令、輸出、截圖或 API 回應）
 - [ ] 文件與實作一致（README / API schema / UI 文案同步）
   - [x] 更新 `backend/README.md`（API、錯誤碼、env）
@@ -163,3 +188,9 @@
 - [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL）
 - [ ] Observability：auth/交易事件新增 request_id 與審計記錄
 - [ ] Runbook：新增「發生 UndefinedColumn / 版本不一致」標準排障步驟
+
+### Messenger-first 核心能力（高優先）
+- [ ] Messenger：定義並落地 Send API 錯誤處理與重試策略（含 dead-letter / 補償）
+- [ ] Messenger：補 webhook security（signature verify + replay 防護）並加入監控告警
+- [ ] Messenger：完成 WebView 開關/返回 UX（取消支付、失敗重試、成功回流）
+- [ ] Messenger：完成 identity linking 的風險控管（重複綁定、帳號接管防護）
