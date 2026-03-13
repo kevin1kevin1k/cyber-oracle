@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -39,6 +40,13 @@ def _is_openai_runtime_error(exc: Exception) -> bool:
 class AskExecutionResult:
     response: AskResponse
     question_id: UUID
+
+
+@dataclass
+class FollowupExecutionResult:
+    response: AskResponse
+    question_id: UUID
+    followup_id: UUID
 
 
 def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
@@ -359,4 +367,79 @@ def execute_ask_for_user(
             followup_limit=followup_limit,
         ),
         question_id=question.id,
+    )
+
+
+def execute_followup_for_user(
+    *,
+    db: Session,
+    user_id: UUID,
+    followup_id: UUID,
+    credit_cost_per_ask: int = 1,
+    followup_limit: int = 3,
+    answer_generator=None,
+) -> FollowupExecutionResult:
+    followup = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
+    if followup is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "FOLLOWUP_NOT_FOUND", "message": "Followup not found"},
+        )
+    if followup.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FOLLOWUP_OWNER_MISMATCH",
+                "message": "Followup does not belong to user",
+            },
+        )
+    if followup.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "FOLLOWUP_ALREADY_USED", "message": "Followup has already been used"},
+        )
+
+    parent_question = db.scalar(select(Question).where(Question.id == followup.question_id))
+    if parent_question is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PARENT_QUESTION_NOT_FOUND", "message": "Parent question not found"},
+        )
+
+    followup.status = "used"
+    followup.used_at = datetime.now(UTC)
+    db.add(followup)
+    db.commit()
+
+    try:
+        ask_result = execute_ask_for_user(
+            db=db,
+            user_id=user_id,
+            question_text=followup.content,
+            lang=parent_question.lang,
+            mode=parent_question.mode,
+            idempotency_key=f"followup:{followup.id}",
+            credit_cost_per_ask=credit_cost_per_ask,
+            followup_limit=followup_limit,
+            answer_generator=answer_generator,
+        )
+    except HTTPException as exc:
+        restore = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
+        if restore is not None and restore.status == "used" and restore.used_question_id is None:
+            restore.status = "pending"
+            restore.used_at = None
+            db.add(restore)
+            db.commit()
+        raise exc
+
+    tracked = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
+    if tracked is not None:
+        tracked.used_question_id = ask_result.question_id
+        db.add(tracked)
+        db.commit()
+
+    return FollowupExecutionResult(
+        response=ask_result.response,
+        question_id=ask_result.question_id,
+        followup_id=followup_id,
     )

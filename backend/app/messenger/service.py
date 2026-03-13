@@ -1,14 +1,18 @@
 import hashlib
 from datetime import UTC, datetime
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ask_service import execute_ask_for_user
+from app.ask_service import execute_ask_for_user, execute_followup_for_user
 from app.messenger.constants import (
     DEFAULT_FOLLOWUP_PROMPT_TEXT,
     DEFAULT_MESSENGER_ASK_FAILED_REPLY,
+    DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
+    DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
+    DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_TOPUP_REPLY,
     DEFAULT_UNLINKED_REPLY,
     DEFAULT_UNSUPPORTED_EVENT_REPLY,
@@ -31,6 +35,7 @@ from app.models.messenger_identity import MessengerIdentity
 ASK_DEFAULT_LANG = "zh"
 ASK_DEFAULT_MODE = "analysis"
 ASK_IDEMPOTENCY_PREFIX = "msg"
+FOLLOWUP_PAYLOAD_PREFIX = "FOLLOWUP:"
 
 
 class MessengerEventService:
@@ -108,10 +113,58 @@ class MessengerEventService:
         command: MessengerIncomingCommand,
         identity: MessengerIdentity,
     ) -> list[MessengerOutgoingMessage]:
-        if self.maybe_resolve_internal_user(identity=identity) is None:
+        user_id = self.maybe_resolve_internal_user(identity=identity)
+        if user_id is None:
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_UNLINKED_REPLY)]
-        payload = command.quick_reply_payload or ""
-        return [MessengerOutgoingMessage(kind="text", text=f"已收到 quick reply: {payload}")]
+
+        followup_id = self._parse_followup_payload(command.quick_reply_payload)
+        if followup_id is None:
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
+                )
+            ]
+
+        try:
+            followup_result = execute_followup_for_user(
+                db=self._db,
+                user_id=user_id,
+                followup_id=followup_id,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 402:
+                return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_TOPUP_REPLY)]
+            if exc.status_code in {403, 404, 409}:
+                return [
+                    MessengerOutgoingMessage(
+                        kind="text",
+                        text=DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
+                    )
+                ]
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
+                )
+            ]
+
+        outgoing = [MessengerOutgoingMessage(kind="text", text=followup_result.response.answer)]
+        if followup_result.response.followup_options:
+            outgoing.append(
+                MessengerOutgoingMessage(
+                    kind="quick_replies",
+                    text=DEFAULT_FOLLOWUP_PROMPT_TEXT,
+                    quick_replies=[
+                        MessengerQuickReplyOption(
+                            title=option.content[:20],
+                            payload=f"{FOLLOWUP_PAYLOAD_PREFIX}{option.id}",
+                        )
+                        for option in followup_result.response.followup_options
+                    ],
+                )
+            )
+        return outgoing
 
     def handle_postback(
         self,
@@ -213,3 +266,17 @@ class MessengerEventService:
             seed = datetime.now(UTC).isoformat()
         digest = hashlib.sha256(f"{command.psid}:{seed}".encode()).hexdigest()[:40]
         return f"{ASK_IDEMPOTENCY_PREFIX}:{digest}"
+
+    def _parse_followup_payload(self, payload: str | None) -> UUID | None:
+        if payload is None:
+            return None
+        normalized = payload.strip()
+        if not normalized.startswith(FOLLOWUP_PAYLOAD_PREFIX):
+            return None
+        raw_followup_id = normalized.removeprefix(FOLLOWUP_PAYLOAD_PREFIX).strip()
+        if not raw_followup_id:
+            return None
+        try:
+            return UUID(raw_followup_id)
+        except ValueError:
+            return None

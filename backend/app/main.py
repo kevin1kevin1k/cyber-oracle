@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.ask_service import execute_ask_for_user
+from app.ask_service import execute_ask_for_user, execute_followup_for_user
 from app.auth import AuthContext, require_authenticated, require_verified_email
 from app.config import settings
 from app.db import get_db
@@ -1173,63 +1173,12 @@ def ask_followup(
     auth_context: AuthContext = Depends(require_verified_email),
     db: Session = Depends(get_db),
 ) -> AskResponse:
-    followup = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
-    if followup is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "FOLLOWUP_NOT_FOUND", "message": "Followup not found"},
-        )
-    if followup.user_id != auth_context.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "FOLLOWUP_OWNER_MISMATCH",
-                "message": "Followup does not belong to user",
-            },
-        )
-    if followup.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "FOLLOWUP_ALREADY_USED", "message": "Followup has already been used"},
-        )
-
-    parent_question = db.scalar(select(Question).where(Question.id == followup.question_id))
-    if parent_question is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "PARENT_QUESTION_NOT_FOUND", "message": "Parent question not found"},
-        )
-
-    followup.status = "used"
-    followup.used_at = datetime.now(UTC)
-    db.add(followup)
-    db.commit()
-
-    try:
-        ask_result = execute_ask_for_user(
-            db=db,
-            user_id=auth_context.user_id,
-            question_text=followup.content,
-            lang=parent_question.lang,
-            mode=parent_question.mode,
-            idempotency_key=f"followup:{followup.id}",
-            credit_cost_per_ask=CREDIT_COST_PER_ASK,
-            followup_limit=FOLLOWUP_OPTIONS_COUNT,
-            answer_generator=_generate_answer_from_openai_file_search,
-        )
-    except HTTPException as exc:
-        restore = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
-        if restore is not None and restore.status == "used" and restore.used_question_id is None:
-            restore.status = "pending"
-            restore.used_at = None
-            db.add(restore)
-            db.commit()
-        raise exc
-
-    tracked = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
-    if tracked is not None:
-        tracked.used_question_id = ask_result.question_id
-        db.add(tracked)
-        db.commit()
-
+    ask_result = execute_followup_for_user(
+        db=db,
+        user_id=auth_context.user_id,
+        followup_id=followup_id,
+        credit_cost_per_ask=CREDIT_COST_PER_ASK,
+        followup_limit=FOLLOWUP_OPTIONS_COUNT,
+        answer_generator=_generate_answer_from_openai_file_search,
+    )
     return ask_result.response

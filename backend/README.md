@@ -139,7 +139,7 @@ Endpoints:
   - parses basic Messenger events (`message`, `quick reply`, `postback`)
   - resolves/creates `messenger_identities` mapping
   - for linked identities, text messages now execute the existing ask credit flow (`reserve -> capture/refund`)
-  - maps ask followups into Messenger quick replies payloads
+  - maps ask followups into Messenger quick replies payloads, and quick reply clicks now reuse the existing followup ask flow
   - dispatches outgoing payloads through pluggable client abstraction (`noop` by default)
 
 Schema/Model:
@@ -147,7 +147,7 @@ Schema/Model:
 - Unlinked state is supported (`user_id=NULL`, `status=unlinked`) for pre-linking interactions.
 
 Current status (explicitly non-production-complete):
-- implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, inbound ask flow reuse, tests
+  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, inbound ask flow reuse, quick reply followup reuse, tests
 - not implemented yet: production Graph send API, full webhook replay protection, policy/compliance hardening
 - not implemented yet: Messenger WebView account linking and Messenger in-flow Stripe checkout
 
