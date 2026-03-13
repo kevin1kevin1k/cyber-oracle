@@ -47,6 +47,7 @@ class MessengerIncomingCommand(BaseModel):
     psid: str
     page_id: str | None
     text: str | None = None
+    message_mid: str | None = None
     postback_payload: str | None = None
     quick_reply_payload: str | None = None
     occurred_at: datetime | None = None

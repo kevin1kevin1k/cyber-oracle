@@ -1,9 +1,15 @@
+import hashlib
 from datetime import UTC, datetime
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ask_service import execute_ask_for_user
 from app.messenger.constants import (
+    DEFAULT_FOLLOWUP_PROMPT_TEXT,
+    DEFAULT_MESSENGER_ASK_FAILED_REPLY,
+    DEFAULT_MESSENGER_TOPUP_REPLY,
     DEFAULT_UNLINKED_REPLY,
     DEFAULT_UNSUPPORTED_EVENT_REPLY,
     EVENT_TYPE_MESSAGE,
@@ -17,9 +23,14 @@ from app.messenger.constants import (
 from app.messenger.schemas import (
     MessengerIncomingCommand,
     MessengerOutgoingMessage,
+    MessengerQuickReplyOption,
     MessengerWebhookMessagingEvent,
 )
 from app.models.messenger_identity import MessengerIdentity
+
+ASK_DEFAULT_LANG = "zh"
+ASK_DEFAULT_MODE = "analysis"
+ASK_IDEMPOTENCY_PREFIX = "msg"
 
 
 class MessengerEventService:
@@ -51,15 +62,45 @@ class MessengerEventService:
         command: MessengerIncomingCommand,
         identity: MessengerIdentity,
     ) -> list[MessengerOutgoingMessage]:
-        _ = command
-        if self.maybe_resolve_internal_user(identity=identity) is None:
+        user_id = self.maybe_resolve_internal_user(identity=identity)
+        if user_id is None:
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_UNLINKED_REPLY)]
-        return [
-            MessengerOutgoingMessage(
-                kind="text",
-                text="已收到你的問題，未來將在此接上既有 ask domain service。",
+
+        question_text = (command.text or "").strip()
+        if not question_text:
+            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_UNSUPPORTED_EVENT_REPLY)]
+
+        idempotency_key = self._build_event_idempotency_key(command=command)
+        try:
+            ask_result = execute_ask_for_user(
+                db=self._db,
+                user_id=user_id,
+                question_text=question_text,
+                lang=ASK_DEFAULT_LANG,
+                mode=ASK_DEFAULT_MODE,
+                idempotency_key=idempotency_key,
             )
-        ]
+        except HTTPException as exc:
+            if exc.status_code == 402:
+                return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_TOPUP_REPLY)]
+            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
+
+        outgoing = [MessengerOutgoingMessage(kind="text", text=ask_result.response.answer)]
+        if ask_result.response.followup_options:
+            outgoing.append(
+                MessengerOutgoingMessage(
+                    kind="quick_replies",
+                    text=DEFAULT_FOLLOWUP_PROMPT_TEXT,
+                    quick_replies=[
+                        MessengerQuickReplyOption(
+                            title=option.content[:20],
+                            payload=f"FOLLOWUP:{option.id}",
+                        )
+                        for option in ask_result.response.followup_options
+                    ],
+                )
+            )
+        return outgoing
 
     def handle_quick_reply(
         self,
@@ -143,6 +184,7 @@ class MessengerEventService:
                 psid=sender_id,
                 page_id=page_id,
                 text=event.message.text,
+                message_mid=event.message.mid,
                 quick_reply_payload=quick_reply_payload,
                 occurred_at=occurred_at,
             )
@@ -162,3 +204,12 @@ class MessengerEventService:
             page_id=page_id,
             occurred_at=occurred_at,
         )
+
+    def _build_event_idempotency_key(self, *, command: MessengerIncomingCommand) -> str:
+        seed = command.message_mid or ""
+        if not seed and command.occurred_at is not None:
+            seed = str(int(command.occurred_at.timestamp()))
+        if not seed:
+            seed = datetime.now(UTC).isoformat()
+        digest = hashlib.sha256(f"{command.psid}:{seed}".encode()).hexdigest()[:40]
+        return f"{ASK_IDEMPOTENCY_PREFIX}:{digest}"

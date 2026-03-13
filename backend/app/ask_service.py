@@ -1,0 +1,362 @@
+from dataclasses import dataclass
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models.answer import Answer
+from app.models.credit_transaction import CreditTransaction
+from app.models.credit_wallet import CreditWallet
+from app.models.followup import Followup
+from app.models.question import Question
+from app.schemas import AskResponse, FollowupOption, LayerPercentage
+from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
+
+
+class AskOpenAIConfigError(Exception):
+    pass
+
+
+class AskOpenAIRuntimeError(Exception):
+    pass
+
+
+def _is_openai_config_error(exc: Exception) -> bool:
+    return isinstance(exc, AskOpenAIConfigError) or exc.__class__.__name__ == "AskOpenAIConfigError"
+
+
+def _is_openai_runtime_error(exc: Exception) -> bool:
+    return isinstance(exc, AskOpenAIRuntimeError) or (
+        exc.__class__.__name__ == "AskOpenAIRuntimeError"
+    )
+
+
+@dataclass
+class AskExecutionResult:
+    response: AskResponse
+    question_id: UUID
+
+
+def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
+    manifest_path = Path(settings.openai_manifest_path).resolve()
+    try:
+        client = OpenAIFileSearchClient(model=settings.openai_ask_model)
+        if settings.openai_ask_pipeline == "two_stage":
+            result = client.run_two_stage_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=settings.openai_ask_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+        else:
+            result = client.run_one_stage_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=settings.openai_ask_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+    except ValueError as exc:
+        raise AskOpenAIConfigError(str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - integration boundary
+        raise AskOpenAIRuntimeError("OpenAI ask request failed") from exc
+
+    answer_text = (result.response_text or "").strip()
+    if not answer_text:
+        raise AskOpenAIRuntimeError("OpenAI response is empty")
+    source = "rag" if result.top_matches else "openai"
+    return answer_text, source, result.followup_options
+
+
+def _to_ask_response(
+    db: Session,
+    question: Question,
+    answer: Answer,
+    followup_limit: int,
+) -> AskResponse:
+    followup_rows = db.scalars(
+        select(Followup)
+        .where(Followup.question_id == question.id)
+        .order_by(Followup.created_at.asc(), Followup.id.asc())
+        .limit(followup_limit)
+    ).all()
+    return AskResponse(
+        answer=answer.answer_text,
+        source=question.source,
+        layer_percentages=[
+            LayerPercentage(label="主層", pct=answer.main_pct),
+            LayerPercentage(label="輔層", pct=answer.secondary_pct),
+            LayerPercentage(label="參照層", pct=answer.reference_pct),
+        ],
+        request_id=question.request_id,
+        followup_options=[
+            FollowupOption(id=str(row.id), content=row.content) for row in followup_rows
+        ],
+    )
+
+
+def _find_existing_ask_response(
+    db: Session,
+    user_id: UUID,
+    idempotency_key: str,
+    followup_limit: int,
+) -> AskExecutionResult | None:
+    question = db.scalar(
+        select(Question).where(
+            Question.user_id == user_id,
+            Question.idempotency_key == idempotency_key,
+            Question.status == "succeeded",
+        )
+    )
+    if question is None:
+        return None
+
+    answer = db.scalar(select(Answer).where(Answer.question_id == question.id))
+    if answer is None:
+        return None
+
+    return AskExecutionResult(
+        response=_to_ask_response(
+            db=db,
+            question=question,
+            answer=answer,
+            followup_limit=followup_limit,
+        ),
+        question_id=question.id,
+    )
+
+
+def _ensure_followups_for_question(
+    db: Session,
+    *,
+    question: Question,
+    user_id: UUID,
+    request_id: str,
+    followup_contents: list[str],
+    followup_limit: int,
+) -> None:
+    existing = db.scalars(
+        select(Followup)
+        .where(Followup.question_id == question.id)
+        .order_by(Followup.created_at.asc(), Followup.id.asc())
+    ).all()
+    if len(existing) >= followup_limit:
+        return
+
+    used_contents = {row.content for row in existing}
+    for content in followup_contents:
+        if len(used_contents) >= followup_limit:
+            break
+        if content in used_contents:
+            continue
+        db.add(
+            Followup(
+                question_id=question.id,
+                user_id=user_id,
+                content=content,
+                origin_request_id=request_id,
+                status="pending",
+            )
+        )
+        used_contents.add(content)
+
+
+def _refund_reserved_credit(
+    db: Session,
+    *,
+    user_id: UUID,
+    request_id: str,
+    idempotency_key: str,
+    credit_cost_per_ask: int,
+    question_id: UUID | None = None,
+) -> None:
+    refund_exists = db.scalar(
+        select(CreditTransaction.id).where(
+            CreditTransaction.user_id == user_id,
+            CreditTransaction.action == "refund",
+            CreditTransaction.idempotency_key == idempotency_key,
+        )
+    )
+    if refund_exists is not None:
+        db.rollback()
+        return
+
+    wallet = db.scalar(
+        select(CreditWallet).where(CreditWallet.user_id == user_id).with_for_update()
+    )
+    if wallet is None:
+        wallet = CreditWallet(user_id=user_id, balance=0)
+        db.add(wallet)
+        db.flush()
+
+    wallet.balance += credit_cost_per_ask
+    db.add(wallet)
+    db.add(
+        CreditTransaction(
+            user_id=user_id,
+            question_id=question_id,
+            action="refund",
+            amount=credit_cost_per_ask,
+            reason_code="ASK_REFUNDED",
+            idempotency_key=idempotency_key,
+            request_id=request_id,
+        )
+    )
+    db.commit()
+
+
+def execute_ask_for_user(
+    *,
+    db: Session,
+    user_id: UUID,
+    question_text: str,
+    lang: str,
+    mode: str,
+    idempotency_key: str,
+    credit_cost_per_ask: int = 1,
+    followup_limit: int = 3,
+    answer_generator=None,
+) -> AskExecutionResult:
+    generator = answer_generator or _generate_answer_from_openai_file_search
+
+    replayed = _find_existing_ask_response(
+        db=db,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        followup_limit=followup_limit,
+    )
+    if replayed is not None:
+        return replayed
+
+    request_id = str(uuid4())
+
+    wallet = db.scalar(
+        select(CreditWallet)
+        .where(CreditWallet.user_id == user_id)
+        .with_for_update()
+    )
+    if wallet is None:
+        wallet = CreditWallet(user_id=user_id, balance=0)
+        db.add(wallet)
+        db.flush()
+
+    if wallet.balance < credit_cost_per_ask:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={"code": "INSUFFICIENT_CREDIT", "message": "Insufficient credit balance"},
+        )
+
+    wallet.balance -= credit_cost_per_ask
+    db.add(wallet)
+    db.add(
+        CreditTransaction(
+            user_id=user_id,
+            action="reserve",
+            amount=-credit_cost_per_ask,
+            reason_code="ASK_RESERVED",
+            idempotency_key=idempotency_key,
+            request_id=request_id,
+        )
+    )
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        replayed = _find_existing_ask_response(
+            db=db,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            followup_limit=followup_limit,
+        )
+        if replayed is not None:
+            return replayed
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Duplicate request is in progress"},
+        ) from exc
+
+    try:
+        answer_text, source, followup_contents = generator(question_text)
+        question = Question(
+            user_id=user_id,
+            question_text=question_text,
+            lang=lang,
+            mode=mode,
+            status="succeeded",
+            source=source,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        db.add(question)
+        db.flush()
+
+        answer = Answer(
+            question_id=question.id,
+            answer_text=answer_text,
+            main_pct=70,
+            secondary_pct=20,
+            reference_pct=10,
+        )
+        db.add(answer)
+        _ensure_followups_for_question(
+            db,
+            question=question,
+            user_id=user_id,
+            request_id=request_id,
+            followup_contents=followup_contents,
+            followup_limit=followup_limit,
+        )
+        db.add(
+            CreditTransaction(
+                user_id=user_id,
+                question_id=question.id,
+                action="capture",
+                amount=-credit_cost_per_ask,
+                reason_code="ASK_CAPTURED",
+                idempotency_key=idempotency_key,
+                request_id=request_id,
+            )
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        _refund_reserved_credit(
+            db,
+            user_id=user_id,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+            credit_cost_per_ask=credit_cost_per_ask,
+        )
+        if _is_openai_config_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "OPENAI_NOT_CONFIGURED", "message": str(exc)},
+            ) from exc
+        if _is_openai_runtime_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"code": "OPENAI_ASK_FAILED", "message": str(exc)},
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "ASK_PROCESSING_FAILED", "message": "Failed to process ask request"},
+        ) from exc
+
+    return AskExecutionResult(
+        response=_to_ask_response(
+            db=db,
+            question=question,
+            answer=answer,
+            followup_limit=followup_limit,
+        ),
+        question_id=question.id,
+    )

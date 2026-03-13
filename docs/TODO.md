@@ -119,8 +119,8 @@
 - [x] 新增 webhook 與 identity 基礎測試（verify、message parse、error branches）
 - [x] 將 Messenger skeleton 邊界與未完成項目回填至 `docs/PRD.md` 與本文件
 - [ ] 完成 Messenger Send API 實作（非 stub），支援文字與 quick replies/buttons
-- [ ] 完成 Messenger inbound ask flow（message -> ask domain -> response text/followups）
-- [ ] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
+- [x] 完成 Messenger inbound ask flow（message -> ask domain -> response text/followups）
+- [x] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
 - [ ] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
@@ -149,10 +149,10 @@
 - [x] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答
 - [x] `GET /api/v1/messenger/webhook` challenge verify 成功/失敗分支
 - [x] `POST /api/v1/messenger/webhook` 可解析 message/postback/quick reply
-- [ ] 使用者可從 Messenger 直接發問並收到答案回覆（不需切到獨立 web 問答頁）
+- [x] 使用者可從 Messenger 直接發問並收到答案回覆（不需切到獨立 web 問答頁）
 - [ ] 點數不足時 Messenger 內可被導向 WebView 購點
 - [ ] WebView 付款成功後可在 Messenger 收到購點成功通知且餘額生效
-- [ ] 未綁定與已綁定使用者的行為差異符合產品定義
+- [x] 未綁定與已綁定使用者的行為差異符合產品定義
 
 ## 驗收定義
 - [ ] 通過 PRD v0.8 第 9 節驗收標準

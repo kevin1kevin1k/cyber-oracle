@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.ask_service import execute_ask_for_user
 from app.auth import AuthContext, require_authenticated, require_verified_email
 from app.config import settings
 from app.db import get_db
@@ -1141,15 +1142,18 @@ def ask(
         )
     if not normalized_key:
         normalized_key = str(uuid4())
-    response, _ = _execute_ask(
+    ask_result = execute_ask_for_user(
         db=db,
         user_id=auth_context.user_id,
         question_text=payload.question,
         lang=payload.lang,
         mode=payload.mode,
         idempotency_key=normalized_key,
+        credit_cost_per_ask=CREDIT_COST_PER_ASK,
+        followup_limit=FOLLOWUP_OPTIONS_COUNT,
+        answer_generator=_generate_answer_from_openai_file_search,
     )
-    return response
+    return ask_result.response
 
 
 @app.post(
@@ -1202,13 +1206,16 @@ def ask_followup(
     db.commit()
 
     try:
-        response, question_id = _execute_ask(
+        ask_result = execute_ask_for_user(
             db=db,
             user_id=auth_context.user_id,
             question_text=followup.content,
             lang=parent_question.lang,
             mode=parent_question.mode,
             idempotency_key=f"followup:{followup.id}",
+            credit_cost_per_ask=CREDIT_COST_PER_ASK,
+            followup_limit=FOLLOWUP_OPTIONS_COUNT,
+            answer_generator=_generate_answer_from_openai_file_search,
         )
     except HTTPException as exc:
         restore = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
@@ -1221,8 +1228,8 @@ def ask_followup(
 
     tracked = db.scalar(select(Followup).where(Followup.id == followup_id).with_for_update())
     if tracked is not None:
-        tracked.used_question_id = question_id
+        tracked.used_question_id = ask_result.question_id
         db.add(tracked)
         db.commit()
 
-    return response
+    return ask_result.response
