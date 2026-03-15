@@ -22,6 +22,7 @@
 - Messenger WebView Stripe Checkout 流程
 - payment webhook -> 訂單入帳 -> Messenger 回饋閉環
 - production-ready Graph Send API retry / telemetry
+- webhook 快速 ack / background processing（目前 OpenAI ask 與 outbound send 仍在 webhook request 內同步執行）
 - webhook signature replay protection 與完整 hardening
 
 因此：
@@ -626,6 +627,27 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 - `MESSENGER_OUTBOUND_MODE=noop`
 - 沒設定 `META_PAGE_ACCESS_TOKEN`
 - `meta_graph` mode 有設定，但 token 無效或權限不足
+- webhook request 內同步執行 OpenAI ask / followup 太久，Meta 端先 timeout
+
+若 `cloudflared` 或 backend log 出現：
+```text
+Incoming request ended abruptly: context canceled
+```
+而且通常發生在 quick reply / followup 後，優先懷疑：
+- `POST /api/v1/messenger/webhook` 還沒回 `200 accepted`
+- backend 仍在同步執行 `handle_incoming_event -> OpenAI/RAG -> Graph Send API`
+- 上游已取消連線，所以 tunnel 只看到 `context canceled`
+
+目前 repo 狀態：
+- webhook route 尚未做快速 ack + background processing
+- 因此長回答或 followup ask 在 local / tunnel 環境下，仍可能撞到 timeout
+
+建議排查：
+1. 對照 backend log，確認 `POST /api/v1/messenger/webhook` 是否長時間沒有完成
+2. 對照 OpenAI ask / followup 是否正在執行
+3. 若經常重現，優先排入：
+   - webhook route 先快速回 `200 accepted`
+   - OpenAI ask / followup / Messenger send 改走 background task 或 job queue
 
 ### 3. 本機可以跑，但 Meta 打不到
 常見原因：
