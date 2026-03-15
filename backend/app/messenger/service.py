@@ -95,6 +95,9 @@ class MessengerEventService:
                 return [self.build_topup_message()]
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
 
+        if ask_result.replayed and command.message_mid:
+            return []
+
         outgoing = [MessengerOutgoingMessage(kind="text", text=ask_result.response.answer)]
         if ask_result.response.followup_options:
             outgoing.append(

@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +41,7 @@ def _is_openai_runtime_error(exc: Exception) -> bool:
 class AskExecutionResult:
     response: AskResponse
     question_id: UUID
+    replayed: bool = False
 
 
 @dataclass
@@ -81,6 +83,57 @@ def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, l
         raise AskOpenAIRuntimeError("OpenAI response is empty")
     source = "rag" if result.top_matches else "openai"
     return answer_text, source, result.followup_options
+
+
+FOLLOWUP_SECTION_MARKERS = (
+    "如果你願意",
+    "你也可以",
+    "延伸問題",
+    "我可以再幫你看看",
+    "可以再幫你看看",
+)
+
+
+def _strip_followup_section_from_answer(answer_text: str, followup_contents: list[str]) -> str:
+    trimmed = answer_text.strip()
+    normalized_followups = [item.strip() for item in followup_contents if item.strip()]
+    if not trimmed or not normalized_followups:
+        return trimmed
+
+    positions: list[int] = []
+    search_start = 0
+    for content in normalized_followups:
+        found_at = trimmed.find(content, search_start)
+        if found_at == -1:
+            return trimmed
+        positions.append(found_at)
+        search_start = found_at + len(content)
+
+    first_followup_at = positions[0]
+    paragraph_break_at = trimmed.rfind("\n\n", 0, first_followup_at)
+    line_break_at = trimmed.rfind("\n", 0, first_followup_at)
+    search_start = paragraph_break_at if paragraph_break_at != -1 else line_break_at + 1
+    marker_positions = [
+        trimmed.find(marker, search_start, first_followup_at)
+        for marker in FOLLOWUP_SECTION_MARKERS
+        if trimmed.find(marker, search_start, first_followup_at) != -1
+    ]
+    if marker_positions:
+        cut_at = min(marker_positions)
+    else:
+        cut_at = trimmed.rfind("\n", 0, first_followup_at)
+        if cut_at == -1:
+            return trimmed
+
+    suffix = trimmed[cut_at:]
+    required_matches = 1 if len(normalized_followups) == 1 else 2
+    matched_count = sum(1 for content in normalized_followups if content in suffix)
+    if matched_count < required_matches:
+        return trimmed
+
+    cleaned = trimmed[:cut_at].rstrip()
+    cleaned = re.sub(r"[\s\-:：]+$", "", cleaned)
+    return cleaned or trimmed
 
 
 def _to_ask_response(
@@ -138,6 +191,7 @@ def _find_existing_ask_response(
             followup_limit=followup_limit,
         ),
         question_id=question.id,
+        replayed=True,
     )
 
 
@@ -294,6 +348,7 @@ def execute_ask_for_user(
 
     try:
         answer_text, source, followup_contents = generator(question_text)
+        answer_text = _strip_followup_section_from_answer(answer_text, followup_contents)
         question = Question(
             user_id=user_id,
             question_text=question_text,

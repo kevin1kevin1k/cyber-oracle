@@ -237,6 +237,47 @@ def test_ask_accepts_less_than_three_followups(
     assert [item.content for item in followups] == ["延伸 1", "延伸 2"]
 
 
+def test_ask_strips_followup_section_from_answer_text(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token, user_id = _make_verified_token_with_wallet(db_session=db_session, balance=2)
+    key = "ask-strip-followups"
+
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: (
+            "主回答第一段。\n\n如果你願意，我可以再幫你看看：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+            "rag",
+            ["延伸 A", "延伸 B", "延伸 C"],
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "主回答第一段。"
+    assert [item["content"] for item in payload["followup_options"]] == [
+        "延伸 A",
+        "延伸 B",
+        "延伸 C",
+    ]
+
+    question = db_session.scalar(
+        select(Question).where(Question.user_id == user_id, Question.idempotency_key == key)
+    )
+    assert question is not None
+    answer = db_session.scalar(select(Answer).where(Answer.question_id == question.id))
+    assert answer is not None
+    assert answer.answer_text == "主回答第一段。"
+
+
 def test_ask_retry_same_idempotency_key_no_double_charge(
     client: TestClient,
     db_session: Session,

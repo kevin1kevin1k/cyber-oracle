@@ -403,6 +403,7 @@ def test_webhook_post_message_event_for_linked_user_runs_ask_flow(
 def test_webhook_post_message_event_with_same_mid_is_idempotent(
     client: TestClient,
     db_session: Session,
+    outgoing_messages: list[tuple[str, str, str]],
 ) -> None:
     user = _create_linked_messenger_user(
         db_session,
@@ -447,6 +448,60 @@ def test_webhook_post_message_event_with_same_mid_is_idempotent(
         CreditTransaction.action == "capture",
     ).count()
     assert capture_count == 1
+    assert outgoing_messages == [
+        ("psid-linked-2", "text", "測試回答（messenger）"),
+        ("psid-linked-2", "quick_replies", "你也可以選擇以下延伸問題："),
+    ]
+
+
+def test_webhook_post_message_event_strips_followup_text_from_answer(
+    client: TestClient,
+    db_session: Session,
+    outgoing_messages: list[tuple[str, str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-linked-sanitized",
+        page_id="page-linked-sanitized",
+        balance=2,
+    )
+    monkeypatch.setattr(
+        "app.ask_service._generate_answer_from_openai_file_search",
+        lambda _: (
+            "主回答第一段。\n\n如果你願意，我可以再幫你看看：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+            "rag",
+            ["延伸 A", "延伸 B", "延伸 C"],
+        ),
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-linked-sanitized",
+                "time": 1700000201,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-linked-sanitized"},
+                        "recipient": {"id": "page-linked-sanitized"},
+                        "timestamp": 1700000201,
+                        "message": {
+                            "mid": "m_linked_sanitized",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert outgoing_messages == [
+        ("psid-linked-sanitized", "text", "主回答第一段。"),
+        ("psid-linked-sanitized", "quick_replies", "你也可以選擇以下延伸問題："),
+    ]
 
 
 def test_webhook_post_message_event_with_insufficient_credit(
