@@ -122,6 +122,7 @@
 - [x] 完成 Messenger inbound ask flow（message -> ask domain -> response text/followups）
 - [x] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
 - [x] 完成 Messenger quick reply followup flow（payload -> followup ask domain -> response text/followups）
+- [x] 新增 Messenger 驗證 runbook（local / pre-prod / prod webhook 綁定與驗證流程）
 - [ ] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環

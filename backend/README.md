@@ -131,6 +131,9 @@ Production security baseline:
 ## Messenger Integration (Skeleton)
 This repository now includes a non-invasive Messenger channel adapter skeleton under `app/messenger/`.
 
+Validation runbook:
+- local / pre-prod / prod Messenger verification steps are documented in `docs/messenger_validation_runbook.md`
+
 Endpoints:
 - `GET /api/v1/messenger/webhook`
   - Meta webhook verification endpoint (`hub.mode`, `hub.verify_token`, `hub.challenge`)
