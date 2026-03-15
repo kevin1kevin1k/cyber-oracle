@@ -1,5 +1,6 @@
 import hashlib
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -7,12 +8,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ask_service import execute_ask_for_user, execute_followup_for_user
+from app.config import settings
 from app.messenger.constants import (
     DEFAULT_FOLLOWUP_PROMPT_TEXT,
     DEFAULT_MESSENGER_ASK_FAILED_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
+    DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
     DEFAULT_MESSENGER_TOPUP_REPLY,
     DEFAULT_UNLINKED_REPLY,
     DEFAULT_UNSUPPORTED_EVENT_REPLY,
@@ -30,6 +34,7 @@ from app.messenger.schemas import (
     MessengerQuickReplyOption,
     MessengerWebhookMessagingEvent,
 )
+from app.messenger.security import create_messenger_link_token
 from app.models.messenger_identity import MessengerIdentity
 
 ASK_DEFAULT_LANG = "zh"
@@ -69,7 +74,7 @@ class MessengerEventService:
     ) -> list[MessengerOutgoingMessage]:
         user_id = self.maybe_resolve_internal_user(identity=identity)
         if user_id is None:
-            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_UNLINKED_REPLY)]
+            return [self.build_linking_message(identity=identity)]
 
         question_text = (command.text or "").strip()
         if not question_text:
@@ -87,7 +92,7 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
-                return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_TOPUP_REPLY)]
+                return [self.build_topup_message()]
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
 
         outgoing = [MessengerOutgoingMessage(kind="text", text=ask_result.response.answer)]
@@ -115,7 +120,7 @@ class MessengerEventService:
     ) -> list[MessengerOutgoingMessage]:
         user_id = self.maybe_resolve_internal_user(identity=identity)
         if user_id is None:
-            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_UNLINKED_REPLY)]
+            return [self.build_linking_message(identity=identity)]
 
         followup_id = self._parse_followup_payload(command.quick_reply_payload)
         if followup_id is None:
@@ -134,7 +139,7 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
-                return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_TOPUP_REPLY)]
+                return [self.build_topup_message()]
             if exc.status_code in {403, 404, 409}:
                 return [
                     MessengerOutgoingMessage(
@@ -173,7 +178,7 @@ class MessengerEventService:
         identity: MessengerIdentity,
     ) -> list[MessengerOutgoingMessage]:
         if self.maybe_resolve_internal_user(identity=identity) is None:
-            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_UNLINKED_REPLY)]
+            return [self.build_linking_message(identity=identity)]
         payload = command.postback_payload or ""
         return [MessengerOutgoingMessage(kind="text", text=f"已收到 postback: {payload}")]
 
@@ -190,6 +195,43 @@ class MessengerEventService:
         if identity.status == IDENTITY_STATUS_LINKED and identity.user_id is not None:
             return identity.user_id
         return None
+
+    def build_linking_message(self, *, identity: MessengerIdentity) -> MessengerOutgoingMessage:
+        link_token = create_messenger_link_token(
+            psid=identity.psid,
+            page_id=identity.page_id,
+            secret_key=settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+        query = urlencode({"token": link_token})
+        link_url = f"{settings.messenger_web_base_url.rstrip('/')}/messenger/link?{query}"
+        return MessengerOutgoingMessage(
+            kind="button_template",
+            text=DEFAULT_UNLINKED_REPLY,
+            buttons=[
+                {
+                    "type": "web_url",
+                    "title": DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+                    "url": link_url,
+                }
+            ],
+        )
+
+    def build_topup_message(self) -> MessengerOutgoingMessage:
+        topup_url = (
+            f"{settings.messenger_web_base_url.rstrip('/')}/wallet?from=messenger-insufficient-credit"
+        )
+        return MessengerOutgoingMessage(
+            kind="button_template",
+            text=DEFAULT_MESSENGER_TOPUP_REPLY,
+            buttons=[
+                {
+                    "type": "web_url",
+                    "title": DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
+                    "url": topup_url,
+                }
+            ],
+        )
 
     def resolve_or_create_identity(self, *, psid: str, page_id: str | None) -> MessengerIdentity:
         normalized_page_id = (page_id or "").strip()

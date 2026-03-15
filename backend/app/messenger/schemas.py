@@ -73,3 +73,14 @@ class MessengerWebhookProcessResponse(BaseModel):
 class MessengerVerifyResult(BaseModel):
     ok: bool
     challenge: str | None = None
+
+
+class MessengerLinkRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=2048)
+
+
+class MessengerLinkResponse(BaseModel):
+    status: Literal["linked"]
+    user_id: str
+    psid: str
+    page_id: str

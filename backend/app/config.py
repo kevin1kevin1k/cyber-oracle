@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     meta_app_secret: str | None = None
     messenger_verify_signature: bool = False
     messenger_outbound_mode: Literal["noop", "meta_graph"] = "noop"
+    messenger_web_base_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

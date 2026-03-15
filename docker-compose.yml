@@ -21,7 +21,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - CORS_ORIGINS=http://localhost:3000
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/elin
       - JWT_SECRET=dev-only-change-me-please-replace-32+
       - JWT_ALGORITHM=HS256

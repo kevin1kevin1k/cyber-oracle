@@ -40,10 +40,14 @@ Backend endpoint：
 - `META_PAGE_ACCESS_TOKEN=...`：`meta_graph` 模式必填
 - `MESSENGER_VERIFY_SIGNATURE=true|false`：是否驗 webhook signature
 - `META_APP_SECRET=...`：開啟 signature 驗證時使用
+- `MESSENGER_WEB_BASE_URL=...`：Messenger web_url button 會打開的前端 / WebView base URL
+- `CORS_ORIGINS=...`：backend 允許的 browser origins；若要從 Messenger WebView 的 frontend tunnel 呼叫 backend API，必須包含該 frontend 公開網址
 
 觀念區分：
 - `MESSENGER_OUTBOUND_MODE=noop`：可驗證 webhook 有沒有打進 backend，但 Messenger 不會收到系統回覆
 - `MESSENGER_OUTBOUND_MODE=meta_graph`：才會真的透過 Meta Graph API 回 Messenger 訊息
+- backend tunnel URL 變了：更新 Meta 後台 webhook callback URL
+- frontend tunnel URL 變了：更新 `MESSENGER_WEB_BASE_URL` 與 `CORS_ORIGINS`，通常不需要改 Meta 後台
 
 ## 通訊流程圖
 
@@ -54,6 +58,7 @@ sequenceDiagram
   participant M as Messenger / Meta Platform
   participant CF as cloudflared Quick Tunnel
   participant B as Local Backend :8000
+  participant F as Local Frontend :3000
 
   Note over B: docker compose up --build
   Note over CF: cloudflared tunnel --url http://localhost:8000
@@ -73,6 +78,11 @@ sequenceDiagram
   else MESSENGER_OUTBOUND_MODE=meta_graph
     B->>M: Graph Send API
     M-->>U: 顯示 bot 回覆
+  end
+
+  opt Messenger web_url button
+    U->>M: 點擊綁定 / 購點按鈕
+    M->>F: 開啟 MESSENGER_WEB_BASE_URL 對應頁面
   end
 ```
 
@@ -211,6 +221,23 @@ cd /Users/kevin1kevin1k/cyber-oracle && docker compose ps && cd ..
 cloudflared tunnel --url http://localhost:8000
 ```
 
+若你要測 Messenger WebView 按鈕（登入綁定 / 購點），還需要第二條 frontend tunnel：
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+成功後，將 frontend 那條公開網址寫進 backend：
+```env
+MESSENGER_WEB_BASE_URL=https://xxxxx.trycloudflare.com
+CORS_ORIGINS=http://localhost:3000,https://xxxxx.trycloudflare.com
+```
+
+注意：
+- backend webhook callback URL 與 frontend WebView URL 可以是兩條不同 tunnel
+- webhook 用的是 backend tunnel
+- web_url button 用的是 `MESSENGER_WEB_BASE_URL`
+- frontend tunnel 若不在 `CORS_ORIGINS` 內，Messenger WebView 中的瀏覽器 preflight (`OPTIONS`) 會被 backend 擋掉，常見症狀是註冊/登入頁出現 `Failed to fetch`
+
 成功後，終端機通常會顯示一個像這樣的網址：
 ```text
 https://xxxxx.trycloudflare.com
@@ -256,6 +283,18 @@ curl "http://localhost:8000/api/v1/messenger/webhook?hub.mode=subscribe&hub.veri
 - `MESSENGER_ENABLED=false`
 - `META_VERIFY_TOKEN` 與後台填入值不一致
 - callback URL 漏了 `/api/v1/messenger/webhook`
+
+#### 2. 為什麼 Messenger WebView 內註冊/登入顯示 `Failed to fetch`，backend log 是 `OPTIONS ... 400`？
+常見原因：
+- frontend tunnel URL 沒加進 `CORS_ORIGINS`
+- `docker-compose.yml` 或部署環境把 `CORS_ORIGINS` 硬編碼成只有 `http://localhost:3000`
+- frontend tunnel 換了新網址，但 `MESSENGER_WEB_BASE_URL` / `CORS_ORIGINS` 沒同步更新
+
+排查順序：
+1. 確認目前 Messenger WebView 開啟的是哪個 frontend 公開網址
+2. 確認 backend `CORS_ORIGINS` 包含該完整 origin
+3. 確認 compose / deployment environment 沒有覆蓋掉 `backend/.env` 內的 `CORS_ORIGINS`
+4. 重啟 backend 後再重試
 - `cloudflared` 已關掉或 quick tunnel URL 已過期
 
 #### 2. 我需要先有 Cloudflare 帳號或自有網域嗎？
@@ -493,6 +532,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 補充：
 - 現在 `meta_graph` 模式已可在 local + `cloudflared` 下做真正的 Messenger 端到端回覆驗證
 - 若 Graph Send API 失敗，webhook ingest 應仍維持 `accepted`，錯誤主要看 backend log
+- 若要測 WebView 綁定 / 購點按鈕，請另外把 `MESSENGER_WEB_BASE_URL` 設成 frontend 的公開 tunnel URL
 
 ### Local 成功標準
 - webhook verify 成功

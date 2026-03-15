@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { resolveSafeNext } from "@/lib/navigation";
 
 type RegisterResponse = {
   user_id: string;
@@ -20,6 +21,12 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [nextPath, setNextPath] = useState("/");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setNextPath(resolveSafeNext(params.get("next")));
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,7 +40,9 @@ export default function RegisterPage() {
       });
       const token = payload.verification_token?.trim();
       if (token) {
-        router.replace(`/verify-email?token=${encodeURIComponent(token)}`);
+        router.replace(
+          `/verify-email?token=${encodeURIComponent(token)}&next=${encodeURIComponent(nextPath)}`
+        );
         return;
       }
       setSubmittedEmail(payload.email);
@@ -79,7 +88,7 @@ export default function RegisterPage() {
           <p className="success">註冊成功，請查收 {submittedEmail} 的驗證信件。</p>
         )}
         <p className="helper-links">
-          <Link href="/login">已有帳號？前往登入</Link>
+          <Link href={`/login?next=${encodeURIComponent(nextPath)}`}>已有帳號？前往登入</Link>
         </p>
       </section>
     </main>

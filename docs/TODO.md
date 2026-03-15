@@ -123,8 +123,17 @@
 - [x] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
 - [x] 完成 Messenger quick reply followup flow（payload -> followup ask domain -> response text/followups）
 - [x] 新增 Messenger 驗證 runbook（local / pre-prod / prod webhook 綁定與驗證流程）
-- [ ] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
+- [x] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
+  - [x] Backend：未綁定使用者回覆改為 signed web_url linking button
+  - [x] Backend：新增 `POST /api/v1/messenger/link` 驗證 token 並完成 identity linking
+  - [x] Frontend：新增 `/messenger/link` 頁，支援 login return path 後自動完成綁定
+  - [x] Frontend：`register -> verify-email -> login` 保留 linking `next` 路徑
+  - [x] 測試：backend linking token / endpoint / unlinked button 覆蓋
+  - [x] 測試：frontend e2e 覆蓋 Messenger linking login-return-path flow
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
+  - [x] Backend：點數不足時回 Messenger web_url 購點按鈕（導向 `/wallet`）
+  - [ ] Frontend：`/wallet` 適配 Messenger WebView 使用情境與返回提示
+  - [ ] Backend：payment callback -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
 - [ ] 完成 webhook signature hardening（replay protection、failure audit）
@@ -153,7 +162,7 @@
 - [x] `POST /api/v1/messenger/webhook` 可解析 message/postback/quick reply
 - [x] 使用者可從 Messenger 直接發問並收到答案回覆（不需切到獨立 web 問答頁）
 - [x] 使用者可從 Messenger 點擊延伸問題 quick reply 繼續追問，並沿用既有扣點/回補規則
-- [ ] 點數不足時 Messenger 內可被導向 WebView 購點
+- [x] 點數不足時 Messenger 內可被導向 WebView 購點
 - [ ] WebView 付款成功後可在 Messenger 收到購點成功通知且餘額生效
 - [x] 未綁定與已綁定使用者的行為差異符合產品定義
 

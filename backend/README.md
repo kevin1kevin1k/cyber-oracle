@@ -110,6 +110,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
 
 Environment variables:
 - `APP_ENV`: runtime env (`dev` / `test` / `prod`, default `dev`)
+- `CORS_ORIGINS`: comma-separated browser origins allowed to call backend APIs (must include public frontend/WebView origins such as Messenger frontend tunnel URLs)
 - `DATABASE_URL`: app runtime database
 - `TEST_DATABASE_URL`: test-only database (use `elin_test`)
 - `JWT_SECRET`: HS256 signing secret for access token
@@ -121,6 +122,11 @@ Environment variables:
 - `META_APP_SECRET`: used for `X-Hub-Signature-256` validation
 - `MESSENGER_VERIFY_SIGNATURE`: enable webhook signature validation (`false` by default)
 - `MESSENGER_OUTBOUND_MODE`: outbound client mode (`noop` or `meta_graph`)
+- `MESSENGER_WEB_BASE_URL`: frontend/WebView base URL used in Messenger web_url buttons (`http://localhost:3000` by default; set to your public frontend URL in local tunnel / staging / production)
+
+Docker Compose note:
+- local Compose should not hardcode `CORS_ORIGINS=http://localhost:3000` in service env, otherwise public frontend tunnel origins from `backend/.env` will be ignored and browser preflight (`OPTIONS`) requests from Messenger WebView will fail with `400`
+- when frontend tunnel URL changes, update both `MESSENGER_WEB_BASE_URL` and `CORS_ORIGINS` in `backend/.env`, then restart backend
 
 Production security baseline:
 - when `APP_ENV=prod`, backend startup validates `JWT_SECRET` and fails fast if:
@@ -144,6 +150,7 @@ Endpoints:
   - for linked identities, text messages now execute the existing ask credit flow (`reserve -> capture/refund`)
   - maps ask followups into Messenger quick replies payloads, and quick reply clicks now reuse the existing followup ask flow
   - dispatches outgoing payloads through pluggable client abstraction (`noop` or `meta_graph`)
+  - `POST /api/v1/messenger/link` links a verified web user to an existing `messenger_identities` row using signed linking token
 
 Outbound client status:
 - `noop`: local/dev ingest-only mode, webhook can be tested without real Messenger reply
@@ -151,6 +158,9 @@ Outbound client status:
   - text messages
   - quick replies
   - button templates
+- current WebView/button uses:
+  - unlinked user -> signed link button to `/messenger/link`
+  - insufficient credit -> web_url button to `/wallet`
 - current failure handling:
   - outbound send failures are logged and do not turn webhook ingest into `500`
   - retry / dead-letter / telemetry are not implemented yet
@@ -160,9 +170,9 @@ Schema/Model:
 - Unlinked state is supported (`user_id=NULL`, `status=unlinked`) for pre-linking interactions.
 
 Current status (explicitly non-production-complete):
-  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, inbound ask flow reuse, quick reply followup reuse, minimum viable Meta Graph outbound send, tests
+  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, Messenger WebView account linking MVP, inbound ask flow reuse, quick reply followup reuse, minimum viable Meta Graph outbound send, tests
 - not implemented yet: production-ready retry/telemetry, full webhook replay protection, policy/compliance hardening
-- not implemented yet: Messenger WebView account linking and Messenger in-flow Stripe checkout
+- not implemented yet: Messenger in-flow Stripe checkout and payment callback closed loop
 
 ## Migrations (Alembic)
 Run on host:

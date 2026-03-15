@@ -1,8 +1,66 @@
 import hashlib
 import hmac
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+import jwt
+from jwt import InvalidTokenError
 
 from app.messenger.constants import WEBHOOK_MODE_SUBSCRIBE
 from app.messenger.schemas import MessengerVerifyResult
+
+MESSENGER_LINK_TOKEN_PURPOSE = "messenger_link"
+MESSENGER_LINK_TOKEN_EXP_MINUTES = 30
+
+
+@dataclass
+class MessengerLinkClaims:
+    psid: str
+    page_id: str
+    purpose: str
+
+
+def create_messenger_link_token(
+    *,
+    psid: str,
+    page_id: str,
+    secret_key: str,
+    algorithm: str,
+    expires_minutes: int = MESSENGER_LINK_TOKEN_EXP_MINUTES,
+) -> str:
+    now = datetime.now(UTC)
+    payload = {
+        "purpose": MESSENGER_LINK_TOKEN_PURPOSE,
+        "psid": psid,
+        "page_id": page_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=expires_minutes)).timestamp()),
+    }
+    return jwt.encode(payload, secret_key, algorithm=algorithm)
+
+
+def decode_messenger_link_token(
+    *,
+    token: str,
+    secret_key: str,
+    algorithm: str,
+) -> MessengerLinkClaims | None:
+    try:
+        payload = jwt.decode(token, secret_key, algorithms=[algorithm])
+    except InvalidTokenError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    purpose = payload.get("purpose")
+    psid = payload.get("psid")
+    page_id = payload.get("page_id")
+    if purpose != MESSENGER_LINK_TOKEN_PURPOSE:
+        return None
+    if not isinstance(psid, str) or not psid.strip():
+        return None
+    if not isinstance(page_id, str):
+        return None
+    return MessengerLinkClaims(psid=psid.strip(), page_id=page_id.strip(), purpose=purpose)
 
 
 def verify_webhook_challenge(

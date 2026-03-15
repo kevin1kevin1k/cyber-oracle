@@ -81,7 +81,7 @@ export default function LoginPage() {
         </form>
         {error && <p className="error">{error}</p>}
         <p className="helper-links">
-          <Link href="/register">註冊新帳號</Link>
+          <Link href={`/register?next=${encodeURIComponent(nextPath)}`}>註冊新帳號</Link>
           <span> · </span>
           <Link href="/forgot-password">忘記密碼</Link>
         </p>

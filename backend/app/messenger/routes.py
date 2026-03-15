@@ -1,8 +1,11 @@
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import AuthContext, require_verified_email
 from app.config import settings
 from app.db import get_db
 from app.messenger.client import (
@@ -13,12 +16,26 @@ from app.messenger.client import (
 )
 from app.messenger.constants import (
     ERROR_CODE_MESSENGER_DISABLED,
+    ERROR_CODE_MESSENGER_IDENTITY_ALREADY_LINKED,
+    ERROR_CODE_MESSENGER_IDENTITY_NOT_FOUND,
+    ERROR_CODE_MESSENGER_LINK_TOKEN_INVALID,
     ERROR_CODE_WEBHOOK_SIGNATURE_INVALID,
     ERROR_CODE_WEBHOOK_VERIFY_FAILED,
+    MESSENGER_PLATFORM,
 )
-from app.messenger.schemas import MessengerWebhookPayload, MessengerWebhookProcessResponse
-from app.messenger.security import verify_app_secret_signature, verify_webhook_challenge
+from app.messenger.schemas import (
+    MessengerLinkRequest,
+    MessengerLinkResponse,
+    MessengerWebhookPayload,
+    MessengerWebhookProcessResponse,
+)
+from app.messenger.security import (
+    decode_messenger_link_token,
+    verify_app_secret_signature,
+    verify_webhook_challenge,
+)
 from app.messenger.service import MessengerEventService
+from app.models.messenger_identity import MessengerIdentity
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -72,6 +89,67 @@ def verify_webhook(
             },
         )
     return Response(content=verify_result.challenge, media_type="text/plain", status_code=200)
+
+
+@router.post("/link", response_model=MessengerLinkResponse)
+def link_identity(
+    payload: MessengerLinkRequest,
+    auth_context: AuthContext = Depends(require_verified_email),
+    db: Session = Depends(get_db),
+) -> MessengerLinkResponse:
+    _ensure_messenger_enabled()
+
+    claims = decode_messenger_link_token(
+        token=payload.token,
+        secret_key=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    if claims is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": ERROR_CODE_MESSENGER_LINK_TOKEN_INVALID,
+                "message": "Messenger link token is invalid or expired",
+            },
+        )
+
+    identity = db.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.platform == MESSENGER_PLATFORM,
+            MessengerIdentity.psid == claims.psid,
+            MessengerIdentity.page_id == claims.page_id,
+        )
+    )
+    if identity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": ERROR_CODE_MESSENGER_IDENTITY_NOT_FOUND,
+                "message": "Messenger identity not found",
+            },
+        )
+    if identity.user_id is not None and identity.user_id != auth_context.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": ERROR_CODE_MESSENGER_IDENTITY_ALREADY_LINKED,
+                "message": "Messenger identity is already linked to another user",
+            },
+        )
+
+    identity.user_id = auth_context.user_id
+    identity.status = "linked"
+    identity.is_active = True
+    identity.linked_at = identity.linked_at or datetime.now(UTC)
+    db.add(identity)
+    db.commit()
+    db.refresh(identity)
+    return MessengerLinkResponse(
+        status="linked",
+        user_id=str(auth_context.user_id),
+        psid=identity.psid,
+        page_id=identity.page_id,
+    )
 
 
 @router.post("/webhook", response_model=MessengerWebhookProcessResponse)

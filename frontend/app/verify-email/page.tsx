@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { INVALID_OR_EXPIRED_LINK_MESSAGE } from "@/lib/auth-messages";
+import { resolveSafeNext } from "@/lib/navigation";
 
 type VerifyEmailResponse = {
   status: "verified";
@@ -15,12 +16,15 @@ export default function VerifyEmailPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [nextPath, setNextPath] = useState("/");
 
   useEffect(() => {
-    const tokenFromQuery = new URLSearchParams(window.location.search).get("token");
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromQuery = params.get("token");
     if (tokenFromQuery) {
       setTokenFromQuery(tokenFromQuery);
     }
+    setNextPath(resolveSafeNext(params.get("next")));
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -60,14 +64,14 @@ export default function VerifyEmailPage() {
           <div className="answer">
             <p>未偵測到驗證連結，請從 Email 中點擊驗證連結後再試一次。</p>
             <p>
-              <Link href="/register">返回註冊</Link>
+              <Link href={`/register?next=${encodeURIComponent(nextPath)}`}>返回註冊</Link>
             </p>
           </div>
         )}
         {error && <p className="error">{error}</p>}
         {success && <p className="success">Email 驗證成功，請前往登入。</p>}
         <p className="helper-links">
-          <Link href="/login">前往登入</Link>
+          <Link href={`/login?next=${encodeURIComponent(nextPath)}`}>前往登入</Link>
         </p>
       </section>
     </main>
