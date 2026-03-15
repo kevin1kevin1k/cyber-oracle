@@ -490,6 +490,10 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 4. 對未綁定使用者驗證 ask
    - 預期結果：收到 linking / capability boundary 引導，而不是直接走完整已綁定流程
 
+補充：
+- 現在 `meta_graph` 模式已可在 local + `cloudflared` 下做真正的 Messenger 端到端回覆驗證
+- 若 Graph Send API 失敗，webhook ingest 應仍維持 `accepted`，錯誤主要看 backend log
+
 ### Local 成功標準
 - webhook verify 成功
 - `POST /api/v1/messenger/webhook` 持續收到事件

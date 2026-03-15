@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.db import Base, get_db
 from app.main import app
+from app.messenger.client import MessengerClientError
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
@@ -745,3 +746,55 @@ def test_webhook_post_invalid_payload_returns_422(client: TestClient) -> None:
     }
     response = client.post("/api/v1/messenger/webhook", json=payload)
     assert response.status_code == 422
+
+
+def test_webhook_outbound_failure_returns_accepted_instead_of_500(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-outbound-fail",
+        page_id="page-outbound-fail",
+        balance=2,
+    )
+    monkeypatch.setattr(settings, "messenger_outbound_mode", "meta_graph")
+    monkeypatch.setattr(settings, "meta_page_access_token", "page-token")
+
+    def _raise_send_error(self, *, psid: str, text: str) -> None:  # noqa: ANN001
+        raise MessengerClientError(f"send failed for {psid}: {text}")
+
+    monkeypatch.setattr(
+        "app.messenger.client.MetaGraphMessengerClient.send_text",
+        _raise_send_error,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-outbound-fail",
+                "time": 1700002600,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-outbound-fail"},
+                        "recipient": {"id": "page-outbound-fail"},
+                        "timestamp": 1700002600,
+                        "message": {
+                            "mid": "m_outbound_fail",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted", "processed": 1}
+
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user.id))
+    assert wallet is not None
+    assert wallet.balance == 1

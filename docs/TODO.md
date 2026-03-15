@@ -118,7 +118,7 @@
 - [x] 新增 Messenger config/env 設定與驗證（`MESSENGER_ENABLED` 等）
 - [x] 新增 webhook 與 identity 基礎測試（verify、message parse、error branches）
 - [x] 將 Messenger skeleton 邊界與未完成項目回填至 `docs/PRD.md` 與本文件
-- [ ] 完成 Messenger Send API 實作（非 stub），支援文字與 quick replies/buttons
+- [x] 完成 Messenger Send API 實作（非 stub），支援文字與 quick replies/buttons
 - [x] 完成 Messenger inbound ask flow（message -> ask domain -> response text/followups）
 - [x] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
 - [x] 完成 Messenger quick reply followup flow（payload -> followup ask domain -> response text/followups）

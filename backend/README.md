@@ -143,15 +143,25 @@ Endpoints:
   - resolves/creates `messenger_identities` mapping
   - for linked identities, text messages now execute the existing ask credit flow (`reserve -> capture/refund`)
   - maps ask followups into Messenger quick replies payloads, and quick reply clicks now reuse the existing followup ask flow
-  - dispatches outgoing payloads through pluggable client abstraction (`noop` by default)
+  - dispatches outgoing payloads through pluggable client abstraction (`noop` or `meta_graph`)
+
+Outbound client status:
+- `noop`: local/dev ingest-only mode, webhook can be tested without real Messenger reply
+- `meta_graph`: minimum viable Graph Send API implementation for:
+  - text messages
+  - quick replies
+  - button templates
+- current failure handling:
+  - outbound send failures are logged and do not turn webhook ingest into `500`
+  - retry / dead-letter / telemetry are not implemented yet
 
 Schema/Model:
 - `messenger_identities` table stores `platform/psid/page_id` and optional `user_id` link.
 - Unlinked state is supported (`user_id=NULL`, `status=unlinked`) for pre-linking interactions.
 
 Current status (explicitly non-production-complete):
-  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, inbound ask flow reuse, quick reply followup reuse, tests
-- not implemented yet: production Graph send API, full webhook replay protection, policy/compliance hardening
+  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, inbound ask flow reuse, quick reply followup reuse, minimum viable Meta Graph outbound send, tests
+- not implemented yet: production-ready retry/telemetry, full webhook replay protection, policy/compliance hardening
 - not implemented yet: Messenger WebView account linking and Messenger in-flow Stripe checkout
 
 ## Migrations (Alembic)

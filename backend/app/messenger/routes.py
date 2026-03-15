@@ -1,9 +1,12 @@
+import logging
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
 from app.messenger.client import (
+    MessengerClientError,
     MetaGraphMessengerClient,
     NoopMessengerClient,
     dispatch_outgoing_message,
@@ -18,6 +21,7 @@ from app.messenger.security import verify_app_secret_signature, verify_webhook_c
 from app.messenger.service import MessengerEventService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _ensure_messenger_enabled() -> None:
@@ -106,7 +110,15 @@ async def receive_webhook(
             if not sender:
                 continue
             for outgoing in outgoing_messages:
-                dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
+                try:
+                    dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
+                except MessengerClientError:
+                    logger.exception(
+                        "Messenger outbound delivery failed: sender=%s kind=%s",
+                        sender,
+                        outgoing.kind,
+                    )
+                    break
             processed += 1
 
     return MessengerWebhookProcessResponse(status="accepted", processed=processed)
