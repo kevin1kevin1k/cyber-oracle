@@ -957,7 +957,7 @@ def test_webhook_post_quick_reply_with_invalid_payload_returns_fallback(
 def test_webhook_post_quick_reply_with_insufficient_credit_restores_followup(
     client: TestClient,
     db_session: Session,
-    outgoing_messages: list[tuple[str, str, str]],
+    captured_outgoing: list[tuple[str, object]],
 ) -> None:
     user = _create_linked_messenger_user(
         db_session,
@@ -1000,10 +1000,144 @@ def test_webhook_post_quick_reply_with_insufficient_credit_restores_followup(
     assert stored_followup is not None
     assert stored_followup.status == "pending"
     assert stored_followup.used_question_id is None
+    psid, outgoing = captured_outgoing[-1]
+    assert psid == "psid-followup-3"
+    assert outgoing.kind == "button_template"
+    assert outgoing.text == "目前點數不足，請先購點後再提問。"
+    assert outgoing.buttons == [
+        {
+            "type": "web_url",
+            "title": "前往購點",
+            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
+        },
+        {
+            "type": "postback",
+            "title": "購買完成，重新顯示延伸問題",
+            "payload": f"RESHOW_FOLLOWUPS:{followup.id}",
+        },
+    ]
+
+
+def test_webhook_post_postback_reshows_pending_followups_after_topup(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-followup-reshow",
+        page_id="page-followup-reshow",
+        balance=3,
+    )
+    user_id = user.id
+    first_followup = _create_pending_followup(
+        db_session,
+        user_id=user_id,
+        content="重新顯示的延伸問題一",
+    )
+    second_followup = Followup(
+        question_id=first_followup.question_id,
+        user_id=user_id,
+        content="重新顯示的延伸問題二",
+        origin_request_id=str(uuid.uuid4()),
+        status="pending",
+    )
+    db_session.add(second_followup)
+    db_session.commit()
+    db_session.refresh(second_followup)
+
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-followup-reshow",
+                "time": 1700002450,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-followup-reshow"},
+                        "recipient": {"id": "page-followup-reshow"},
+                        "timestamp": 1700002450,
+                        "postback": {
+                            "payload": f"RESHOW_FOLLOWUPS:{first_followup.id}",
+                            "title": "購買完成，重新顯示延伸問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 2
+    _, followup_text_outgoing = captured_outgoing[0]
+    _, quick_reply_outgoing = captured_outgoing[1]
+    assert followup_text_outgoing.kind == "text"
+    assert (
+        followup_text_outgoing.text
+        == "你也可以選擇以下延伸問題：\n1. 重新顯示的延伸問題一\n2. 重新顯示的延伸問題二"
+    )
+    assert quick_reply_outgoing.kind == "quick_replies"
+    assert [item.title for item in quick_reply_outgoing.quick_replies] == [
+        "延伸問題一",
+        "延伸問題二",
+    ]
+    assert [item.payload for item in quick_reply_outgoing.quick_replies] == [
+        f"FOLLOWUP:{first_followup.id}",
+        f"FOLLOWUP:{second_followup.id}",
+    ]
+
+
+def test_webhook_post_postback_reshow_returns_fallback_when_no_pending_followups(
+    client: TestClient,
+    db_session: Session,
+    outgoing_messages: list[tuple[str, str, str]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-followup-reshow-none",
+        page_id="page-followup-reshow-none",
+        balance=3,
+    )
+    used_followup = _create_pending_followup(
+        db_session,
+        user_id=user.id,
+        content="已用掉的延伸問題",
+    )
+    used_followup.status = "used"
+    used_followup.used_at = datetime.now(UTC)
+    db_session.add(used_followup)
+    db_session.commit()
+
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-followup-reshow-none",
+                "time": 1700002451,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-followup-reshow-none"},
+                        "recipient": {"id": "page-followup-reshow-none"},
+                        "timestamp": 1700002451,
+                        "postback": {
+                            "payload": f"RESHOW_FOLLOWUPS:{used_followup.id}",
+                            "title": "購買完成，重新顯示延伸問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
     assert outgoing_messages[-1] == (
-        "psid-followup-3",
-        "button_template",
-        "目前點數不足，請先購點後再提問。",
+        "psid-followup-reshow-none",
+        "text",
+        "目前沒有可重新顯示的延伸問題，請重新提問。",
     )
 
 

@@ -160,7 +160,8 @@ Outbound client status:
   - button templates
 - current WebView/button uses:
   - unlinked user -> signed link button to `/messenger/link`
-  - insufficient credit -> web_url button to `/wallet`
+  - insufficient credit on top-level ask -> web_url button to `/wallet`
+  - insufficient credit on followup ask -> web_url button to `/wallet` + Messenger postback button to re-show pending followups after purchase
 - current failure handling:
   - outbound send failures are logged and do not turn webhook ingest into `500`
   - retry / dead-letter / telemetry are not implemented yet

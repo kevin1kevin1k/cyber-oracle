@@ -16,6 +16,8 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
+    DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
     DEFAULT_MESSENGER_TOPUP_REPLY,
     DEFAULT_UNLINKED_REPLY,
@@ -35,12 +37,14 @@ from app.messenger.schemas import (
     MessengerWebhookMessagingEvent,
 )
 from app.messenger.security import create_messenger_link_token
+from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
 
 ASK_DEFAULT_LANG = "zh"
 ASK_DEFAULT_MODE = "analysis"
 ASK_IDEMPOTENCY_PREFIX = "msg"
 FOLLOWUP_PAYLOAD_PREFIX = "FOLLOWUP:"
+RESHOW_FOLLOWUPS_PAYLOAD_PREFIX = "RESHOW_FOLLOWUPS:"
 FOLLOWUP_BUTTON_TITLES = ("延伸問題一", "延伸問題二", "延伸問題三")
 
 
@@ -130,7 +134,7 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
-                return [self.build_topup_message()]
+                return [self.build_topup_message(followup_id=followup_id)]
             if exc.status_code in {403, 404, 409}:
                 return [
                     MessengerOutgoingMessage(
@@ -160,6 +164,12 @@ class MessengerEventService:
         if self.maybe_resolve_internal_user(identity=identity) is None:
             return [self.build_linking_message(identity=identity)]
         payload = command.postback_payload or ""
+        reshow_followup_id = self._parse_reshow_followups_payload(payload)
+        if reshow_followup_id is not None:
+            return self._reshow_followup_messages(
+                user_id=identity.user_id,
+                followup_id=reshow_followup_id,
+            )
         return [MessengerOutgoingMessage(kind="text", text=f"已收到 postback: {payload}")]
 
     def build_outgoing_messages(
@@ -223,21 +233,64 @@ class MessengerEventService:
             ],
         )
 
-    def build_topup_message(self) -> MessengerOutgoingMessage:
+    def build_topup_message(self, *, followup_id: UUID | None = None) -> MessengerOutgoingMessage:
         topup_url = (
             f"{settings.messenger_web_base_url.rstrip('/')}/wallet?from=messenger-insufficient-credit"
         )
+        buttons: list[dict[str, str]] = [
+            {
+                "type": "web_url",
+                "title": DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
+                "url": topup_url,
+            }
+        ]
+        if followup_id is not None:
+            buttons.append(
+                {
+                    "type": "postback",
+                    "title": DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
+                    "payload": f"{RESHOW_FOLLOWUPS_PAYLOAD_PREFIX}{followup_id}",
+                }
+            )
         return MessengerOutgoingMessage(
             kind="button_template",
             text=DEFAULT_MESSENGER_TOPUP_REPLY,
-            buttons=[
-                {
-                    "type": "web_url",
-                    "title": DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
-                    "url": topup_url,
-                }
-            ],
+            buttons=buttons,
         )
+
+    def _reshow_followup_messages(
+        self,
+        *,
+        user_id,
+        followup_id: UUID,
+    ) -> list[MessengerOutgoingMessage]:
+        followup = self._db.scalar(select(Followup).where(Followup.id == followup_id))
+        if followup is None or followup.user_id != user_id:
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
+                )
+            ]
+
+        pending_followups = self._db.scalars(
+            select(Followup)
+            .where(
+                Followup.question_id == followup.question_id,
+                Followup.user_id == user_id,
+                Followup.status == "pending",
+            )
+            .order_by(Followup.created_at.asc(), Followup.id.asc())
+        ).all()
+        if not pending_followups:
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
+                )
+            ]
+
+        return self._build_followup_outgoing_messages(pending_followups)
 
     def resolve_or_create_identity(self, *, psid: str, page_id: str | None) -> MessengerIdentity:
         normalized_page_id = (page_id or "").strip()
@@ -322,6 +375,20 @@ class MessengerEventService:
         if not normalized.startswith(FOLLOWUP_PAYLOAD_PREFIX):
             return None
         raw_followup_id = normalized.removeprefix(FOLLOWUP_PAYLOAD_PREFIX).strip()
+        if not raw_followup_id:
+            return None
+        try:
+            return UUID(raw_followup_id)
+        except ValueError:
+            return None
+
+    def _parse_reshow_followups_payload(self, payload: str | None) -> UUID | None:
+        if payload is None:
+            return None
+        normalized = payload.strip()
+        if not normalized.startswith(RESHOW_FOLLOWUPS_PAYLOAD_PREFIX):
+            return None
+        raw_followup_id = normalized.removeprefix(RESHOW_FOLLOWUPS_PAYLOAD_PREFIX).strip()
         if not raw_followup_id:
             return None
         try:
