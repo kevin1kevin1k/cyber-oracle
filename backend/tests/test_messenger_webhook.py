@@ -450,7 +450,12 @@ def test_webhook_post_message_event_with_same_mid_is_idempotent(
     assert capture_count == 1
     assert outgoing_messages == [
         ("psid-linked-2", "text", "測試回答（messenger）"),
-        ("psid-linked-2", "quick_replies", "你也可以選擇以下延伸問題："),
+        (
+            "psid-linked-2",
+            "text",
+            "你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        ),
+        ("psid-linked-2", "quick_replies", "請直接點選要追問的延伸問題："),
     ]
 
 
@@ -500,7 +505,105 @@ def test_webhook_post_message_event_strips_followup_text_from_answer(
     assert response.status_code == 200
     assert outgoing_messages == [
         ("psid-linked-sanitized", "text", "主回答第一段。"),
-        ("psid-linked-sanitized", "quick_replies", "你也可以選擇以下延伸問題："),
+        (
+            "psid-linked-sanitized",
+            "text",
+            "你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        ),
+        ("psid-linked-sanitized", "quick_replies", "請直接點選要追問的延伸問題："),
+    ]
+
+
+def test_webhook_post_message_event_followup_quick_replies_use_fixed_titles(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-linked-titles",
+        page_id="page-linked-titles",
+        balance=2,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-linked-titles",
+                "time": 1700000202,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-linked-titles"},
+                        "recipient": {"id": "page-linked-titles"},
+                        "timestamp": 1700000202,
+                        "message": {
+                            "mid": "m_linked_titles",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    _, quick_reply_outgoing = captured_outgoing[2]
+    assert quick_reply_outgoing.kind == "quick_replies"
+    assert [item.title for item in quick_reply_outgoing.quick_replies] == [
+        "延伸問題一",
+        "延伸問題二",
+        "延伸問題三",
+    ]
+
+
+def test_webhook_post_message_event_with_two_followups_lists_only_existing_items(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-linked-two-followups",
+        page_id="page-linked-two-followups",
+        balance=2,
+    )
+    monkeypatch.setattr(
+        "app.ask_service._generate_answer_from_openai_file_search",
+        lambda _: ("雙延伸回答", "rag", ["延伸 1", "延伸 2"]),
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-linked-two-followups",
+                "time": 1700000203,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-linked-two-followups"},
+                        "recipient": {"id": "page-linked-two-followups"},
+                        "timestamp": 1700000203,
+                        "message": {
+                            "mid": "m_linked_two_followups",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    _, followup_text_outgoing = captured_outgoing[1]
+    _, quick_reply_outgoing = captured_outgoing[2]
+    assert followup_text_outgoing.text == "你也可以選擇以下延伸問題：\n1. 延伸 1\n2. 延伸 2"
+    assert [item.title for item in quick_reply_outgoing.quick_replies] == [
+        "延伸問題一",
+        "延伸問題二",
     ]
 
 
@@ -742,8 +845,13 @@ def test_webhook_post_quick_reply_for_linked_user_runs_followup_flow(
     assert outgoing_messages[0] == ("psid-followup-1", "text", "測試回答（messenger）")
     assert outgoing_messages[1] == (
         "psid-followup-1",
+        "text",
+        "你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+    )
+    assert outgoing_messages[2] == (
+        "psid-followup-1",
         "quick_replies",
-        "你也可以選擇以下延伸問題：",
+        "請直接點選要追問的延伸問題：",
     )
 
 

@@ -41,6 +41,7 @@ ASK_DEFAULT_LANG = "zh"
 ASK_DEFAULT_MODE = "analysis"
 ASK_IDEMPOTENCY_PREFIX = "msg"
 FOLLOWUP_PAYLOAD_PREFIX = "FOLLOWUP:"
+FOLLOWUP_BUTTON_TITLES = ("延伸問題一", "延伸問題二", "延伸問題三")
 
 
 class MessengerEventService:
@@ -99,20 +100,7 @@ class MessengerEventService:
             return []
 
         outgoing = [MessengerOutgoingMessage(kind="text", text=ask_result.response.answer)]
-        if ask_result.response.followup_options:
-            outgoing.append(
-                MessengerOutgoingMessage(
-                    kind="quick_replies",
-                    text=DEFAULT_FOLLOWUP_PROMPT_TEXT,
-                    quick_replies=[
-                        MessengerQuickReplyOption(
-                            title=option.content[:20],
-                            payload=f"FOLLOWUP:{option.id}",
-                        )
-                        for option in ask_result.response.followup_options
-                    ],
-                )
-            )
+        outgoing.extend(self._build_followup_outgoing_messages(ask_result.response.followup_options))
         return outgoing
 
     def handle_quick_reply(
@@ -158,20 +146,9 @@ class MessengerEventService:
             ]
 
         outgoing = [MessengerOutgoingMessage(kind="text", text=followup_result.response.answer)]
-        if followup_result.response.followup_options:
-            outgoing.append(
-                MessengerOutgoingMessage(
-                    kind="quick_replies",
-                    text=DEFAULT_FOLLOWUP_PROMPT_TEXT,
-                    quick_replies=[
-                        MessengerQuickReplyOption(
-                            title=option.content[:20],
-                            payload=f"{FOLLOWUP_PAYLOAD_PREFIX}{option.id}",
-                        )
-                        for option in followup_result.response.followup_options
-                    ],
-                )
-            )
+        outgoing.extend(
+            self._build_followup_outgoing_messages(followup_result.response.followup_options)
+        )
         return outgoing
 
     def handle_postback(
@@ -198,6 +175,32 @@ class MessengerEventService:
         if identity.status == IDENTITY_STATUS_LINKED and identity.user_id is not None:
             return identity.user_id
         return None
+
+    def _build_followup_outgoing_messages(self, followup_options) -> list[MessengerOutgoingMessage]:
+        if not followup_options:
+            return []
+
+        followup_lines = [
+            f"{index + 1}. {option.content}" for index, option in enumerate(followup_options)
+        ]
+        quick_replies = [
+            MessengerQuickReplyOption(
+                title=FOLLOWUP_BUTTON_TITLES[index],
+                payload=f"{FOLLOWUP_PAYLOAD_PREFIX}{option.id}",
+            )
+            for index, option in enumerate(followup_options)
+        ]
+        return [
+            MessengerOutgoingMessage(
+                kind="text",
+                text=f"{DEFAULT_FOLLOWUP_PROMPT_TEXT}\n" + "\n".join(followup_lines),
+            ),
+            MessengerOutgoingMessage(
+                kind="quick_replies",
+                text="請直接點選要追問的延伸問題：",
+                quick_replies=quick_replies,
+            ),
+        ]
 
     def build_linking_message(self, *, identity: MessengerIdentity) -> MessengerOutgoingMessage:
         link_token = create_messenger_link_token(
