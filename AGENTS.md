@@ -66,6 +66,12 @@ Git index lock avoidance rule:
 - Root cause note: recent `index.lock` failures were caused by overlapping git write commands (for example parallel `git add` + `git commit`), not by repo corruption. The first process briefly holds `.git/index.lock`; the second then fails with `File exists`.
 - Commit flow should be: finish `git add` -> then run `git commit` -> then run any follow-up `git status`/inspection commands.
 
+Commit truthfulness rule:
+- When the user asks to `建立 commit`, do not claim success unless `git commit` has actually been executed successfully.
+- Before replying that a commit was created, always verify with `git log --oneline -1` and report the real latest commit hash/message from the repository state.
+- If the expected changes are still present in `git status --short`, do not claim the commit is complete.
+- Root cause note: a previous false report claimed a commit hash that did not exist because the reply was sent before verifying actual repo state. This must not happen again.
+
 Pull requests should include:
 - clear summary and impacted area (`frontend`, `backend`, `infra`)
 - linked issue or requirement context (`docs/PRD.md` section)
