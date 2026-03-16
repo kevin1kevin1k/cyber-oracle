@@ -10,27 +10,30 @@ from sqlalchemy.orm import sessionmaker
 from app.db import Base
 from app.models.user import User
 
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://postgres:postgres@localhost:5432/elin_test",
+DESTRUCTIVE_TEST_DATABASE_URL = os.getenv(
+    "DESTRUCTIVE_TEST_DATABASE_URL",
+    "postgresql+psycopg://postgres:postgres@localhost:5432/elin_test_destructive",
 )
 
 
 def _ensure_safe_test_database(url: str) -> None:
     db_name = make_url(url).database
-    if db_name == "elin":
-        pytest.skip("Refusing to run destructive schema tests on primary database 'elin'.")
+    if db_name in {"elin", "elin_test"}:
+        pytest.skip(
+            "Refusing to run destructive schema tests on shared databases "
+            f"'{db_name}'. Use DESTRUCTIVE_TEST_DATABASE_URL instead."
+        )
 
 
 @pytest.fixture(scope="module")
 def engine():
-    _ensure_safe_test_database(TEST_DATABASE_URL)
-    engine = create_engine(TEST_DATABASE_URL, future=True)
+    _ensure_safe_test_database(DESTRUCTIVE_TEST_DATABASE_URL)
+    engine = create_engine(DESTRUCTIVE_TEST_DATABASE_URL, future=True)
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except OperationalError:
-        pytest.skip(f"PostgreSQL is not available at {TEST_DATABASE_URL}")
+        pytest.skip(f"PostgreSQL is not available at {DESTRUCTIVE_TEST_DATABASE_URL}")
 
     Base.metadata.drop_all(bind=engine, tables=[User.__table__])
     Base.metadata.create_all(bind=engine, tables=[User.__table__])

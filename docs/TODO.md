@@ -202,6 +202,11 @@
 - [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL）
 - [ ] Observability：auth/交易事件新增 request_id 與審計記錄
 - [ ] Runbook：新增「發生 UndefinedColumn / 版本不一致」標準排障步驟
+- [x] 測試基礎設施：隔離 backend test DB，避免一般測試、destructive tests 與手動開發流程互踩
+  - [x] 將 `tests/destructive/` 改用獨立資料庫（例如 `elin_test_destructive`），不要與一般 backend 測試共用 `elin_test`
+  - [x] 文件化規則：不得並行執行多個指向同一個 `TEST_DATABASE_URL` 的 `pytest` 命令，避免 `drop/create/delete` 與一般測試互相污染
+  - [x] 補充排障說明：若 postgres log 出現 `relation does not exist`、`cannot drop table ... because other objects depend on it`、跨表 FK violation，優先懷疑 test DB isolation 問題，而非產品 runtime regression
+  - [x] 檢查 backend 測試命令與文件，避免讓開發中的 docker compose backend 誤用測試資料庫或與測試共用破壞性流程
 
 ### Messenger-first 核心能力（高優先）
 - [ ] Messenger：定義並落地 Send API 錯誤處理與重試策略（含 dead-letter / 補償）

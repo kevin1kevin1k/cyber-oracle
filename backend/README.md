@@ -199,19 +199,27 @@ docker compose exec backend uv run alembic upgrade head && docker compose exec p
 ```
 
 ## Tests
-Create test DB once:
+Create test DBs once:
 ```bash
-docker compose exec postgres psql -U postgres -d postgres -c "CREATE DATABASE elin_test;"
+docker compose exec postgres psql -U postgres -d postgres -c "CREATE DATABASE elin_test;" && docker compose exec postgres psql -U postgres -d postgres -c "CREATE DATABASE elin_test_destructive;"
 ```
 
-Run tests:
+Run general backend tests:
 ```bash
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test uv run pytest -q
 ```
 
+Run destructive schema tests separately:
+```bash
+DESTRUCTIVE_TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test_destructive uv run pytest -q tests/destructive/test_user_schema_destructive.py
+```
+
 Safety note:
-- `backend/tests/destructive/test_user_schema_destructive.py` is destructive for target tables.
-- Never point `TEST_DATABASE_URL` to primary DB `elin`.
+- `backend/tests/destructive/test_user_schema_destructive.py` is destructive for target tables and must use `DESTRUCTIVE_TEST_DATABASE_URL`, not `TEST_DATABASE_URL`.
+- Never point either `TEST_DATABASE_URL` or `DESTRUCTIVE_TEST_DATABASE_URL` to primary DB `elin`.
+- Never point destructive tests at shared test DB `elin_test`; use `elin_test_destructive` instead.
+- Do not run multiple `pytest` commands in parallel against the same test DB. Shared `drop/create/delete` activity will cause false failures such as `relation does not exist`, cross-table FK violations, or `cannot drop table ... because other objects depend on it`.
+- Docker Compose runtime backend should keep using the development DB `elin`; do not reuse test DB URLs for normal app startup or manual web/Messenger testing.
 
 ## Lint and Hooks
 Run backend lint:
