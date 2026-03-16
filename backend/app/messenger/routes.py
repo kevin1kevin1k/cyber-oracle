@@ -1,13 +1,23 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import AuthContext, require_verified_email
 from app.config import settings
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.messenger.client import (
     MessengerClientError,
     MetaGraphMessengerClient,
@@ -64,6 +74,34 @@ def _get_outbound_client():
             )
         return MetaGraphMessengerClient(page_access_token=settings.meta_page_access_token)
     return NoopMessengerClient()
+
+
+def process_webhook_events(*, payload: MessengerWebhookPayload) -> None:
+    db = SessionLocal()
+    try:
+        service = MessengerEventService(db=db)
+        client = _get_outbound_client()
+
+        for entry in payload.entry:
+            for event in entry.messaging:
+                outgoing_messages = service.handle_incoming_event(event=event)
+                sender = event.sender.get("id")
+                if not sender:
+                    continue
+                for outgoing in outgoing_messages:
+                    try:
+                        dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
+                    except MessengerClientError:
+                        logger.exception(
+                            "Messenger outbound delivery failed: sender=%s kind=%s",
+                            sender,
+                            outgoing.kind,
+                        )
+                        break
+    except Exception:
+        logger.exception("Messenger webhook background processing failed")
+    finally:
+        db.close()
 
 
 @router.get("/webhook")
@@ -156,8 +194,8 @@ def link_identity(
 async def receive_webhook(
     payload: MessengerWebhookPayload,
     request: Request,
+    background_tasks: BackgroundTasks,
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
-    db: Session = Depends(get_db),
 ) -> MessengerWebhookProcessResponse:
     _ensure_messenger_enabled()
 
@@ -177,26 +215,7 @@ async def receive_webhook(
                 },
             )
 
-    service = MessengerEventService(db=db)
-    client = _get_outbound_client()
-
-    processed = 0
-    for entry in payload.entry:
-        for event in entry.messaging:
-            outgoing_messages = service.handle_incoming_event(event=event)
-            sender = event.sender.get("id")
-            if not sender:
-                continue
-            for outgoing in outgoing_messages:
-                try:
-                    dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
-                except MessengerClientError:
-                    logger.exception(
-                        "Messenger outbound delivery failed: sender=%s kind=%s",
-                        sender,
-                        outgoing.kind,
-                    )
-                    break
-            processed += 1
+    processed = sum(len(entry.messaging) for entry in payload.entry)
+    background_tasks.add_task(process_webhook_events, payload=payload.model_copy(deep=True))
 
     return MessengerWebhookProcessResponse(status="accepted", processed=processed)

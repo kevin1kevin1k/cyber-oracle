@@ -146,6 +146,7 @@ Endpoints:
   - returns challenge in `text/plain` when verify token matches
 - `POST /api/v1/messenger/webhook`
   - parses basic Messenger events (`message`, `quick reply`, `postback`)
+  - returns `200 accepted` quickly after verify/parse, then processes ask/followup/send in background task
   - resolves/creates `messenger_identities` mapping
   - for linked identities, text messages now execute the existing ask credit flow (`reserve -> capture/refund`)
   - maps ask followups into Messenger quick replies payloads, and quick reply clicks now reuse the existing followup ask flow
@@ -164,6 +165,7 @@ Outbound client status:
   - insufficient credit on followup ask -> web_url button to `/wallet` + Messenger postback button to re-show pending followups after purchase
 - current failure handling:
   - outbound send failures are logged and do not turn webhook ingest into `500`
+  - webhook ingest and OpenAI/send execution are now decoupled via FastAPI background task to reduce Meta timeout / local tunnel `context canceled`
   - retry / dead-letter / telemetry are not implemented yet
 
 Schema/Model:

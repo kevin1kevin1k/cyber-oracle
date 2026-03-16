@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.db import Base, get_db
 from app.main import app
+from app.messenger import routes as messenger_routes
 from app.messenger.client import MessengerClientError
+from app.messenger.schemas import MessengerWebhookPayload
 from app.messenger.security import create_messenger_link_token
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
@@ -92,9 +94,15 @@ def client(db_session: Session):
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    session_factory = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+    original_messenger_session_local = messenger_routes.SessionLocal
+    messenger_routes.SessionLocal = session_factory
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        messenger_routes.SessionLocal = original_messenger_session_local
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -320,6 +328,42 @@ def test_webhook_post_message_event_creates_identity(
     assert identity.status == "unlinked"
 
 
+def test_webhook_post_message_event_schedules_background_processing(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduled: list[MessengerWebhookPayload] = []
+
+    def _capture_process(*, payload: MessengerWebhookPayload) -> None:
+        scheduled.append(payload)
+
+    monkeypatch.setattr("app.messenger.routes.process_webhook_events", _capture_process)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-scheduled",
+                "time": 1700000002,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-scheduled"},
+                        "recipient": {"id": "page-scheduled"},
+                        "timestamp": 1700000002,
+                        "message": {"mid": "m_scheduled", "text": "hello"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted", "processed": 1}
+    assert len(scheduled) == 1
+    assert scheduled[0].entry[0].messaging[0].message.text == "hello"
+
+
 def test_webhook_post_message_event_for_unlinked_user_returns_link_button(
     client: TestClient,
     captured_outgoing: list[tuple[str, object]],
@@ -389,6 +433,7 @@ def test_webhook_post_message_event_for_linked_user_runs_ask_flow(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
+    db_session.expire_all()
     wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
     assert wallet is not None
     assert wallet.balance == 1
@@ -642,6 +687,7 @@ def test_webhook_post_message_event_with_insufficient_credit(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
+    db_session.expire_all()
     wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
     assert wallet is not None
     assert wallet.balance == 0
@@ -828,6 +874,7 @@ def test_webhook_post_quick_reply_for_linked_user_runs_followup_flow(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
+    db_session.expire_all()
     wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
     assert wallet is not None
     assert wallet.balance == 1

@@ -18,11 +18,9 @@
 - `noop` / `meta_graph` outbound client abstraction
 
 尚未完成：
-- Messenger WebView 帳號綁定流程
 - Messenger WebView Stripe Checkout 流程
 - payment webhook -> 訂單入帳 -> Messenger 回饋閉環
 - production-ready Graph Send API retry / telemetry
-- webhook 快速 ack / background processing（目前 OpenAI ask 與 outbound send 仍在 webhook request 內同步執行）
 - webhook signature replay protection 與完整 hardening
 
 因此：
@@ -634,20 +632,20 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 Incoming request ended abruptly: context canceled
 ```
 而且通常發生在 quick reply / followup 後，優先懷疑：
-- `POST /api/v1/messenger/webhook` 還沒回 `200 accepted`
-- backend 仍在同步執行 `handle_incoming_event -> OpenAI/RAG -> Graph Send API`
-- 上游已取消連線，所以 tunnel 只看到 `context canceled`
+- background task 雖已讓 webhook 先快速回 `200 accepted`，但 OpenAI/RAG 或 Meta Graph send 仍可能在 local tunnel 環境中失敗或過慢
+- 若 background task 本身失敗，Messenger 端會像是沒有回覆，但 webhook access log 仍可能是 `200`
+- 上游已取消連線時，tunnel 仍可能只看到 `context canceled`
 
 目前 repo 狀態：
-- webhook route 尚未做快速 ack + background processing
-- 因此長回答或 followup ask 在 local / tunnel 環境下，仍可能撞到 timeout
+- webhook route 已改為快速 ack + background processing，顯著降低 Meta timeout 風險
+- 但目前仍未實作 production-grade queue / retry / telemetry，因此背景處理失敗仍主要依賴 log 排查
 
 建議排查：
-1. 對照 backend log，確認 `POST /api/v1/messenger/webhook` 是否長時間沒有完成
-2. 對照 OpenAI ask / followup 是否正在執行
+1. 對照 backend log，確認 `POST /api/v1/messenger/webhook` 是否已快速回 `200`
+2. 對照後續 background task log，確認 OpenAI ask / followup / Messenger send 是否失敗
 3. 若經常重現，優先排入：
-   - webhook route 先快速回 `200 accepted`
-   - OpenAI ask / followup / Messenger send 改走 background task 或 job queue
+   - queue / retry / dead-letter
+   - 更完整的 background task telemetry
 
 ### 3. 本機可以跑，但 Meta 打不到
 常見原因：

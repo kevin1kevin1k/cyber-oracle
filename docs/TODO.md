@@ -137,7 +137,7 @@
   - [ ] Backend：payment callback -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
-  - [ ] Backend：`POST /api/v1/messenger/webhook` 改為快速回 `200 accepted`，OpenAI ask / followup 與 outbound send 改走背景處理，避免 Meta timeout / `context canceled`
+  - [x] Backend：`POST /api/v1/messenger/webhook` 改為快速回 `200 accepted`，OpenAI ask / followup 與 outbound send 改走背景處理，避免 Meta timeout / `context canceled`
 - [ ] 完成 webhook signature hardening（replay protection、failure audit）
 - [ ] 完成 Meta 平台政策與合規要求檢查清單落地
 
@@ -205,7 +205,7 @@
 
 ### Messenger-first 核心能力（高優先）
 - [ ] Messenger：定義並落地 Send API 錯誤處理與重試策略（含 dead-letter / 補償）
-- [ ] Messenger：webhook ingest 與 OpenAI/Send API 解耦，避免 quick reply / followup 因同步長任務而 timeout
+- [x] Messenger：webhook ingest 與 OpenAI/Send API 解耦，避免 quick reply / followup 因同步長任務而 timeout
 - [ ] Messenger：補 webhook security（signature verify + replay 防護）並加入監控告警
 - [ ] Messenger：完成 WebView 開關/返回 UX（取消支付、失敗重試、成功回流）
 - [ ] Messenger：完成 identity linking 的風險控管（重複綁定、帳號接管防護）
