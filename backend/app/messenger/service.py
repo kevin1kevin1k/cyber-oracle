@@ -12,8 +12,12 @@ from app.config import settings
 from app.messenger.constants import (
     DEFAULT_FOLLOWUP_PROMPT_TEXT,
     DEFAULT_MESSENGER_ASK_FAILED_REPLY,
+    DEFAULT_MESSENGER_BALANCE_BUTTON_TITLE,
+    DEFAULT_MESSENGER_BALANCE_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
+    DEFAULT_MESSENGER_GET_STARTED_REPLY,
+    DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
@@ -26,9 +30,11 @@ from app.messenger.constants import (
     EVENT_TYPE_POSTBACK,
     EVENT_TYPE_QUICK_REPLY,
     EVENT_TYPE_UNSUPPORTED,
+    GET_STARTED_PAYLOAD,
     IDENTITY_STATUS_LINKED,
     IDENTITY_STATUS_UNLINKED,
     MESSENGER_PLATFORM,
+    SHOW_BALANCE_PAYLOAD,
 )
 from app.messenger.schemas import (
     MessengerIncomingCommand,
@@ -37,6 +43,7 @@ from app.messenger.schemas import (
     MessengerWebhookMessagingEvent,
 )
 from app.messenger.security import create_messenger_link_token
+from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
 
@@ -164,6 +171,15 @@ class MessengerEventService:
         if self.maybe_resolve_internal_user(identity=identity) is None:
             return [self.build_linking_message(identity=identity)]
         payload = command.postback_payload or ""
+        if payload == GET_STARTED_PAYLOAD:
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_GET_STARTED_REPLY,
+                )
+            ]
+        if payload == SHOW_BALANCE_PAYLOAD:
+            return self._build_balance_messages(user_id=identity.user_id)
         reshow_followup_id = self._parse_reshow_followups_payload(payload)
         if reshow_followup_id is not None:
             return self._reshow_followup_messages(
@@ -220,7 +236,7 @@ class MessengerEventService:
             algorithm=settings.jwt_algorithm,
         )
         query = urlencode({"token": link_token})
-        link_url = f"{settings.messenger_web_base_url.rstrip('/')}/messenger/link?{query}"
+        link_url = f"{self._base_web_url()}/messenger/link?{query}"
         return MessengerOutgoingMessage(
             kind="button_template",
             text=DEFAULT_UNLINKED_REPLY,
@@ -234,9 +250,7 @@ class MessengerEventService:
         )
 
     def build_topup_message(self, *, followup_id: UUID | None = None) -> MessengerOutgoingMessage:
-        topup_url = (
-            f"{settings.messenger_web_base_url.rstrip('/')}/wallet?from=messenger-insufficient-credit"
-        )
+        topup_url = f"{self._base_web_url()}/wallet?from=messenger-insufficient-credit"
         buttons: list[dict[str, str]] = [
             {
                 "type": "web_url",
@@ -257,6 +271,24 @@ class MessengerEventService:
             text=DEFAULT_MESSENGER_TOPUP_REPLY,
             buttons=buttons,
         )
+
+    def _build_balance_messages(self, *, user_id) -> list[MessengerOutgoingMessage]:
+        wallet = self._db.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+        balance = wallet.balance if wallet is not None else 0
+        if balance <= 0:
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_BALANCE_REPLY.format(balance=balance),
+                ),
+                self.build_topup_message(),
+            ]
+        return [
+            MessengerOutgoingMessage(
+                kind="text",
+                text=DEFAULT_MESSENGER_BALANCE_REPLY.format(balance=balance),
+            )
+        ]
 
     def _reshow_followup_messages(
         self,
@@ -291,6 +323,9 @@ class MessengerEventService:
             ]
 
         return self._build_followup_outgoing_messages(pending_followups)
+
+    def _base_web_url(self) -> str:
+        return settings.messenger_web_base_url.rstrip("/")
 
     def resolve_or_create_identity(self, *, psid: str, page_id: str | None) -> MessengerIdentity:
         normalized_page_id = (page_id or "").strip()
@@ -395,3 +430,28 @@ class MessengerEventService:
             return UUID(raw_followup_id)
         except ValueError:
             return None
+
+
+def build_default_persistent_menu() -> list[dict[str, str]]:
+    base_url = settings.messenger_web_base_url.rstrip("/")
+    return [
+        {
+            "type": "postback",
+            "title": DEFAULT_MESSENGER_BALANCE_BUTTON_TITLE,
+            "payload": SHOW_BALANCE_PAYLOAD,
+        },
+        {
+            "type": "web_url",
+            "title": DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
+            "url": f"{base_url}/wallet",
+        },
+        {
+            "type": "web_url",
+            "title": DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
+            "url": f"{base_url}/history",
+        },
+    ]
+
+
+def build_default_get_started_payload() -> str:
+    return GET_STARTED_PAYLOAD

@@ -15,6 +15,7 @@
 - linked / unlinked identity 分流
 - linked user 的 inbound ask flow
 - Messenger quick reply followup flow
+- Messenger persistent menu（查點數 / 購點 / 歷史）
 - `noop` / `meta_graph` outbound client abstraction
 
 尚未完成：
@@ -47,6 +48,26 @@ Backend endpoint：
 - `MESSENGER_OUTBOUND_MODE=meta_graph`：才會真的透過 Meta Graph API 回 Messenger 訊息
 - backend tunnel URL 變了：更新 Meta 後台 webhook callback URL
 - frontend tunnel URL 變了：更新 `MESSENGER_WEB_BASE_URL` 與 `CORS_ORIGINS`，通常不需要改 Meta 後台
+
+## Persistent Menu
+目前 repo 已支援一套最小可用的 Messenger persistent menu：
+
+- `查看剩餘點數`：postback `SHOW_BALANCE`
+- `前往購點`：開啟 `/wallet`
+- `查看歷史`：開啟 `/history`
+
+同步方式：
+```bash
+cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messenger_profile.py && cd ..
+```
+
+預期結果：
+- script 會同時設定 `Get Started` 與 `persistent_menu`；Meta 不接受只設定 persistent menu
+- Meta Page 的 Messenger persistent menu 會被更新為目前程式內定義的預設 menu
+- 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
+- 若剩餘點數為 `0`，系統會再附上既有購點按鈕
+- 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
+- `前往購點` / `查看歷史` 仍是 WebView / Web auth 入口，不做 per-user 動態 menu 切換
 
 ## 通訊流程圖
 
@@ -500,6 +521,8 @@ cloudflared tunnel --url http://localhost:8000
    - 預期結果：ask flow 執行，但因為 outbound 是 `noop`，Messenger 端不一定看到回覆
 5. 對 linked user 測試 quick reply followup
    - 預期結果：followup 事件可進 domain flow，不會只 echo payload
+6. 打開 Messenger persistent menu，點 `查看剩餘點數`
+   - 預期結果：已綁定使用者會直接收到目前剩餘點數；若是未綁定使用者，會收到 linking 引導
 
 適合驗證：
 - webhook 綁定
@@ -507,6 +530,7 @@ cloudflared tunnel --url http://localhost:8000
 - event parsing
 - linked / unlinked routing
 - ask / followup domain reuse
+- persistent menu postback
 
 不適合驗證：
 - Messenger 實際收到回覆

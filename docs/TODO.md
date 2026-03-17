@@ -130,6 +130,14 @@
   - [x] Frontend：`register -> verify-email -> login` 保留 linking `next` 路徑
   - [x] 測試：backend linking token / endpoint / unlinked button 覆蓋
   - [x] 測試：frontend e2e 覆蓋 Messenger linking login-return-path flow
+- [x] 完成 Messenger persistent menu MVP（常用入口）
+  - [x] Backend：新增 persistent menu payload builder（查看剩餘點數 / 前往購點 / 查看歷史）
+  - [x] Backend：新增 Messenger profile sync script，將 persistent menu 寫入 Meta Graph API
+  - [x] Backend：新增 `SHOW_BALANCE` postback，回覆目前剩餘點數
+  - [x] Backend：`SHOW_BALANCE` 在 0 點時附帶既有購點導流按鈕
+  - [x] Backend：未綁定使用者點擊需要帳號的 menu 入口時回覆 linking 引導
+  - [x] 文件：PRD / README / Messenger 驗證 runbook 補上 persistent menu 與同步方式
+  - [x] 測試：覆蓋 persistent menu payload 與 `SHOW_BALANCE` postback
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
   - [x] Backend：點數不足時回 Messenger web_url 購點按鈕（導向 `/wallet`）
   - [ ] Frontend：`/wallet?from=messenger-insufficient-credit` 顯示 Messenger 專用提示與購買成功後回 Messenger 操作引導
@@ -164,6 +172,7 @@
 - [x] `POST /api/v1/messenger/webhook` 可解析 message/postback/quick reply
 - [x] 使用者可從 Messenger 直接發問並收到答案回覆（不需切到獨立 web 問答頁）
 - [x] 使用者可從 Messenger 點擊延伸問題 quick reply 繼續追問，並沿用既有扣點/回補規則
+- [x] 使用者可從 Messenger 常駐入口主動查詢剩餘點數
 - [x] 點數不足時 Messenger 內可被導向 WebView 購點
 - [ ] WebView 付款成功後可在 Messenger 收到購點成功通知且餘額生效
 - [x] 未綁定與已綁定使用者的行為差異符合產品定義

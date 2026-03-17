@@ -137,8 +137,7 @@ Production security baseline:
 ## Messenger Integration (Skeleton)
 This repository now includes a non-invasive Messenger channel adapter skeleton under `app/messenger/`.
 
-Validation runbook:
-- local / pre-prod / prod Messenger verification steps are documented in `docs/messenger_validation_runbook.md`
+- verification, webhook binding, persistent menu sync, local/pre-prod/prod validation, and Meta setup steps are documented in `docs/messenger_validation_runbook.md`
 
 Endpoints:
 - `GET /api/v1/messenger/webhook`
@@ -153,17 +152,15 @@ Endpoints:
   - dispatches outgoing payloads through pluggable client abstraction (`noop` or `meta_graph`)
   - `POST /api/v1/messenger/link` links a verified web user to an existing `messenger_identities` row using signed linking token
 
-Outbound client status:
+Current channel capabilities:
 - `noop`: local/dev ingest-only mode, webhook can be tested without real Messenger reply
 - `meta_graph`: minimum viable Graph Send API implementation for:
   - text messages
   - quick replies
   - button templates
-- current WebView/button uses:
-  - unlinked user -> signed link button to `/messenger/link`
-  - insufficient credit on top-level ask -> web_url button to `/wallet`
-  - insufficient credit on followup ask -> web_url button to `/wallet` + Messenger postback button to re-show pending followups after purchase
-- current failure handling:
+- linked/unlinked routing, Messenger WebView account linking MVP, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
+- Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled
+- failure handling:
   - outbound send failures are logged and do not turn webhook ingest into `500`
   - webhook ingest and OpenAI/send execution are now decoupled via FastAPI background task to reduce Meta timeout / local tunnel `context canceled`
   - retry / dead-letter / telemetry are not implemented yet

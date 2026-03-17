@@ -32,6 +32,8 @@ class MessengerClientProtocol(Protocol):
         buttons: list[dict[str, str]],
     ) -> None: ...
 
+    def set_persistent_menu(self, *, menu_items: list[dict[str, Any]]) -> None: ...
+
 
 class NoopMessengerClient:
     """Local/dev stub client.
@@ -54,11 +56,22 @@ class NoopMessengerClient:
     def send_button_template(self, *, psid: str, text: str, buttons: list[dict[str, str]]) -> None:
         _ = (psid, text, buttons)
 
+    def set_messenger_profile(
+        self,
+        *,
+        get_started_payload: str,
+        menu_items: list[dict[str, Any]],
+    ) -> None: ...
+
+    def set_persistent_menu(self, *, menu_items: list[dict[str, Any]]) -> None:
+        self.set_messenger_profile(get_started_payload="GET_STARTED", menu_items=menu_items)
+
 
 class MetaGraphMessengerClient:
     """Minimal Messenger Send API client backed by Meta Graph API."""
 
     graph_api_url = "https://graph.facebook.com/v24.0/me/messages"
+    messenger_profile_api_url = "https://graph.facebook.com/v24.0/me/messenger_profile"
 
     def __init__(self, *, page_access_token: str, timeout_seconds: float = 10.0) -> None:
         self.page_access_token = page_access_token
@@ -116,10 +129,38 @@ class MetaGraphMessengerClient:
             }
         )
 
+    def set_messenger_profile(
+        self,
+        *,
+        get_started_payload: str,
+        menu_items: list[dict[str, Any]],
+    ) -> None:
+        self._send_profile_api_request(
+            {
+                "get_started": {"payload": get_started_payload},
+                "persistent_menu": [
+                    {
+                        "locale": "default",
+                        "composer_input_disabled": False,
+                        "call_to_actions": menu_items,
+                    }
+                ]
+            }
+        )
+
+    def set_persistent_menu(self, *, menu_items: list[dict[str, Any]]) -> None:
+        self.set_messenger_profile(get_started_payload="GET_STARTED", menu_items=menu_items)
+
     def _send_api_request(self, payload: dict[str, Any]) -> None:
+        self._post_json(self.graph_api_url, payload)
+
+    def _send_profile_api_request(self, payload: dict[str, Any]) -> None:
+        self._post_json(self.messenger_profile_api_url, payload)
+
+    def _post_json(self, url: str, payload: dict[str, Any]) -> None:
         data = json.dumps(payload).encode("utf-8")
         request = Request(
-            self.graph_api_url,
+            url,
             data=data,
             method="POST",
             headers={

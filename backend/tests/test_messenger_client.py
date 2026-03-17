@@ -5,6 +5,7 @@ import pytest
 
 from app.messenger.client import MessengerClientError, MetaGraphMessengerClient
 from app.messenger.schemas import MessengerQuickReplyOption
+from app.messenger.service import build_default_persistent_menu
 
 
 class _FakeResponse:
@@ -132,6 +133,106 @@ def test_meta_graph_send_button_template_builds_expected_request(
                 },
             }
         },
+    }
+
+
+def test_meta_graph_set_messenger_profile_builds_expected_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_urlopen(request, timeout):  # noqa: ANN001
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return _FakeResponse(body='{"result":"success"}')
+
+    monkeypatch.setattr("app.messenger.client.urlopen", _fake_urlopen)
+
+    client = MetaGraphMessengerClient(page_access_token="page-token")
+    client.set_messenger_profile(
+        get_started_payload="GET_STARTED",
+        menu_items=[
+            {"type": "postback", "title": "查看剩餘點數", "payload": "SHOW_BALANCE"},
+            {"type": "web_url", "title": "前往購點", "url": "https://example.com/wallet"},
+        ]
+    )
+
+    assert captured["url"] == "https://graph.facebook.com/v24.0/me/messenger_profile"
+    assert captured["timeout"] == 10.0
+    assert captured["payload"] == {
+        "get_started": {"payload": "GET_STARTED"},
+        "persistent_menu": [
+            {
+                "locale": "default",
+                "composer_input_disabled": False,
+                "call_to_actions": [
+                    {
+                        "type": "postback",
+                        "title": "查看剩餘點數",
+                        "payload": "SHOW_BALANCE",
+                    },
+                    {
+                        "type": "web_url",
+                        "title": "前往購點",
+                        "url": "https://example.com/wallet",
+                    },
+                ],
+            }
+        ]
+    }
+
+
+def test_build_default_persistent_menu_uses_current_web_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.messenger.service.settings.messenger_web_base_url", "https://messenger.example.com")
+
+    assert build_default_persistent_menu() == [
+        {
+            "type": "postback",
+            "title": "查看剩餘點數",
+            "payload": "SHOW_BALANCE",
+        },
+        {
+            "type": "web_url",
+            "title": "前往購點",
+            "url": "https://messenger.example.com/wallet",
+        },
+        {
+            "type": "web_url",
+            "title": "查看歷史",
+            "url": "https://messenger.example.com/history",
+        },
+    ]
+
+
+def test_set_persistent_menu_delegates_to_default_get_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_profile_request(self, payload):  # noqa: ANN001
+        captured["payload"] = payload
+
+    monkeypatch.setattr(
+        MetaGraphMessengerClient,
+        "_send_profile_api_request",
+        _fake_profile_request,
+    )
+
+    client = MetaGraphMessengerClient(page_access_token="page-token")
+    client.set_persistent_menu(menu_items=[{"type": "postback", "title": "A", "payload": "B"}])
+
+    assert captured["payload"] == {
+        "get_started": {"payload": "GET_STARTED"},
+        "persistent_menu": [
+            {
+                "locale": "default",
+                "composer_input_disabled": False,
+                "call_to_actions": [{"type": "postback", "title": "A", "payload": "B"}],
+            }
+        ],
     }
 
 

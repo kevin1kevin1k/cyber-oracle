@@ -770,6 +770,198 @@ def test_webhook_post_postback_event(client: TestClient) -> None:
     assert response.json()["processed"] == 1
 
 
+def test_webhook_post_postback_show_balance_for_linked_user(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-balance-1",
+        page_id="page-balance-1",
+        balance=3,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-balance-1",
+                "time": 1700001001,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-balance-1"},
+                        "recipient": {"id": "page-balance-1"},
+                        "timestamp": 1700001001,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    psid, outgoing = captured_outgoing[0]
+    assert psid == "psid-balance-1"
+    assert outgoing.kind == "text"
+    assert outgoing.text == "目前剩餘 3 點。"
+
+
+def test_webhook_post_postback_get_started_for_linked_user(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-get-started-linked",
+        page_id="page-get-started-linked",
+        balance=2,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-get-started-linked",
+                "time": 1700001004,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-get-started-linked"},
+                        "recipient": {"id": "page-get-started-linked"},
+                        "timestamp": 1700001004,
+                        "postback": {"payload": "GET_STARTED"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    psid, outgoing = captured_outgoing[0]
+    assert psid == "psid-get-started-linked"
+    assert outgoing.kind == "text"
+    assert (
+        outgoing.text
+        == "已開啟 Messenger 助手。你可以直接提問，或使用選單查看點數、購點與歷史。"
+    )
+
+
+def test_webhook_post_postback_get_started_for_unlinked_user_returns_linking(
+    client: TestClient,
+    outgoing_messages: list[tuple[str, str, str]],
+) -> None:
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-get-started-unlinked",
+                "time": 1700001005,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-get-started-unlinked"},
+                        "recipient": {"id": "page-get-started-unlinked"},
+                        "timestamp": 1700001005,
+                        "postback": {"payload": "GET_STARTED"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert outgoing_messages[-1] == (
+        "psid-get-started-unlinked",
+        "button_template",
+        "已收到你的訊息。請先完成網站登入與帳號綁定後再提問。",
+    )
+
+
+def test_webhook_post_postback_show_balance_for_zero_balance_returns_topup(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-balance-0",
+        page_id="page-balance-0",
+        balance=0,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-balance-0",
+                "time": 1700001002,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-balance-0"},
+                        "recipient": {"id": "page-balance-0"},
+                        "timestamp": 1700001002,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 2
+    _, balance_outgoing = captured_outgoing[0]
+    _, topup_outgoing = captured_outgoing[1]
+    assert balance_outgoing.kind == "text"
+    assert balance_outgoing.text == "目前剩餘 0 點。"
+    assert topup_outgoing.kind == "button_template"
+    assert topup_outgoing.buttons == [
+        {
+            "type": "web_url",
+            "title": "前往購點",
+            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
+        }
+    ]
+
+
+def test_webhook_post_postback_show_balance_for_unlinked_user_returns_linking(
+    client: TestClient,
+    outgoing_messages: list[tuple[str, str, str]],
+) -> None:
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-balance-unlinked",
+                "time": 1700001003,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-balance-unlinked"},
+                        "recipient": {"id": "page-balance-unlinked"},
+                        "timestamp": 1700001003,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert outgoing_messages[-1] == (
+        "psid-balance-unlinked",
+        "button_template",
+        "已收到你的訊息。請先完成網站登入與帳號綁定後再提問。",
+    )
+
+
 def test_webhook_post_quick_reply_event(client: TestClient) -> None:
     payload = {
         "object": "page",

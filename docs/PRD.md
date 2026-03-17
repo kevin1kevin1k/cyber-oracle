@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.8（Messenger-first MVP）
+- 文件版本：v0.9（Messenger-first MVP）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -24,6 +24,7 @@ MVP 目標：
 - Messenger 主入口：
   - 支援 Messenger webhook verification 與 webhook event handling。
   - 支援 Messenger outbound message delivery（文字、quick replies/buttons）。
+  - 支援 Messenger persistent menu，提供常用入口（如點數、購點、歷史）。
 - 身份與綁定：
   - 支援 Messenger 身份（PSID / external identity）建檔與對應。
   - 使用者可先以未綁定狀態互動，必要時透過 Messenger WebView 完成站內帳號建立/綁定。
@@ -86,6 +87,11 @@ MVP 目標：
 5. 已綁定 vs 未綁定能力
    - 未綁定：可進行有限互動（由產品策略決定），必要時被引導綁定。
    - 已綁定：可使用完整問答、購點、歷史與點數一致性能力。
+
+6. 常用功能入口
+   - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。
+   - 使用者可透過 Messenger persistent menu 開啟購點頁與歷史頁。
+   - 若尚未綁定帳號，點擊需要站內身份的入口時，系統需回覆綁定引導。
 
 ### 5.2 Messenger-first 問答流程
 1. Intake：接收 Messenger 訊息事件（text/postback/quick reply）與 channel context。
@@ -154,6 +160,7 @@ sequenceDiagram
 ### 6.1 通路與身份
 - 系統需支援 Messenger webhook verification（challenge 驗證）。
 - 系統需支援 webhook event handling（message/postback/quick reply）。
+- 系統需支援 Messenger persistent menu / postback 常用入口（如查點數）。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
 - 帳號綁定、註冊、登入等頁面操作需可透過 Messenger WebView 完成。
@@ -172,10 +179,12 @@ sequenceDiagram
 - 提問採固定扣點：每次提問扣 1 點。
 - 交易與扣點需具冪等保護，避免重複扣點或重複入帳。
 - 延伸問題點擊視為一次新提問，套用同一扣點與回補規則（每次 1 點）。
+- 已綁定使用者需可從 Messenger 常駐入口主動查詢剩餘點數。
 
 ### 6.4 購點與金流（Messenger WebView）
 - 點數包售價：1 題 168、3 題 358、5 題 518。
 - 購點主要入口在 Messenger 對話中觸發，付款在 Messenger WebView 內完成 Stripe Checkout。
+- 使用者需可從 Messenger persistent menu 主動開啟購點 WebView。
 - 付款完成後需更新訂單狀態與點數餘額，並回 Messenger 告知結果。
 - 付款失敗/逾時需回 Messenger 告知重試路徑。
 
@@ -217,6 +226,7 @@ sequenceDiagram
 
 ## 9. 驗收標準（MVP）
 - 使用者可直接從 Messenger 成功提問並收到回答。
+- 使用者可從 Messenger persistent menu 主動查詢剩餘點數，且結果與錢包資料一致。
 - 針對已綁定帳號使用者，每次提問皆正確扣點；失敗情境可正確回補。
 - 點數不足時，Messenger 內可被正確引導至 WebView 購點流程。
 - Stripe Checkout 完成後，點數與訂單狀態可在可接受時間內（建議 10 秒）反映，並回傳 Messenger 成功/失敗訊息。
