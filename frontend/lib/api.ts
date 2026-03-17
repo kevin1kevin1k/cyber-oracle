@@ -1,6 +1,24 @@
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const DEFAULT_LOCAL_API_BASE = "http://localhost:8000";
+
+function resolveApiBase(): string {
+  const configuredBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  if (typeof window !== "undefined") {
+    const { hostname, origin, protocol } = window.location;
+    const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+
+    if (!isLocalHost && protocol === "https:") {
+      return origin;
+    }
+  }
+
+  return DEFAULT_LOCAL_API_BASE;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -17,6 +35,7 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit & { auth?: boolean } = {}
 ): Promise<T> {
+  const apiBase = resolveApiBase();
   const { auth = false, headers, ...rest } = options;
   const mergedHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -30,7 +49,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${apiBase}${path}`, {
     ...rest,
     headers: mergedHeaders,
   });
