@@ -213,6 +213,40 @@ button:disabled {
   margin: 8px 0 0;
 }
 
+.password-input-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.password-input-group input {
+  min-width: 0;
+}
+
+.password-toggle {
+  margin-top: 0;
+  padding: 12px 14px;
+  background: #eef5ff;
+  color: #0d3f85;
+  border: 1px solid #d7e6fa;
+  white-space: nowrap;
+}
+
+.password-toggle:hover {
+  background: #dfeeff;
+}
+
+@media (max-width: 640px) {
+  .password-input-group {
+    grid-template-columns: 1fr;
+  }
+
+  .password-toggle {
+    width: 100%;
+  }
+}
+
 .success {
   margin-top: 10px;
   color: #067647;

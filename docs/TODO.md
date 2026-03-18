@@ -108,6 +108,9 @@
   - [x] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
   - [x] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
     - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
+  - [x] Frontend：註冊/登入/重設密碼頁新增顯示/隱藏密碼 toggle
+  - [x] Frontend：註冊與重設密碼新增確認密碼欄位與 mismatch 防呆
+  - [x] 測試：frontend e2e 覆蓋密碼顯示切換與 mismatch 阻擋送出
 
 ## Messenger / Channel Adapter（MVP 主流程）
 - [x] 建立 Messenger backend adapter 基礎骨架（routes/schemas/service/client/security/constants）

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { PasswordField } from "@/components/PasswordField";
 import { apiRequest, ApiError } from "@/lib/api";
 import { INVALID_OR_EXPIRED_LINK_MESSAGE } from "@/lib/auth-messages";
 
@@ -10,9 +11,13 @@ type ResetPasswordResponse = {
   status: "password_reset";
 };
 
+const PASSWORD_MISMATCH_MESSAGE = "兩次輸入的密碼不一致。";
+
 export default function ResetPasswordPage() {
   const [tokenFromQuery, setTokenFromQuery] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -24,8 +29,17 @@ export default function ResetPasswordPage() {
     }
   }, []);
 
+  const passwordMismatch = useMemo(
+    () => confirmNewPassword.length > 0 && newPassword !== confirmNewPassword,
+    [confirmNewPassword, newPassword]
+  );
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (passwordMismatch) {
+      setError(PASSWORD_MISMATCH_MESSAGE);
+      return;
+    }
     setError(null);
     setSuccess(false);
     setLoading(true);
@@ -36,6 +50,7 @@ export default function ResetPasswordPage() {
       });
       setSuccess(true);
       setNewPassword("");
+      setConfirmNewPassword("");
     } catch (err) {
       if (err instanceof ApiError && err.code === "INVALID_OR_EXPIRED_TOKEN") {
         setError(INVALID_OR_EXPIRED_LINK_MESSAGE);
@@ -53,16 +68,28 @@ export default function ResetPasswordPage() {
       <section className="card">
         {tokenFromQuery ? (
           <form onSubmit={handleSubmit}>
-            <label htmlFor="new-password">新密碼</label>
-            <input
+            <PasswordField
               id="new-password"
-              type="password"
+              label="新密碼"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              minLength={8}
-              required
+              showPassword={showPassword}
+              onToggleVisibility={() => setShowPassword((current) => !current)}
+              autoComplete="new-password"
+              ariaInvalid={passwordMismatch}
             />
-            <button type="submit" disabled={loading}>
+            <PasswordField
+              id="confirm-new-password"
+              label="確認新密碼"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              showPassword={showPassword}
+              onToggleVisibility={() => setShowPassword((current) => !current)}
+              autoComplete="new-password"
+              ariaInvalid={passwordMismatch}
+            />
+            {passwordMismatch && <p className="error-inline">{PASSWORD_MISMATCH_MESSAGE}</p>}
+            <button type="submit" disabled={loading || passwordMismatch}>
               {loading ? "送出中..." : "重設密碼"}
             </button>
           </form>
@@ -74,7 +101,7 @@ export default function ResetPasswordPage() {
             </p>
           </div>
         )}
-        {error && <p className="error">{error}</p>}
+        {error && !passwordMismatch && <p className="error">{error}</p>}
         {success && <p className="success">密碼已重設，請使用新密碼登入。</p>}
         <p className="helper-links">
           <Link href="/login">前往登入</Link>

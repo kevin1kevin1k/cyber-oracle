@@ -33,7 +33,7 @@ test("messenger link page redirects to login and completes linking after login",
   await expect(page).toHaveURL(/\/login\?next=%2Fmessenger%2Flink%3Ftoken%3Dlink-token-123$/);
 
   await page.getByLabel("Email").fill("messenger@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
 
   await expect(page).toHaveURL("/messenger/link?token=link-token-123");
@@ -59,7 +59,7 @@ test("messenger link page shows verification guidance for unverified user", asyn
   await expect(page).toHaveURL(/\/login\?next=%2Fmessenger%2Flink%3Ftoken%3Dlink-token-456$/);
 
   await page.getByLabel("Email").fill("unverified@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
 
   await expect(page).toHaveURL("/messenger/link?token=link-token-456");

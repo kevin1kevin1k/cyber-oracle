@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
+import { PasswordField } from "@/components/PasswordField";
 import { apiRequest, ApiError } from "@/lib/api";
 import { saveAuthSession } from "@/lib/auth";
 import { resolveSafeNext } from "@/lib/navigation";
@@ -18,6 +19,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextPath, setNextPath] = useState("/");
@@ -65,15 +67,16 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
-          <label htmlFor="password">密碼</label>
-          <input
+          <PasswordField
             id="password"
-            type="password"
+            label="密碼"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
+            showPassword={showPassword}
+            onToggleVisibility={() => setShowPassword((current) => !current)}
+            autoComplete="current-password"
           />
           <button type="submit" disabled={loading}>
             {loading ? "登入中..." : "登入"}

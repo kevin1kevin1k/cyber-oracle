@@ -60,7 +60,8 @@ test("register -> verify -> login -> ask -> logout", async ({ page }) => {
 
   await page.goto("/register");
   await page.getByLabel("Email").fill("new@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
+  await page.getByLabel("確認密碼").fill("Password123");
   await page.getByRole("button", { name: "註冊" }).click();
 
   await expect(page).toHaveURL(/\/verify-email\?token=verify-token-123/);
@@ -72,7 +73,7 @@ test("register -> verify -> login -> ask -> logout", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 
   await page.getByLabel("Email").fill("new@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
 
   await expect(page).toHaveURL("/");
@@ -112,7 +113,8 @@ test("register success without verification token shows check-email message", as
 
   await page.goto("/register");
   await page.getByLabel("Email").fill("prod@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
+  await page.getByLabel("確認密碼").fill("Password123");
   await page.getByRole("button", { name: "註冊" }).click();
 
   await expect(page).toHaveURL(/\/register/);
@@ -149,7 +151,8 @@ test("forgot -> reset password flow", async ({ page }) => {
   await expect(page.getByText("若帳號存在，請查收 Email 內的重設密碼連結。")).toBeVisible();
   await expect(page.getByText("開發環境重設 token（僅 dev/test）：")).toHaveCount(0);
   await page.goto("/reset-password?token=reset-token-xyz");
-  await page.getByLabel("新密碼").fill("NewPassword123");
+  await page.getByLabel("新密碼", { exact: true }).fill("NewPassword123");
+  await page.getByLabel("確認新密碼").fill("NewPassword123");
   await page.getByRole("button", { name: "重設密碼" }).click();
   await expect(page.getByText("密碼已重設，請使用新密碼登入。"))
     .toBeVisible();
@@ -190,7 +193,8 @@ test("verify and reset invalid tokens share unified error message", async ({ pag
   await expect(page.getByText("連結無效或已過期，請重新申請。")).toBeVisible();
 
   await page.goto("/reset-password?token=bad-token");
-  await page.getByLabel("新密碼").fill("NewPassword123");
+  await page.getByLabel("新密碼", { exact: true }).fill("NewPassword123");
+  await page.getByLabel("確認新密碼").fill("NewPassword123");
   await page.getByRole("button", { name: "重設密碼" }).click();
   await expect(page.getByText("連結無效或已過期，請重新申請。")).toBeVisible();
 });
@@ -210,7 +214,7 @@ test("unverified login enters home but ask is disabled", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("unverified@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
 
   await expect(page).toHaveURL("/");
@@ -250,7 +254,7 @@ test("ask handles 401 by redirecting to login", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("user401@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
@@ -258,7 +262,7 @@ test("ask handles 401 by redirecting to login", async ({ page }) => {
   await page.getByRole("button", { name: "送出問題" }).click();
   await expect(page).toHaveURL(/\/login\?next=%2F$/);
   await page.getByLabel("Email").fill("user401@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 });
@@ -295,7 +299,7 @@ test("ask handles 403 email verification required", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("user403@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
@@ -328,7 +332,7 @@ test("login next path rejects backslash payload and does not auto-forward on sta
   await expect(page.getByRole("heading", { name: "登入" })).toBeVisible();
 
   await page.getByLabel("Email").fill("safe-next@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 });
@@ -358,7 +362,7 @@ test("ask handles 402 insufficient credit", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("user402@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
@@ -423,7 +427,7 @@ test("ask success updates credit balance immediately", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("credit-live@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText("目前點數：5 點")).toBeVisible();
@@ -470,7 +474,7 @@ test("ask failure does not decrement credit balance", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("credit-fail@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText("目前點數：5 點")).toBeVisible();
@@ -530,7 +534,7 @@ test("ask retry uses the same Idempotency-Key", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("retry@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
@@ -617,7 +621,7 @@ test("ask response renders followup buttons and clicking one asks followup with 
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("followup-success@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText("目前點數：5 點")).toBeVisible();
@@ -694,7 +698,7 @@ test("followup ask 409 shows used message and does not decrement credit", async 
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("followup-409@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText("目前點數：4 點")).toBeVisible();
@@ -707,4 +711,93 @@ test("followup ask 409 shows used message and does not decrement credit", async 
   await page.getByRole("button", { name: "已用過延伸題" }).click();
   await expect(page.getByText("這個延伸問題已被使用，請改選其他按鈕。")).toBeVisible();
   await expect(page.getByText("目前點數：4 點")).toBeVisible();
+});
+
+test("password fields support visibility toggle and prevent mismatched registration", async ({
+  page,
+}) => {
+  let registerCalls = 0;
+  await page.route("**/api/v1/auth/register", async (route) => {
+    registerCalls += 1;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user_id: "u-3",
+        email: "match@example.com",
+        email_verified: false,
+        verification_token: null,
+      }),
+    });
+  });
+
+  await page.goto("/register");
+  await page.getByLabel("Email").fill("match@example.com");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
+  await page.getByLabel("確認密碼").fill("Password456");
+  await expect(page.getByText("兩次輸入的密碼不一致。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "註冊" })).toBeDisabled();
+  await expect(page.getByLabel("密碼", { exact: true })).toHaveAttribute("type", "password");
+
+  await page.getByRole("button", { name: "顯示密碼" }).first().click();
+  await expect(page.getByLabel("密碼", { exact: true })).toHaveAttribute("type", "text");
+  await expect(page.getByLabel("確認密碼")).toHaveAttribute("type", "text");
+
+  await page.getByLabel("確認密碼").fill("Password123");
+  await expect(page.getByText("兩次輸入的密碼不一致。")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "註冊" })).toBeEnabled();
+  await page.getByRole("button", { name: "註冊" }).click();
+  await expect(page.getByText("註冊成功，請查收 match@example.com 的驗證信件。")).toBeVisible();
+  expect(registerCalls).toBe(1);
+});
+
+test("login supports password visibility toggle without confirm field", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-show-password",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await expect(page.getByLabel("確認密碼")).toHaveCount(0);
+  await page.getByLabel("Email").fill("toggle@example.com");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
+  await expect(page.getByLabel("密碼", { exact: true })).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "顯示密碼" }).click();
+  await expect(page.getByLabel("密碼", { exact: true })).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+});
+
+test("reset password prevents mismatched confirmation", async ({ page }) => {
+  let resetCalls = 0;
+  await page.route("**/api/v1/auth/reset-password", async (route) => {
+    resetCalls += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "password_reset" }),
+    });
+  });
+
+  await page.goto("/reset-password?token=reset-token-match");
+  await page.getByLabel("新密碼", { exact: true }).fill("NewPassword123");
+  await page.getByLabel("確認新密碼").fill("Mismatch123");
+  await expect(page.getByText("兩次輸入的密碼不一致。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "重設密碼" })).toBeDisabled();
+  await page.getByRole("button", { name: "顯示密碼" }).first().click();
+  await expect(page.getByLabel("新密碼", { exact: true })).toHaveAttribute("type", "text");
+  await expect(page.getByLabel("確認新密碼")).toHaveAttribute("type", "text");
+
+  await page.getByLabel("確認新密碼").fill("NewPassword123");
+  await expect(page.getByRole("button", { name: "重設密碼" })).toBeEnabled();
+  await page.getByRole("button", { name: "重設密碼" }).click();
+  await expect(page.getByText("密碼已重設，請使用新密碼登入。")).toBeVisible();
+  expect(resetCalls).toBe(1);
 });

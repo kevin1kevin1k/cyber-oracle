@@ -15,7 +15,7 @@ async function loginVerifiedUser(page: import("@playwright/test").Page, email = 
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 }
@@ -181,7 +181,7 @@ test("wallet redirects to login with next and returns after login", async ({ pag
   await expect(page).toHaveURL(/\/login\?next=%2Fwallet$/);
 
   await page.getByLabel("Email").fill("wallet-next@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/wallet");
   await expect(page.getByText("目前餘額：2 點")).toBeVisible();

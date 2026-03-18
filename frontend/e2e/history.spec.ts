@@ -60,7 +60,7 @@ test("history loads items and supports load more", async ({ page }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("history@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
@@ -170,7 +170,7 @@ test("history detail page renders question tree and transactions", async ({ page
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("history-detail@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
@@ -289,7 +289,7 @@ test("history detail child url auto-redirects to root url", async ({ page }) => 
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("history-child-redirect@example.com");
-  await page.getByLabel("密碼").fill("Password123");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/");
 
