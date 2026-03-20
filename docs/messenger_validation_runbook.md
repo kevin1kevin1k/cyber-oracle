@@ -68,6 +68,8 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 若剩餘點數為 `0`，系統會再附上既有購點按鈕
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
 - `前往購點` / `查看歷史` 仍是 WebView / Web auth 入口，不做 per-user 動態 menu 切換
+- Messenger 購點入口會打開 `/wallet?from=messenger-insufficient-credit`
+- `/wallet?from=messenger-insufficient-credit` 會顯示 Messenger 專用提示，並在購買成功後提示使用者回 Messenger 繼續提問
 
 ## 通訊流程圖
 
@@ -551,6 +553,10 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
    - 預期結果：點擊 quick reply 後收到新回答與新一輪 followups
 4. 對未綁定使用者驗證 ask
    - 預期結果：收到 linking / capability boundary 引導，而不是直接走完整已綁定流程
+5. 對已綁定且點數不足的使用者，從 Messenger 點 `前往購點`
+   - 預期結果：WebView 會開到 `/wallet?from=messenger-insufficient-credit`，頁面會顯示 Messenger 專用提示
+6. 在 `/wallet?from=messenger-insufficient-credit` 完成購買
+   - 預期結果：success message 會明確提示回 Messenger 繼續提問；若剛才是延伸問題情境，會提示點擊「購買完成，重新顯示延伸問題」
 
 補充：
 - 現在 `meta_graph` 模式已可在 local + `cloudflared` 下做真正的 Messenger 端到端回覆驗證

@@ -143,8 +143,8 @@
   - [x] 測試：覆蓋 persistent menu payload 與 `SHOW_BALANCE` postback
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
   - [x] Backend：點數不足時回 Messenger web_url 購點按鈕（導向 `/wallet`）
-  - [ ] Frontend：`/wallet?from=messenger-insufficient-credit` 顯示 Messenger 專用提示與購買成功後回 Messenger 操作引導
-  - [ ] Frontend：`/wallet` 適配 Messenger WebView 使用情境與返回提示
+  - [x] Frontend：`/wallet?from=messenger-insufficient-credit` 顯示 Messenger 專用提示與購買成功後回 Messenger 操作引導
+  - [x] Frontend：`/wallet` 適配 Messenger WebView 使用情境與返回提示
   - [ ] Backend：payment callback -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）

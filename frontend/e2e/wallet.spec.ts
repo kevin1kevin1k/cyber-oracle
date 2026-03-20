@@ -148,6 +148,97 @@ test("wallet purchase updates balance and transactions", async ({ page }) => {
   await expect(page.getByText("購點入帳 +3 點")).toBeVisible();
 });
 
+test("messenger wallet purchase shows return-to-messenger guidance", async ({ page }) => {
+  let balanceCall = 0;
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    balanceCall += 1;
+    const balance = balanceCall >= 2 ? 5 : 0;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance, updated_at: "2026-02-17T12:00:00Z" }),
+    });
+  });
+
+  let txCall = 0;
+  await page.route("**/api/v1/credits/transactions?limit=20&offset=0", async (route) => {
+    txCall += 1;
+    const payload =
+      txCall >= 2
+        ? {
+            items: [
+              {
+                id: "tx-purchase-messenger",
+                action: "purchase",
+                amount: 5,
+                reason_code: "ORDER_PAID",
+                request_id: "req-purchase-messenger",
+                question_id: null,
+                order_id: "order-5",
+                created_at: "2026-02-17T12:01:00Z",
+              },
+            ],
+            total: 1,
+          }
+        : { items: [], total: 0 };
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(payload),
+    });
+  });
+
+  await page.route("**/api/v1/orders", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    expect(body.package_size).toBe(5);
+    expect(body.idempotency_key).toBeTruthy();
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "order-5",
+        user_id: "u-5",
+        package_size: 5,
+        amount_twd: 518,
+        status: "pending",
+        idempotency_key: body.idempotency_key,
+        created_at: "2026-02-17T12:01:00Z",
+        paid_at: null,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/orders/order-5/simulate-paid", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        order: {
+          id: "order-5",
+          user_id: "u-5",
+          package_size: 5,
+          amount_twd: 518,
+          status: "paid",
+          idempotency_key: "k-order-5",
+          created_at: "2026-02-17T12:01:00Z",
+          paid_at: "2026-02-17T12:01:05Z",
+        },
+        wallet_balance: 5,
+      }),
+    });
+  });
+
+  await loginVerifiedUser(page, "wallet-messenger-buy@example.com");
+  await page.goto("/wallet?from=messenger-insufficient-credit");
+  await page.getByRole("button", { name: "購買 5 題包（NT$ 518）" }).click();
+
+  await expect(
+    page.getByText("購買 5 題包成功，餘額已更新。請回 Messenger 繼續提問；若剛才是延伸問題，請點擊「購買完成，重新顯示延伸問題」。"),
+  ).toBeVisible();
+  await expect(page.getByText("目前餘額：5 點")).toBeVisible();
+});
+
 test("wallet redirects to login with next and returns after login", async ({ page }) => {
   await page.route("**/api/v1/auth/login", async (route) => {
     await route.fulfill({
@@ -185,6 +276,51 @@ test("wallet redirects to login with next and returns after login", async ({ pag
   await page.getByRole("button", { name: "登入" }).click();
   await expect(page).toHaveURL("/wallet");
   await expect(page.getByText("目前餘額：2 點")).toBeVisible();
+});
+
+test("messenger wallet flow preserves next and shows dedicated guidance", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-wallet-messenger",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ balance: 1, updated_at: "2026-02-18T15:00:00Z" }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/transactions?limit=20&offset=0", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  await page.goto("/wallet?from=messenger-insufficient-credit");
+  await expect(page).toHaveURL(/\/login\?next=%2Fwallet%3Ffrom%3Dmessenger-insufficient-credit$/);
+
+  await page.getByLabel("Email").fill("wallet-messenger@example.com");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+
+  await expect(page).toHaveURL("/wallet?from=messenger-insufficient-credit");
+  await expect(page.getByText("Messenger 購點提醒")).toBeVisible();
+  await expect(page.getByText("你是從 Messenger 的點數不足提示進入購點流程。")).toBeVisible();
+  await expect(page.getByText("購買完成後，請回 Messenger 繼續提問。")).toBeVisible();
+  await expect(
+    page.getByText("若剛才是延伸問題點數不足，請回 Messenger 點擊「購買完成，重新顯示延伸問題」。"),
+  ).toBeVisible();
 });
 
 test("ask 402 provides wallet cta", async ({ page }) => {

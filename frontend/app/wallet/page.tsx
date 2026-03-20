@@ -22,6 +22,8 @@ const PACKAGE_OPTIONS: Array<{ size: 1 | 3 | 5; amountTwd: 168 | 358 | 518 }> = 
   { size: 5, amountTwd: 518 },
 ];
 
+const MESSENGER_WALLET_SOURCES = new Set(["messenger-insufficient-credit", "ask-402"]);
+
 function formatDatetime(value: string): string {
   return new Date(value).toLocaleString("zh-TW", { hour12: false });
 }
@@ -46,6 +48,7 @@ export default function WalletPage() {
   const router = useRouter();
   const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
+  const [walletSource, setWalletSource] = useState<string | null>(null);
   const [balance, setBalance] = useState<CreditBalanceResponse | null>(null);
   const [transactions, setTransactions] = useState<CreditTransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,9 +57,15 @@ export default function WalletPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
+  const isMessengerWalletFlow =
+    walletSource !== null && MESSENGER_WALLET_SOURCES.has(walletSource);
+  const walletPath = isMessengerWalletFlow
+    ? `/wallet?from=${encodeURIComponent(walletSource)}`
+    : "/wallet";
 
   useEffect(() => {
     setAuthSession(getAuthSession());
+    setWalletSource(new URLSearchParams(window.location.search).get("from"));
     setAuthLoaded(true);
   }, []);
 
@@ -75,7 +84,7 @@ export default function WalletPage() {
     }
 
     if (!isLoggedIn) {
-      router.replace(buildLoginPathWithNext("/wallet"));
+      router.replace(buildLoginPathWithNext(walletPath));
       return;
     }
 
@@ -90,7 +99,7 @@ export default function WalletPage() {
           return;
         }
         if (err instanceof ApiError && err.status === 401) {
-          router.replace(buildLoginPathWithNext("/wallet"));
+          router.replace(buildLoginPathWithNext(walletPath));
           return;
         }
         setError(err instanceof Error ? err.message : "讀取錢包資料失敗");
@@ -105,7 +114,7 @@ export default function WalletPage() {
     return () => {
       active = false;
     };
-  }, [authLoaded, isLoggedIn, reloadWallet, router]);
+  }, [authLoaded, isLoggedIn, reloadWallet, router, walletPath]);
 
   const canPurchase = useMemo(() => !loading && purchasingSize === null, [loading, purchasingSize]);
 
@@ -118,11 +127,15 @@ export default function WalletPage() {
       const order = await createOrder(packageSize, idempotencyKey);
       await simulateOrderPaid(order.id);
       await reloadWallet();
-      setSuccess(`購買 ${packageSize} 題包成功，餘額已更新。`);
+      setSuccess(
+        isMessengerWalletFlow
+          ? `購買 ${packageSize} 題包成功，餘額已更新。請回 Messenger 繼續提問；若剛才是延伸問題，請點擊「購買完成，重新顯示延伸問題」。`
+          : `購買 ${packageSize} 題包成功，餘額已更新。`,
+      );
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) {
-          router.replace(buildLoginPathWithNext("/wallet"));
+          router.replace(buildLoginPathWithNext(walletPath));
           return;
         }
         if (err.code === "FORBIDDEN_IN_PRODUCTION") {
@@ -164,6 +177,15 @@ export default function WalletPage() {
           {balance?.updated_at ? formatDatetime(balance.updated_at) : "尚無紀錄"}
         </p>
       </section>
+
+      {isMessengerWalletFlow && (
+        <section className="card wallet-section wallet-messenger-note">
+          <h2>Messenger 購點提醒</h2>
+          <p>你是從 Messenger 的點數不足提示進入購點流程。</p>
+          <p>購買完成後，請回 Messenger 繼續提問。</p>
+          <p>若剛才是延伸問題點數不足，請回 Messenger 點擊「購買完成，重新顯示延伸問題」。</p>
+        </section>
+      )}
 
       <section className="card wallet-section">
         <h2>購點方案</h2>

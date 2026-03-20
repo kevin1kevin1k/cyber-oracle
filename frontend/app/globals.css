@@ -272,6 +272,15 @@ ul {
   margin-top: 16px;
 }
 
+.wallet-messenger-note {
+  background: #f3f8ff;
+  border-color: #d7e6fa;
+}
+
+.wallet-messenger-note h2 {
+  margin-top: 0;
+}
+
 .history-header,
 .history-section {
   margin-top: 16px;
