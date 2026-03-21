@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.10（Messenger-first MVP）
+- 文件版本：v0.11（Messenger-first MVP）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -74,6 +74,7 @@ MVP 目標：
 2. 點數不足導購
    - 使用者在 Messenger 提問時餘額不足。
    - 系統回覆點數不足訊息與購點按鈕。
+   - 若是直接提問遇到點數不足，系統需保留該問題，讓使用者購點後可在 Messenger 一鍵重送。
    - 點擊後開啟 Messenger WebView，導向 Stripe Checkout。
 
 3. WebView 付款後返回 Messenger
@@ -231,6 +232,7 @@ sequenceDiagram
 - 使用者可從 Messenger persistent menu 主動查詢剩餘點數，且結果與錢包資料一致。
 - 針對已綁定帳號使用者，每次提問皆正確扣點；失敗情境可正確回補。
 - 點數不足時，Messenger 內可被正確引導至 WebView 購點流程。
+- 直接提問遇到點數不足時，購點後可從 Messenger 一鍵重送剛剛的問題。
 - Stripe Checkout 完成後，點數與訂單狀態可在可接受時間內（建議 10 秒）反映，並回傳 Messenger 成功/失敗訊息。
 - 回答格式固定為「結論→說明」，並由 structured output 保證欄位一致。
 - 前台（Messenger）不顯示內部演算法名稱、規則編號、來源摘要、request id、三層比例。

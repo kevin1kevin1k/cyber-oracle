@@ -160,6 +160,7 @@ Current channel capabilities:
   - quick replies
   - button templates
 - linked/unlinked routing, Messenger WebView account linking MVP, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
+- direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled
 - failure handling:
   - outbound send failures are logged and do not turn webhook ingest into `500`

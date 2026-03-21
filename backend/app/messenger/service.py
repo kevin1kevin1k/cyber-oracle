@@ -20,6 +20,8 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_REPLAY_ASK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
@@ -46,12 +48,14 @@ from app.messenger.security import create_messenger_link_token
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_pending_ask import MessengerPendingAsk
 
 ASK_DEFAULT_LANG = "zh"
 ASK_DEFAULT_MODE = "analysis"
 ASK_IDEMPOTENCY_PREFIX = "msg"
 FOLLOWUP_PAYLOAD_PREFIX = "FOLLOWUP:"
 RESHOW_FOLLOWUPS_PAYLOAD_PREFIX = "RESHOW_FOLLOWUPS:"
+REPLAY_PENDING_ASK_PAYLOAD_PREFIX = "REPLAY_PENDING_ASK:"
 FOLLOWUP_BUTTON_TITLES = ("延伸問題一", "延伸問題二", "延伸問題三")
 
 
@@ -104,7 +108,15 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
-                return [self.build_topup_message()]
+                pending_ask = self._create_or_get_pending_ask(
+                    identity=identity,
+                    user_id=user_id,
+                    question_text=question_text,
+                    lang=ASK_DEFAULT_LANG,
+                    mode=ASK_DEFAULT_MODE,
+                    idempotency_key=idempotency_key,
+                )
+                return [self.build_topup_message(pending_ask_id=pending_ask.id)]
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
 
         if ask_result.replayed and command.message_mid:
@@ -185,6 +197,13 @@ class MessengerEventService:
             return self._reshow_followup_messages(
                 user_id=identity.user_id,
                 followup_id=reshow_followup_id,
+            )
+        replay_pending_ask_id = self._parse_replay_pending_ask_payload(payload)
+        if replay_pending_ask_id is not None:
+            return self._replay_pending_ask_messages(
+                identity=identity,
+                user_id=identity.user_id,
+                pending_ask_id=replay_pending_ask_id,
             )
         return [MessengerOutgoingMessage(kind="text", text=f"已收到 postback: {payload}")]
 
@@ -274,7 +293,12 @@ class MessengerEventService:
             ],
         )
 
-    def build_topup_message(self, *, followup_id: UUID | None = None) -> MessengerOutgoingMessage:
+    def build_topup_message(
+        self,
+        *,
+        followup_id: UUID | None = None,
+        pending_ask_id: UUID | None = None,
+    ) -> MessengerOutgoingMessage:
         topup_url = f"{self._base_web_url()}/wallet?from=messenger-insufficient-credit"
         buttons: list[dict[str, str]] = [
             {
@@ -289,6 +313,14 @@ class MessengerEventService:
                     "type": "postback",
                     "title": DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
                     "payload": f"{RESHOW_FOLLOWUPS_PAYLOAD_PREFIX}{followup_id}",
+                }
+            )
+        elif pending_ask_id is not None:
+            buttons.append(
+                {
+                    "type": "postback",
+                    "title": DEFAULT_MESSENGER_REPLAY_ASK_BUTTON_TITLE,
+                    "payload": f"{REPLAY_PENDING_ASK_PAYLOAD_PREFIX}{pending_ask_id}",
                 }
             )
         return MessengerOutgoingMessage(
@@ -348,6 +380,91 @@ class MessengerEventService:
             ]
 
         return self._build_followup_outgoing_messages(pending_followups)
+
+    def _create_or_get_pending_ask(
+        self,
+        *,
+        identity: MessengerIdentity,
+        user_id: UUID,
+        question_text: str,
+        lang: str,
+        mode: str,
+        idempotency_key: str,
+    ) -> MessengerPendingAsk:
+        existing_pending_ask = self._db.scalar(
+            select(MessengerPendingAsk).where(
+                MessengerPendingAsk.user_id == user_id,
+                MessengerPendingAsk.idempotency_key == idempotency_key,
+            )
+        )
+        if existing_pending_ask is not None:
+            return existing_pending_ask
+
+        pending_ask = MessengerPendingAsk(
+            user_id=user_id,
+            messenger_identity_id=identity.id,
+            question_text=question_text,
+            lang=lang,
+            mode=mode,
+            idempotency_key=idempotency_key,
+            status="pending",
+        )
+        self._db.add(pending_ask)
+        self._db.commit()
+        self._db.refresh(pending_ask)
+        return pending_ask
+
+    def _replay_pending_ask_messages(
+        self,
+        *,
+        identity: MessengerIdentity,
+        user_id,
+        pending_ask_id: UUID,
+    ) -> list[MessengerOutgoingMessage]:
+        pending_ask = self._db.scalar(
+            select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask_id)
+        )
+        if (
+            pending_ask is None
+            or pending_ask.user_id != user_id
+            or pending_ask.messenger_identity_id != identity.id
+            or pending_ask.status != "pending"
+        ):
+            return [
+                MessengerOutgoingMessage(
+                    kind="text",
+                    text=DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
+                )
+            ]
+
+        try:
+            ask_result = execute_ask_for_user(
+                db=self._db,
+                user_id=user_id,
+                question_text=pending_ask.question_text,
+                lang=pending_ask.lang,
+                mode=pending_ask.mode,
+                idempotency_key=f"pending-ask:{pending_ask.id}",
+            )
+        except HTTPException as exc:
+            if exc.status_code == 402:
+                return [self.build_topup_message(pending_ask_id=pending_ask.id)]
+            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
+
+        tracked_pending_ask = self._db.scalar(
+            select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
+        )
+        if tracked_pending_ask is not None and tracked_pending_ask.status == "pending":
+            tracked_pending_ask.status = "used"
+            tracked_pending_ask.used_question_id = ask_result.question_id
+            tracked_pending_ask.used_at = datetime.now(UTC)
+            self._db.add(tracked_pending_ask)
+            self._db.commit()
+
+        return self._build_answer_outgoing_messages(
+            answer_text=ask_result.response.answer,
+            followup_options=ask_result.response.followup_options,
+        )
 
     def _base_web_url(self) -> str:
         return settings.messenger_web_base_url.rstrip("/")
@@ -453,6 +570,20 @@ class MessengerEventService:
             return None
         try:
             return UUID(raw_followup_id)
+        except ValueError:
+            return None
+
+    def _parse_replay_pending_ask_payload(self, payload: str | None) -> UUID | None:
+        if payload is None:
+            return None
+        normalized = payload.strip()
+        if not normalized.startswith(REPLAY_PENDING_ASK_PAYLOAD_PREFIX):
+            return None
+        raw_pending_ask_id = normalized.removeprefix(REPLAY_PENDING_ASK_PAYLOAD_PREFIX).strip()
+        if not raw_pending_ask_id:
+            return None
+        try:
+            return UUID(raw_pending_ask_id)
         except ValueError:
             return None
 

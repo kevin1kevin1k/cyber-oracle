@@ -1,3 +1,4 @@
+import hashlib
 import os
 import uuid
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_pending_ask import MessengerPendingAsk
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -60,6 +62,7 @@ def engine():
         Order.__table__,
         Followup.__table__,
         MessengerIdentity.__table__,
+        MessengerPendingAsk.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
@@ -75,6 +78,7 @@ def db_session(engine):
         session.query(CreditTransaction).delete()
         session.query(Order).delete()
         session.query(Followup).delete()
+        session.query(MessengerPendingAsk).delete()
         session.query(Answer).delete()
         session.query(Question).delete()
         session.query(CreditWallet).delete()
@@ -705,7 +709,7 @@ def test_webhook_post_message_event_with_insufficient_credit_returns_topup_butto
     db_session: Session,
     captured_outgoing: list[tuple[str, object]],
 ) -> None:
-    _create_linked_messenger_user(
+    user = _create_linked_messenger_user(
         db_session,
         psid="psid-linked-topup",
         page_id="page-linked-topup",
@@ -740,10 +744,93 @@ def test_webhook_post_message_event_with_insufficient_credit_returns_topup_butto
     assert psid == "psid-linked-topup"
     assert outgoing.kind == "button_template"
     assert outgoing.text == "目前點數不足，請先購點後再提問。"
-    assert outgoing.buttons[0] == {
-        "type": "web_url",
-        "title": "前往購點",
-        "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
+    pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(
+            MessengerPendingAsk.user_id == user.id,
+            MessengerPendingAsk.status == "pending",
+        )
+    )
+    assert pending_ask is not None
+    assert pending_ask.question_text == "我還可以問嗎"
+    assert pending_ask.lang == "zh"
+    assert pending_ask.mode == "analysis"
+    assert outgoing.buttons == [
+        {
+            "type": "web_url",
+            "title": "前往購點",
+            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
+        },
+        {
+            "type": "postback",
+            "title": "購買完成，重新送出剛剛的問題",
+            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+        },
+    ]
+
+
+def test_webhook_post_message_event_with_insufficient_credit_reuses_existing_pending_ask(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-linked-topup-replay",
+        page_id="page-linked-topup-replay",
+        balance=0,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-linked-topup-replay",
+            MessengerIdentity.page_id == "page-linked-topup-replay",
+        )
+    )
+    assert identity is not None
+    existing_pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="我還可以問嗎",
+        lang="zh",
+        mode="analysis",
+        idempotency_key="msg:"
+        + hashlib.sha256(b"psid-linked-topup-replay:m_linked_topup").hexdigest()[:40],
+        status="pending",
+    )
+    db_session.add(existing_pending_ask)
+    db_session.commit()
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-linked-topup-replay",
+                "time": 1700000301,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-linked-topup-replay"},
+                        "recipient": {"id": "page-linked-topup-replay"},
+                        "timestamp": 1700000301,
+                        "message": {
+                            "mid": "m_linked_topup",
+                            "text": "我還可以問嗎",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    pending_asks = db_session.scalars(
+        select(MessengerPendingAsk).where(MessengerPendingAsk.user_id == user.id)
+    ).all()
+    assert [item.id for item in pending_asks] == [existing_pending_ask.id]
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.buttons[-1] == {
+        "type": "postback",
+        "title": "購買完成，重新送出剛剛的問題",
+        "payload": f"REPLAY_PENDING_ASK:{existing_pending_ask.id}",
     }
 
 
@@ -1371,6 +1458,192 @@ def test_webhook_post_postback_reshow_returns_fallback_when_no_pending_followups
         "text",
         "目前沒有可重新顯示的延伸問題，請重新提問。",
     )
+
+
+def test_webhook_post_postback_replays_pending_ask_after_topup(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-pending-ask-replay",
+        page_id="page-pending-ask-replay",
+        balance=3,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-pending-ask-replay",
+            MessengerIdentity.page_id == "page-pending-ask-replay",
+        )
+    )
+    assert identity is not None
+    pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="剛剛那題再問一次",
+        lang="zh",
+        mode="analysis",
+        idempotency_key=f"msg:{uuid.uuid4().hex}",
+        status="pending",
+    )
+    db_session.add(pending_ask)
+    db_session.commit()
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-pending-ask-replay",
+                "time": 1700002500,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-pending-ask-replay"},
+                        "recipient": {"id": "page-pending-ask-replay"},
+                        "timestamp": 1700002500,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+                            "title": "購買完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored_pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
+    )
+    assert stored_pending_ask is not None
+    assert stored_pending_ask.status == "used"
+    assert stored_pending_ask.used_question_id is not None
+    assert len(captured_outgoing) == 1
+    psid, outgoing = captured_outgoing[0]
+    assert psid == "psid-pending-ask-replay"
+    assert outgoing.kind == "quick_replies"
+    assert (
+        outgoing.text
+        == "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C"
+    )
+
+
+def test_webhook_post_postback_replay_pending_ask_without_credit_returns_topup_again(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-pending-ask-zero",
+        page_id="page-pending-ask-zero",
+        balance=0,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-pending-ask-zero",
+            MessengerIdentity.page_id == "page-pending-ask-zero",
+        )
+    )
+    assert identity is not None
+    pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="沒點數時重問",
+        lang="zh",
+        mode="analysis",
+        idempotency_key=f"msg:{uuid.uuid4().hex}",
+        status="pending",
+    )
+    db_session.add(pending_ask)
+    db_session.commit()
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-pending-ask-zero",
+                "time": 1700002600,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-pending-ask-zero"},
+                        "recipient": {"id": "page-pending-ask-zero"},
+                        "timestamp": 1700002600,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+                            "title": "購買完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored_pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
+    )
+    assert stored_pending_ask is not None
+    assert stored_pending_ask.status == "pending"
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.kind == "button_template"
+    assert outgoing.buttons == [
+        {
+            "type": "web_url",
+            "title": "前往購點",
+            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
+        },
+        {
+            "type": "postback",
+            "title": "購買完成，重新送出剛剛的問題",
+            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+        },
+    ]
+
+
+def test_webhook_post_postback_replay_pending_ask_unavailable_returns_fallback(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-pending-ask-invalid",
+        page_id="page-pending-ask-invalid",
+        balance=3,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-pending-ask-invalid",
+                "time": 1700002700,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-pending-ask-invalid"},
+                        "recipient": {"id": "page-pending-ask-invalid"},
+                        "timestamp": 1700002700,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{uuid.uuid4()}",
+                            "title": "購買完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    psid, outgoing = captured_outgoing[-1]
+    assert psid == "psid-pending-ask-invalid"
+    assert outgoing.kind == "text"
+    assert outgoing.text == "這個待重送問題已失效，請重新提問。"
 
 
 def test_webhook_signature_invalid_returns_403(

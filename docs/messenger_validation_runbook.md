@@ -556,12 +556,13 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 5. 對已綁定且點數不足的使用者，從 Messenger 點 `前往購點`
    - 預期結果：WebView 會開到 `/wallet?from=messenger-insufficient-credit`，頁面會顯示 Messenger 專用提示
 6. 在 `/wallet?from=messenger-insufficient-credit` 完成購買
-   - 預期結果：success message 會明確提示回 Messenger 繼續提問；若剛才是延伸問題情境，會提示點擊「購買完成，重新顯示延伸問題」
+   - 預期結果：success message 會明確提示回 Messenger 繼續提問；若剛才是延伸問題情境，會提示點擊「購買完成，重新顯示延伸問題」；若剛才是新問題點數不足，會提示點擊「購買完成，重新送出剛剛的問題」
 
 補充：
 - 現在 `meta_graph` 模式已可在 local + `cloudflared` 下做真正的 Messenger 端到端回覆驗證
 - 若 Graph Send API 失敗，webhook ingest 應仍維持 `accepted`，錯誤主要看 backend log
 - 若要測 WebView 綁定 / 購點按鈕，請另外把 `MESSENGER_WEB_BASE_URL` 設成 frontend 的公開 tunnel URL
+- 對直接提問遇到 402 的情境，系統現在也會保留一筆待重送問題，購點後可從 Messenger 一鍵重送，不必手動重新輸入
 
 ### Local 成功標準
 - webhook verify 成功
