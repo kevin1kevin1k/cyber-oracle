@@ -20,12 +20,14 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
     DEFAULT_MESSENGER_REPLAY_ASK_BUTTON_TITLE,
     DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
     DEFAULT_MESSENGER_TOPUP_REPLY,
+    DEFAULT_MESSENGER_WALLET_BUTTON_TITLE,
     DEFAULT_UNLINKED_REPLY,
     DEFAULT_UNSUPPORTED_EVENT_REPLY,
     EVENT_TYPE_MESSAGE,
@@ -108,6 +110,8 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
+                if not settings.payments_enabled:
+                    return [self.build_topup_message()]
                 pending_ask = self._create_or_get_pending_ask(
                     identity=identity,
                     user_id=user_id,
@@ -154,6 +158,8 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
+                if not settings.payments_enabled:
+                    return [self.build_topup_message()]
                 return [self.build_topup_message(followup_id=followup_id)]
             if exc.status_code in {403, 404, 409}:
                 return [
@@ -299,6 +305,11 @@ class MessengerEventService:
         followup_id: UUID | None = None,
         pending_ask_id: UUID | None = None,
     ) -> MessengerOutgoingMessage:
+        if not settings.payments_enabled:
+            return MessengerOutgoingMessage(
+                kind="text",
+                text=DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
+            )
         topup_url = f"{self._base_web_url()}/wallet?from=messenger-insufficient-credit"
         buttons: list[dict[str, str]] = [
             {
@@ -590,6 +601,11 @@ class MessengerEventService:
 
 def build_default_persistent_menu() -> list[dict[str, str]]:
     base_url = settings.messenger_web_base_url.rstrip("/")
+    wallet_title = (
+        DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE
+        if settings.payments_enabled
+        else DEFAULT_MESSENGER_WALLET_BUTTON_TITLE
+    )
     return [
         {
             "type": "postback",
@@ -598,7 +614,7 @@ def build_default_persistent_menu() -> list[dict[str, str]]:
         },
         {
             "type": "web_url",
-            "title": DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
+            "title": wallet_title,
             "url": f"{base_url}/wallet",
         },
         {

@@ -18,6 +18,7 @@ from app.messenger import routes as messenger_routes
 from app.messenger.client import MessengerClientError
 from app.messenger.schemas import MessengerWebhookPayload
 from app.messenger.security import create_messenger_link_token
+from app.messenger.service import build_default_persistent_menu
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
@@ -1721,6 +1722,30 @@ def test_messenger_link_endpoint_links_identity_to_verified_user(
     assert identity.status == "linked"
     assert identity.linked_at is not None
 
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    assert wallet is not None
+    assert wallet.balance == settings.launch_credit_grant_amount
+
+    launch_grant = db_session.scalar(
+        select(CreditTransaction).where(
+            CreditTransaction.user_id == user_id,
+            CreditTransaction.action == "grant",
+            CreditTransaction.reason_code == "MESSENGER_LINK_BETA_GRANT",
+        )
+    )
+    assert launch_grant is not None
+
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    assert wallet is not None
+    assert wallet.balance == settings.launch_credit_grant_amount
+    grant_count = db_session.scalar(
+        select(CreditTransaction).where(
+            CreditTransaction.user_id == user_id,
+            CreditTransaction.action == "grant",
+        )
+    )
+    assert grant_count is not None
+
 
 def test_messenger_link_endpoint_is_idempotent_for_same_user(
     client: TestClient,
@@ -1760,6 +1785,23 @@ def test_messenger_link_endpoint_is_idempotent_for_same_user(
     db_session.refresh(identity)
     assert identity.user_id == user_id
     assert identity.status == "linked"
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    assert wallet is not None
+    assert wallet.balance == settings.launch_credit_grant_amount
+    grant_count = db_session.query(CreditTransaction).filter(
+        CreditTransaction.user_id == user_id,
+        CreditTransaction.action == "grant",
+        CreditTransaction.reason_code == "MESSENGER_LINK_BETA_GRANT",
+    ).count()
+    assert grant_count == 1
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    assert wallet is not None
+    assert wallet.balance == settings.launch_credit_grant_amount
+    grant_count = db_session.query(CreditTransaction).filter(
+        CreditTransaction.user_id == user_id,
+        CreditTransaction.action == "grant",
+    ).count()
+    assert grant_count == 1
 
 
 def test_messenger_link_endpoint_rejects_other_user_link_takeover(
@@ -1812,7 +1854,6 @@ def test_messenger_link_endpoint_rejects_invalid_token(
 
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "MESSENGER_LINK_TOKEN_INVALID"
-
 
 
 def test_messenger_link_endpoint_rate_limit_returns_429(
@@ -1871,6 +1912,62 @@ def test_messenger_link_endpoint_rate_limit_returns_429(
     assert user.id is not None
     assert blocked.status_code == 429
     assert blocked.json()["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+
+def test_webhook_insufficient_credit_returns_text_only_when_payments_disabled(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-payments-disabled",
+        page_id="page-payments-disabled",
+        balance=0,
+    )
+    monkeypatch.setattr(settings, "payments_enabled", False)
+
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-payments-disabled",
+                "time": 1700005000,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-payments-disabled"},
+                        "recipient": {"id": "page-payments-disabled"},
+                        "timestamp": 1700005000,
+                        "message": {
+                            "mid": "m_payments_disabled",
+                            "text": "請幫我分析",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    _, outgoing = captured_outgoing[0]
+    assert outgoing.kind == "text"
+    assert outgoing.text == "體驗點數已用完，目前暫未開放購點。"
+
+
+def test_persistent_menu_uses_wallet_title_when_payments_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "payments_enabled", False)
+    monkeypatch.setattr(settings, "messenger_web_base_url", "https://frontend.example.com")
+
+    menu = build_default_persistent_menu()
+
+    assert menu[1]["title"] == "點數錢包"
+    assert menu[1]["url"] == "https://frontend.example.com/wallet"
 
 
 def test_webhook_outbound_failure_returns_accepted_instead_of_500(

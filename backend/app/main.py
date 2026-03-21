@@ -927,8 +927,16 @@ def get_credits_balance(
 ) -> CreditBalanceResponse:
     wallet = db.scalar(select(CreditWallet).where(CreditWallet.user_id == auth_context.user_id))
     if wallet is None:
-        return CreditBalanceResponse(balance=0, updated_at=None)
-    return CreditBalanceResponse(balance=wallet.balance, updated_at=wallet.updated_at)
+        return CreditBalanceResponse(
+            balance=0,
+            updated_at=None,
+            payments_enabled=settings.payments_enabled,
+        )
+    return CreditBalanceResponse(
+        balance=wallet.balance,
+        updated_at=wallet.updated_at,
+        payments_enabled=settings.payments_enabled,
+    )
 
 
 @app.get(
@@ -1187,7 +1195,11 @@ def get_ask_history_detail(
 @app.post(
     "/api/v1/orders",
     response_model=OrderResponse,
-    responses={401: {"model": ApiErrorDetail}, 409: {"model": ApiErrorDetail}},
+    responses={
+        401: {"model": ApiErrorDetail},
+        403: {"model": ApiErrorDetail},
+        409: {"model": ApiErrorDetail},
+    },
 )
 def create_order(
     payload: CreateOrderRequest,
@@ -1195,6 +1207,15 @@ def create_order(
     auth_context: AuthContext = Depends(require_authenticated),
     db: Session = Depends(get_db),
 ) -> OrderResponse:
+    if not settings.payments_enabled:
+        logger.info("billing.create_order.disabled user_id=%s", auth_context.user_id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "PAYMENTS_DISABLED",
+                "message": "Payments are not available in this launch",
+            },
+        )
     existing = db.scalar(
         select(Order).where(
             Order.user_id == auth_context.user_id,

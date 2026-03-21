@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth import AuthContext, require_verified_email
 from app.config import settings
 from app.db import SessionLocal, get_db
+from app.launch import issue_public_launch_grant_if_needed
 from app.messenger.client import (
     MessengerClientError,
     MetaGraphMessengerClient,
@@ -195,6 +196,13 @@ def link_identity(
     db.add(identity)
     db.commit()
     db.refresh(identity)
+    wallet_balance = issue_public_launch_grant_if_needed(db=db, user_id=auth_context.user_id)
+    logger.info(
+        "messenger.link.success user_id=%s psid=%s balance=%s",
+        auth_context.user_id,
+        identity.psid,
+        wallet_balance,
+    )
     return MessengerLinkResponse(
         status="linked",
         user_id=str(auth_context.user_id),

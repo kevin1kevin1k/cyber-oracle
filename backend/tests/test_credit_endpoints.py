@@ -139,6 +139,7 @@ def test_credits_balance_defaults_to_zero_without_wallet(
     payload = response.json()
     assert payload["balance"] == 0
     assert payload["updated_at"] is None
+    assert payload["payments_enabled"] is True
 
 
 def test_credits_balance_returns_wallet_data(client: TestClient, db_session: Session) -> None:
@@ -155,6 +156,7 @@ def test_credits_balance_returns_wallet_data(client: TestClient, db_session: Ses
     payload = response.json()
     assert payload["balance"] == 9
     assert isinstance(payload["updated_at"], str)
+    assert payload["payments_enabled"] is True
 
 
 def test_credits_transactions_requires_authentication(client: TestClient) -> None:

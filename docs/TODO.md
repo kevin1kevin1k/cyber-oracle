@@ -206,32 +206,44 @@
 
 ## Production Readiness（Dev -> Production）
 
-### 安全與帳務一致性（高優先）
+### 本次公開小流量上線版本
 - [x] Auth：`POST /api/v1/auth/register` production 不回傳 `verification_token`
 - [x] Auth：`POST /api/v1/auth/forgot-password` production 僅回 `202 accepted`，不回傳 `reset_token`
-- [ ] Auth：導入 email provider（SES/SendGrid/Postmark 擇一）發送驗證信與重設信
-- [ ] Auth：新增 resend-verification 流程（重發時舊 token 失效）
-- [x] Secrets：移除弱預設 `JWT_SECRET`，production 啟動時必填且強度校驗
-- [ ] Auth：規劃 access token 儲存策略（MVP localStorage -> production cookie/httpOnly）
-- [ ] Billing：production 串接實際金流 callback 與簽章驗證
-- [ ] DB：部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
+- [x] Auth：導入 email provider（目前實作 `Postmark` / `noop`），production 會寄送驗證信與重設信
+- [x] Auth：新增 `POST /api/v1/auth/resend-verification`，重發時舊 token 失效
+- [x] Secrets：production 啟動時強制檢查 `JWT_SECRET`、email 設定與 Messenger signature 設定
+- [x] Launch：新增 `PAYMENTS_ENABLED` 開關，付款關閉時 backend 拒絕建立訂單
+- [x] Launch：`GET /api/v1/credits/balance` 回傳 `payments_enabled`，frontend 依 capability 顯示唯讀錢包
+- [x] Launch：Messenger 綁定成功後一次性發送 `LAUNCH_CREDIT_GRANT_AMOUNT` 體驗點數
+- [x] Launch：新增內部補發腳本 `backend/scripts/grant_launch_credits.py`
+- [x] Frontend：驗證信/重設信改為正式查信文案，並可從驗證頁重寄驗證信
+- [x] Frontend：付款關閉時移除購買按鈕與購點 CTA，改為體驗版說明
+- [x] Docker：backend Dockerfile 改為 production 啟動模式；`docker-compose.yml` 明確保留 local-dev override
 
-### 使用者體驗與可營運性（高優先）
-- [x] Frontend：驗證信/重設信改為「請查收 Email」文案（不顯示 token）
-- [x] Frontend：forgot/reset/verify 失敗訊息統一（過期、無效、重試引導）
-- [x] Frontend：登入失效（401）全站一致導回 `/login` 並保留 return path
-- [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL）
-- [ ] Observability：auth/交易事件新增 request_id 與審計記錄
-- [ ] Runbook：新增「發生 UndefinedColumn / 版本不一致」標準排障步驟
+### 正式切換前仍待完成
+- [ ] Deploy：建立 Render production 服務（frontend / backend / postgres）與固定網域
+  - [ ] frontend 固定 `APP` 網域（例如 `https://app.<domain>`）
+  - [ ] backend 固定 `API` 網域（例如 `https://api.<domain>`）
+  - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`APP_WEB_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
+- [ ] Email：完成 Postmark production 設定與實寄驗證
+  - [ ] 在 Postmark 建立 production server，填入 `POSTMARK_SERVER_TOKEN`
+  - [ ] 驗證寄件網域或 sender signature，填入 `EMAIL_FROM`
+  - [ ] 以真實信箱驗證 `register`、`resend-verification`、`forgot-password` 三種 email 都可成功送達
+- [ ] DB：production 部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
+- [ ] Messenger：Meta 後台切換正式 webhook callback URL、Page 訂閱與 persistent menu sync
+- [ ] Messenger：補 webhook replay protection 與更完整監控告警
+- [ ] Messenger：補 Send API retry / dead-letter / 補償策略
+- [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly
+- [ ] Billing：正式串接真實 Stripe callback、簽章驗證與 Messenger 回饋閉環
+- [ ] Observability：補 auth / billing / messenger / launch grant 的 request-level 審計與告警
+- [ ] Runbook：補「發生 UndefinedColumn / 版本不一致」與 production rollback 標準排障步驟
+
+### 驗證與文件收尾
 - [x] 測試基礎設施：隔離 backend test DB，避免一般測試、destructive tests 與手動開發流程互踩
   - [x] 將 `tests/destructive/` 改用獨立資料庫（例如 `elin_test_destructive`），不要與一般 backend 測試共用 `elin_test`
   - [x] 文件化規則：不得並行執行多個指向同一個 `TEST_DATABASE_URL` 的 `pytest` 命令，避免 `drop/create/delete` 與一般測試互相污染
   - [x] 補充排障說明：若 postgres log 出現 `relation does not exist`、`cannot drop table ... because other objects depend on it`、跨表 FK violation，優先懷疑 test DB isolation 問題，而非產品 runtime regression
   - [x] 檢查 backend 測試命令與文件，避免讓開發中的 docker compose backend 誤用測試資料庫或與測試共用破壞性流程
-
-### Messenger-first 核心能力（高優先）
-- [ ] Messenger：定義並落地 Send API 錯誤處理與重試策略（含 dead-letter / 補償）
-- [x] Messenger：webhook ingest 與 OpenAI/Send API 解耦，避免 quick reply / followup 因同步長任務而 timeout
-- [ ] Messenger：補 webhook security（signature verify + replay 防護）並加入監控告警
-- [ ] Messenger：完成 WebView 開關/返回 UX（取消支付、失敗重試、成功回流）
-- [ ] Messenger：完成 identity linking 的風險控管（重複綁定、帳號接管防護）
+- [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL、付款開關）
+- [ ] 文件收尾：更新本文件完成勾選與子項
+- [ ] 文件收尾：補齊 production 切換命令、人工測試步驟與完成證據

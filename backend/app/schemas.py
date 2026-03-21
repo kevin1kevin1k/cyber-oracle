@@ -197,6 +197,7 @@ class ResetPasswordResponse(BaseModel):
 class CreditBalanceResponse(BaseModel):
     balance: int
     updated_at: datetime | None
+    payments_enabled: bool
 
 
 class CreditTransactionItem(BaseModel):

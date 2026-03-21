@@ -351,6 +351,37 @@ test("ask 402 provides wallet cta", async ({ page }) => {
   await expect(page).toHaveURL(/\/wallet\?from=ask-402/);
 });
 
+test("wallet becomes read-only when payments are disabled", async ({ page }) => {
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        balance: 0,
+        updated_at: "2026-03-21T12:00:00Z",
+        payments_enabled: false,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/transactions?limit=20&offset=0", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  await loginVerifiedUser(page, "wallet-readonly@example.com");
+  await page.goto("/wallet");
+
+  await expect(page.getByText("體驗版說明")).toBeVisible();
+  await expect(
+    page.getByText("目前帳號僅提供固定體驗點數。點數用完後，這個頁面會保留餘額與交易流水查詢，但不提供自動購點。"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /購買 .* 題包/ })).toHaveCount(0);
+});
+
 test("wallet purchase handles forbidden simulate-paid", async ({ page }) => {
   await page.route("**/api/v1/credits/balance", async (route) => {
     await route.fulfill({

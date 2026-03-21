@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/api";
 export type CreditBalanceResponse = {
   balance: number;
   updated_at: string | null;
+  payments_enabled?: boolean;
 };
 
 export type CreditTransactionItem = {

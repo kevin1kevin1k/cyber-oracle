@@ -50,6 +50,7 @@ export default function WalletPage() {
   const [authLoaded, setAuthLoaded] = useState(false);
   const [walletSource, setWalletSource] = useState<string | null>(null);
   const [balance, setBalance] = useState<CreditBalanceResponse | null>(null);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(true);
   const [transactions, setTransactions] = useState<CreditTransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasingSize, setPurchasingSize] = useState<1 | 3 | 5 | null>(null);
@@ -75,6 +76,7 @@ export default function WalletPage() {
       getCreditTransactions(20, 0),
     ]);
     setBalance(balancePayload);
+    setPaymentsEnabled(balancePayload.payments_enabled ?? true);
     setTransactions(transactionPayload.items);
   }, []);
 
@@ -138,6 +140,11 @@ export default function WalletPage() {
           router.replace(buildLoginPathWithNext(walletPath));
           return;
         }
+        if (err.code === "PAYMENTS_DISABLED") {
+          setPaymentsEnabled(false);
+          setError("目前為體驗版，暫未開放購點。");
+          return;
+        }
         if (err.code === "FORBIDDEN_IN_PRODUCTION") {
           setError("目前環境不允許 simulate-paid。Production 需改用真實金流 callback 入帳。");
           return;
@@ -180,28 +187,38 @@ export default function WalletPage() {
 
       {isMessengerWalletFlow && (
         <section className="card wallet-section wallet-messenger-note">
-          <h2>Messenger 購點提醒</h2>
+          <h2>{paymentsEnabled ? "Messenger 購點提醒" : "Messenger 體驗版提醒"}</h2>
           <p>你是從 Messenger 的點數不足提示進入購點流程。</p>
-          <p>購買完成後，請回 Messenger 繼續提問。</p>
-          <p>若剛才是延伸問題點數不足，請回 Messenger 點擊「購買完成，重新顯示延伸問題」。</p>
+          {paymentsEnabled ? (
+            <>
+              <p>購買完成後，請回 Messenger 繼續提問。</p>
+              <p>若剛才是延伸問題點數不足，請回 Messenger 點擊「購買完成，重新顯示延伸問題」。</p>
+            </>
+          ) : (
+            <p>目前為體驗版，暫未開放購點。若點數已用完，請等待後續開放通知。</p>
+          )}
         </section>
       )}
 
       <section className="card wallet-section">
-        <h2>購點方案</h2>
-        <div className="package-grid">
-          {PACKAGE_OPTIONS.map((option) => (
-            <button
-              key={option.size}
-              type="button"
-              className="package-button"
-              onClick={() => void handlePurchase(option.size)}
-              disabled={!canPurchase}
-            >
-              {purchasingSize === option.size ? "處理中..." : `購買 ${option.size} 題包（NT$ ${option.amountTwd}）`}
-            </button>
-          ))}
-        </div>
+        <h2>{paymentsEnabled ? "購點方案" : "體驗版說明"}</h2>
+        {paymentsEnabled ? (
+          <div className="package-grid">
+            {PACKAGE_OPTIONS.map((option) => (
+              <button
+                key={option.size}
+                type="button"
+                className="package-button"
+                onClick={() => void handlePurchase(option.size)}
+                disabled={!canPurchase}
+              >
+                {purchasingSize === option.size ? "處理中..." : `購買 ${option.size} 題包（NT$ ${option.amountTwd}）`}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p>目前帳號僅提供固定體驗點數。點數用完後，這個頁面會保留餘額與交易流水查詢，但不提供自動購點。</p>
+        )}
       </section>
 
       <section className="card wallet-section">

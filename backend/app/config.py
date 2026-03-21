@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     email_provider: Literal["noop", "postmark"] = "noop"
     postmark_server_token: str | None = None
     email_from: str | None = None
+    payments_enabled: bool = True
+    launch_credit_grant_amount: int = 50
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
@@ -78,6 +80,12 @@ class Settings(BaseSettings):
                 raise ValueError("POSTMARK_SERVER_TOKEN is required when APP_ENV=prod")
             if not (self.email_from or "").strip():
                 raise ValueError("EMAIL_FROM is required when APP_ENV=prod")
+        return self
+
+    @model_validator(mode="after")
+    def validate_launch_settings(self) -> "Settings":
+        if self.launch_credit_grant_amount < 0:
+            raise ValueError("LAUNCH_CREDIT_GRANT_AMOUNT must be >= 0")
         return self
 
     @property

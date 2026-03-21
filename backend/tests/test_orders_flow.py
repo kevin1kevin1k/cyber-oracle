@@ -158,6 +158,25 @@ def test_create_order_success_and_idempotent_replay(
     assert order_count == 1
 
 
+def test_create_order_returns_403_when_payments_disabled(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, token = _create_user_with_token(db_session)
+    monkeypatch.setattr(settings, "payments_enabled", False)
+
+    response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"package_size": 3, "idempotency_key": "order-payments-disabled"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PAYMENTS_DISABLED"
+    assert db_session.scalar(select(func.count(Order.id))) == 0
+
+
 def test_simulate_paid_marks_order_paid_and_grants_credit(
     client: TestClient,
     db_session: Session,

@@ -71,8 +71,8 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
 ## Credits APIs
 - `GET /api/v1/credits/balance`
   - requires bearer token
-  - returns current wallet balance and `updated_at`
-  - if wallet does not exist yet, returns `balance=0` and `updated_at=null`
+  - returns current wallet balance, `updated_at`, and `payments_enabled`
+  - if wallet does not exist yet, returns `balance=0`, `updated_at=null`, and current payments flag
 - `GET /api/v1/credits/transactions`
   - requires bearer token
   - query params: `limit` (1-100, default 20), `offset` (default 0)
@@ -157,7 +157,7 @@ Endpoints:
   - maps ask followups into a single Messenger quick-replies message, and quick reply clicks now reuse the existing followup ask flow
   - followups are expected to be direct next-step questions, not questionnaire-style prompts that ask the user to choose or provide missing fields first
   - dispatches outgoing payloads through pluggable client abstraction (`noop` or `meta_graph`)
-  - `POST /api/v1/messenger/link` links a verified web user to an existing `messenger_identities` row using signed linking token
+  - `POST /api/v1/messenger/link` links a verified web user to an existing `messenger_identities` row using signed linking token and grants launch credits once
 
 Current channel capabilities:
 - `noop`: local/dev ingest-only mode, webhook can be tested without real Messenger reply
@@ -166,6 +166,7 @@ Current channel capabilities:
   - quick replies
   - button templates
 - linked/unlinked routing, Messenger WebView account linking MVP, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
+- when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled
 - failure handling:

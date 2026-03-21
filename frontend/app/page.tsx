@@ -21,6 +21,7 @@ export default function HomePage() {
   const [result, setResult] = useState<AskResponse | null>(null);
   const [pendingAskKey, setPendingAskKey] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(true);
   const [creditDelta, setCreditDelta] = useState<number | null>(null);
   const [activeFollowupId, setActiveFollowupId] = useState<string | null>(null);
   const creditDeltaTimerRef = useRef<number | null>(null);
@@ -45,8 +46,10 @@ export default function HomePage() {
     try {
       const payload = await getCreditsBalance();
       setCreditBalance(payload.balance);
+      setPaymentsEnabled(payload.payments_enabled ?? true);
     } catch {
       setCreditBalance(null);
+      setPaymentsEnabled(true);
     }
   }, [authLoaded, isLoggedIn]);
 
@@ -96,7 +99,16 @@ export default function HomePage() {
         return;
       }
       if (err.code === "INSUFFICIENT_CREDIT") {
-        setError("點數不足，請先購點再提問。");
+        setError(
+          paymentsEnabled
+            ? "點數不足，請先購點再提問。"
+            : "體驗點數已用完，目前暫未開放購點。"
+        );
+        return;
+      }
+      if (err.code === "PAYMENTS_DISABLED") {
+        setPaymentsEnabled(false);
+        setError("目前為體驗版，暫未開放購點。");
         return;
       }
       if (err.status === 403) {
@@ -226,7 +238,7 @@ export default function HomePage() {
         {error && (
           <p className="error">
             {error}
-            {error.includes("點數不足") && (
+            {paymentsEnabled && error.includes("點數不足") && (
               <>
                 {" "}
                 <Link href="/wallet?from=ask-402">立即前往購點</Link>

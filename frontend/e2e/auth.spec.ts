@@ -371,6 +371,53 @@ test("ask handles 402 insufficient credit", async ({ page }) => {
   await expect(page.getByText("點數不足，請先購點再提問。")).toBeVisible();
 });
 
+test("ask handles 402 with payments disabled without wallet cta", async ({ page }) => {
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "token-verified-402-disabled",
+        token_type: "bearer",
+        email_verified: true,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        balance: 0,
+        updated_at: "2026-03-21T12:00:00Z",
+        payments_enabled: false,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/ask", async (route) => {
+    await route.fulfill({
+      status: 402,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { code: "INSUFFICIENT_CREDIT", message: "Insufficient credit balance" },
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("user402-disabled@example.com");
+  await page.getByLabel("密碼", { exact: true }).fill("Password123");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.getByLabel("問題內容").fill("402 disabled 測試");
+  await page.getByRole("button", { name: "送出問題" }).click();
+  await expect(page.getByText("體驗點數已用完，目前暫未開放購點。")).toBeVisible();
+  await expect(page.getByRole("link", { name: "立即前往購點" })).toHaveCount(0);
+});
+
 test("verify-email page can resend verification email", async ({ page }) => {
   await page.route("**/api/v1/auth/resend-verification", async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
