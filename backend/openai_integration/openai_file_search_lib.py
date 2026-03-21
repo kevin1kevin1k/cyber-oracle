@@ -22,8 +22,30 @@ FIRST_STAGE_FILE_SEARCH_PROMPT = (
 class AskStructuredOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    answer: str = Field(min_length=1)
+    answer_without_followup: str = Field(min_length=1)
     followup_options: list[str] = Field(default_factory=list)
+
+
+INVALID_FOLLOWUP_PREFIXES = (
+    "我優先：",
+    "我優先:",
+    "提供你的",
+    "告訴我",
+    "說明你",
+    "列出你的",
+    "分享你的",
+    "請提供",
+    "請告訴我",
+    "請說明",
+)
+
+INVALID_FOLLOWUP_SUBSTRINGS = (
+    "選一個",
+    "請選擇",
+    "請選",
+    "（選一個",
+    "(選一個",
+)
 
 
 def _read_dotenv_value(env_file: Path, key: str) -> str | None:
@@ -215,7 +237,7 @@ class OpenAIFileSearchClient:
         )
 
         return TwoStageSearchResult(
-            response_text=structured_output.answer,
+            response_text=structured_output.answer_without_followup,
             followup_options=structured_output.followup_options,
             first_response_id=first_response_id,
             second_response_id=second_response_id,
@@ -280,7 +302,7 @@ class OpenAIFileSearchClient:
         )
 
         return OneStageSearchResult(
-            response_text=structured_output.answer,
+            response_text=structured_output.answer_without_followup,
             followup_options=structured_output.followup_options,
             response_id=response_id,
             input_files=manifest.input_files,
@@ -507,14 +529,14 @@ class OpenAIFileSearchClient:
     def _build_structured_text_format() -> dict[str, Any]:
         schema = {
             "type": "object",
-            "properties": {
-                "answer": {"type": "string"},
-                "followup_options": {
-                    "type": "array",
-                    "items": {"type": "string"},
+                "properties": {
+                    "answer_without_followup": {"type": "string"},
+                    "followup_options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                 },
-            },
-            "required": ["answer", "followup_options"],
+            "required": ["answer_without_followup", "followup_options"],
             "additionalProperties": False,
         }
         return {
@@ -542,7 +564,7 @@ class OpenAIFileSearchClient:
             raise RuntimeError("Structured output parse failed") from exc
 
         return AskStructuredOutput(
-            answer=parsed.answer.strip(),
+            answer_without_followup=parsed.answer_without_followup.strip(),
             followup_options=self._normalize_followup_options(parsed.followup_options),
         )
 
@@ -554,6 +576,8 @@ class OpenAIFileSearchClient:
             candidate = value.strip()
             if not candidate:
                 continue
+            if not OpenAIFileSearchClient._is_valid_followup_option(candidate):
+                continue
             if candidate in seen:
                 continue
             seen.add(candidate)
@@ -561,6 +585,19 @@ class OpenAIFileSearchClient:
             if len(normalized) >= 3:
                 break
         return normalized
+
+    @staticmethod
+    def _is_valid_followup_option(value: str) -> bool:
+        candidate = value.strip()
+        if len(candidate) < 3:
+            return False
+        if any(candidate.startswith(prefix) for prefix in INVALID_FOLLOWUP_PREFIXES):
+            return False
+        if any(marker in candidate for marker in INVALID_FOLLOWUP_SUBSTRINGS):
+            return False
+        if "你的目標是" in candidate and "？" in candidate:
+            return False
+        return True
 
     def _map_top_matches_to_uploaded_files(
         self,

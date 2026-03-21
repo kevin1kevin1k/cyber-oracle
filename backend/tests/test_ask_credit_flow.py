@@ -278,6 +278,104 @@ def test_ask_strips_followup_section_from_answer_text(
     assert answer.answer_text == "主回答第一段。"
 
 
+def test_ask_strips_followup_section_with_single_line_intro(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token, _ = _make_verified_token_with_wallet(db_session=db_session, balance=2)
+    key = "ask-strip-followups-single-line"
+
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: (
+            "主回答第二段。\n如果你願意，我可以再幫你看看：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+            "rag",
+            ["延伸 A", "延伸 B", "延伸 C"],
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "主回答第二段。"
+
+
+def test_ask_strips_followup_section_when_only_two_followups_match_exactly(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token, _ = _make_verified_token_with_wallet(db_session=db_session, balance=2)
+    key = "ask-strip-followups-two-matches"
+
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: (
+            "主回答第三段。\n\n如果你願意，我可以再幫你看看：\n"
+            "1、未來半年用 vibe coding 最適合採取的「三段式節奏」是什麼？\n"
+            "2、我在 vibe coding 上最需要避免的那個核心陷阱是什麼？\n"
+            "3、要把它做成可變現的能力，我應該先做哪一種作品集？",
+            "rag",
+            [
+                "未來半年用 vibe coding 最適合採取的「三段式節奏」是什麼？",
+                "我在 vibe coding 上最需要避免的那個核心陷阱是什麼？",
+                "要把 vibe coding 做成可變現的能力，我應該先做哪一種作品集？",
+            ],
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "主回答第三段。"
+
+
+def test_ask_strips_followup_section_even_when_followups_are_rewritten(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token, _ = _make_verified_token_with_wallet(db_session=db_session, balance=2)
+    key = "ask-strip-followups-rewritten"
+
+    monkeypatch.setattr(
+        "app.main._generate_answer_from_openai_file_search",
+        lambda _: (
+            "主回答第四段。\n\n如果你願意，我可以再幫你看看：\n"
+            "1、我想走「接案/自由工作」變現，vibe coding 作品集該怎麼排 3–5 個專案最有效？\n"
+            "2、如果我想做「SaaS/小產品」變現，第一個微型產品作品集應該長什麼樣子？\n"
+            "3、我已經有一些零散 side project，怎麼把它們重整成可定價、可交付的作品集？",
+            "rag",
+            [
+                "我想走接案/自由工作變現，vibe coding 作品集用 3–5 個專案要怎麼設計才最容易成交？",
+                "如果我想做 SaaS/小產品變現，第一個適合 vibe coding 的微型產品作品集應該做哪一類？",
+                (
+                    "我手上已有幾個零散的 side project，怎麼重整成能定價、能交付、"
+                    "能被雇主/客戶快速看懂的作品集？"
+                ),
+            ],
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "主回答第四段。"
+
+
 def test_ask_retry_same_idempotency_key_no_double_charge(
     client: TestClient,
     db_session: Session,

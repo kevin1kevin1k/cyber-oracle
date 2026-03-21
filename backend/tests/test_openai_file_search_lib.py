@@ -9,7 +9,7 @@ from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
 def _structured_output_text(answer: str, followups: list[str] | None = None) -> str:
     payload = {
-        "answer": answer,
+        "answer_without_followup": answer,
         "followup_options": followups or [],
     }
     return json.dumps(payload, ensure_ascii=False)
@@ -473,7 +473,7 @@ def test_one_stage_response_uses_single_file_search_request(
     assert request["tools"][0]["max_num_results"] == 3
     assert request["text"]["format"]["type"] == "json_schema"
     assert set(request["text"]["format"]["schema"]["required"]) == {
-        "answer",
+        "answer_without_followup",
         "followup_options",
     }
 
@@ -694,3 +694,38 @@ def test_one_stage_raises_on_invalid_structured_output(
             top_k=3,
             debug=True,
         )
+
+
+def test_normalize_followup_options_filters_questionnaire_style_and_partial_options() -> None:
+    values = [
+        "你的目標是減脂、增肌、體能、睡眠或抗壓？（選一個優先）",
+        "我優先：減脂",
+        "提供你的身高/體重/年齡/性別與一日作息，我幫你找最小改動槓桿",
+        "如果我想把主導權從家長拉回到我們兩個，最小衝突的做法是什麼？",
+        "如何設一個「溝通框架」讓討論不再繞圈（每次談判的固定順序與句型）？",
+    ]
+
+    normalized = OpenAIFileSearchClient._normalize_followup_options(values)
+
+    assert normalized == [
+        "如果我想把主導權從家長拉回到我們兩個，最小衝突的做法是什麼？",
+        "如何設一個「溝通框架」讓討論不再繞圈（每次談判的固定順序與句型）？",
+    ]
+
+
+def test_normalize_followup_options_dedupes_and_caps_valid_questions() -> None:
+    values = [
+        "如果其實是我在扛，但我已經快扛不住了，我該怎麼重新分工？",
+        "如果其實是我在扛，但我已經快扛不住了，我該怎麼重新分工？",
+        "用「決策權／金流權／溝通權」三條線，幫我判斷目前主導權各落在誰身上",
+        "如果我想把主導權從家長拉回到我們兩個，最小衝突的做法是什麼？",
+        "如何設一個「溝通框架」讓討論不再繞圈（每次談判的固定順序與句型）？",
+    ]
+
+    normalized = OpenAIFileSearchClient._normalize_followup_options(values)
+
+    assert normalized == [
+        "如果其實是我在扛，但我已經快扛不住了，我該怎麼重新分工？",
+        "用「決策權／金流權／溝通權」三條線，幫我判斷目前主導權各落在誰身上",
+        "如果我想把主導權從家長拉回到我們兩個，最小衝突的做法是什麼？",
+    ]

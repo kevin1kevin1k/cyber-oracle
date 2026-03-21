@@ -100,35 +100,15 @@ def _strip_followup_section_from_answer(answer_text: str, followup_contents: lis
     if not trimmed or not normalized_followups:
         return trimmed
 
-    positions: list[int] = []
-    search_start = 0
-    for content in normalized_followups:
-        found_at = trimmed.find(content, search_start)
-        if found_at == -1:
-            return trimmed
-        positions.append(found_at)
-        search_start = found_at + len(content)
+    marker_positions = [trimmed.rfind(marker) for marker in FOLLOWUP_SECTION_MARKERS]
+    marker_positions = [pos for pos in marker_positions if pos != -1]
+    if not marker_positions:
+        return trimmed
 
-    first_followup_at = positions[0]
-    paragraph_break_at = trimmed.rfind("\n\n", 0, first_followup_at)
-    line_break_at = trimmed.rfind("\n", 0, first_followup_at)
-    search_start = paragraph_break_at if paragraph_break_at != -1 else line_break_at + 1
-    marker_positions = [
-        trimmed.find(marker, search_start, first_followup_at)
-        for marker in FOLLOWUP_SECTION_MARKERS
-        if trimmed.find(marker, search_start, first_followup_at) != -1
-    ]
-    if marker_positions:
-        cut_at = min(marker_positions)
-    else:
-        cut_at = trimmed.rfind("\n", 0, first_followup_at)
-        if cut_at == -1:
-            return trimmed
-
+    cut_at = min(marker_positions)
     suffix = trimmed[cut_at:]
-    required_matches = 1 if len(normalized_followups) == 1 else 2
-    matched_count = sum(1 for content in normalized_followups if content in suffix)
-    if matched_count < required_matches:
+    numbered_line_matches = re.findall(r"(?:^|\n)\s*[1-3][、.．)]\s*", suffix)
+    if len(numbered_line_matches) < (1 if len(normalized_followups) == 1 else 2):
         return trimmed
 
     cleaned = trimmed[:cut_at].rstrip()

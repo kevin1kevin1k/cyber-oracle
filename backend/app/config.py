@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     openai_ask_top_k: int = 3
     openai_ask_system_prompt: str = (
         "你是 ELIN 神域引擎問答助手，請根據提供檔案內容給出清楚可行的回答。"
+        "回答格式以『結論 -> 必要說明』為主。"
+        "answer_without_followup 必須只包含主回答正文，不可包含任何延伸問題、延伸問題前綴、"
+        "或『如果你願意，我可以再幫你看看』之類的收尾句。"
+        "followup_options 請產出 0 到 3 個可直接點擊送出的完整追問，"
+        "每一個都要像使用者下一步會直接問你的完整問題。"
+        "不要要求使用者先補資料、先做選擇、先告訴你某個欄位，"
+        "也不要產生半句式選項或問卷式選項。"
+        "followup_options 彼此必須明顯不同，且要延續同一題脈絡。"
     )
     messenger_enabled: bool = False
     meta_verify_token: str | None = None

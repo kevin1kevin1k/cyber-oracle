@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.8` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.10` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -125,6 +125,14 @@
 - [x] 完成 Messenger inbound ask flow（message -> ask domain -> response text/followups）
 - [x] 完成未綁定使用者能力邊界與引導（何時允許問答、何時強制 linking）
 - [x] 完成 Messenger quick reply followup flow（payload -> followup ask domain -> response text/followups）
+- [x] 修正 Messenger followup 呈現收斂為單一訊息，避免主回答與延伸問題重複顯示
+  - [x] Backend：主回答與 followups 合併為單一 quick reply 訊息
+  - [x] Backend：加強 answer 尾端 followup 區塊清理，避免殘留 `如果你願意...`
+  - [x] 測試：覆蓋 ask / followup ask / reshow followups 的單一訊息格式
+- [x] 修正 followup 生成規則為「直接可追問的完整問題」
+  - [x] Backend：更新 OpenAI system prompt，禁止問卷式或半句式 followups
+  - [x] Backend：新增最小後處理過濾，濾掉明顯要求使用者先補資料或先做選擇的選項
+  - [x] 測試：覆蓋問卷式 followups 被過濾、完整問題保留
 - [x] 新增 Messenger 驗證 runbook（local / pre-prod / prod webhook 綁定與驗證流程）
 - [x] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
   - [x] Backend：未綁定使用者回覆改為 signed web_url linking button

@@ -148,7 +148,8 @@ Endpoints:
   - returns `200 accepted` quickly after verify/parse, then processes ask/followup/send in background task
   - resolves/creates `messenger_identities` mapping
   - for linked identities, text messages now execute the existing ask credit flow (`reserve -> capture/refund`)
-  - maps ask followups into Messenger quick replies payloads, and quick reply clicks now reuse the existing followup ask flow
+  - maps ask followups into a single Messenger quick-replies message, and quick reply clicks now reuse the existing followup ask flow
+  - followups are expected to be direct next-step questions, not questionnaire-style prompts that ask the user to choose or provide missing fields first
   - dispatches outgoing payloads through pluggable client abstraction (`noop` or `meta_graph`)
   - `POST /api/v1/messenger/link` links a verified web user to an existing `messenger_identities` row using signed linking token
 
@@ -234,7 +235,7 @@ pre-commit run --all-files
 This repo includes helper scripts for one-stage/two-stage Responses flow:
 1) one-time vector store build + persist `rag_files` mapping in manifest
 2) one-time input files upload + persist `input_files` mapping in manifest
-3) query-time one-stage or two-stage response with structured output (`answer` + `followup_options`)
+3) query-time one-stage or two-stage response with structured output (`answer_without_followup` + `followup_options`)
 
 ```mermaid
 sequenceDiagram

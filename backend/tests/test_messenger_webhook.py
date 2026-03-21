@@ -494,13 +494,11 @@ def test_webhook_post_message_event_with_same_mid_is_idempotent(
     ).count()
     assert capture_count == 1
     assert outgoing_messages == [
-        ("psid-linked-2", "text", "測試回答（messenger）"),
         (
             "psid-linked-2",
-            "text",
-            "你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
-        ),
-        ("psid-linked-2", "quick_replies", "請直接點選要追問的延伸問題："),
+            "quick_replies",
+            "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        )
     ]
 
 
@@ -549,13 +547,11 @@ def test_webhook_post_message_event_strips_followup_text_from_answer(
 
     assert response.status_code == 200
     assert outgoing_messages == [
-        ("psid-linked-sanitized", "text", "主回答第一段。"),
         (
             "psid-linked-sanitized",
-            "text",
-            "你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
-        ),
-        ("psid-linked-sanitized", "quick_replies", "請直接點選要追問的延伸問題："),
+            "quick_replies",
+            "主回答第一段。\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        )
     ]
 
 
@@ -594,8 +590,11 @@ def test_webhook_post_message_event_followup_quick_replies_use_fixed_titles(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
-    _, quick_reply_outgoing = captured_outgoing[2]
+    _, quick_reply_outgoing = captured_outgoing[0]
     assert quick_reply_outgoing.kind == "quick_replies"
+    assert quick_reply_outgoing.text.startswith(
+        "測試回答（messenger）\n\n你也可以選擇以下延伸問題："
+    )
     assert [item.title for item in quick_reply_outgoing.quick_replies] == [
         "延伸問題一",
         "延伸問題二",
@@ -643,9 +642,11 @@ def test_webhook_post_message_event_with_two_followups_lists_only_existing_items
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
-    _, followup_text_outgoing = captured_outgoing[1]
-    _, quick_reply_outgoing = captured_outgoing[2]
-    assert followup_text_outgoing.text == "你也可以選擇以下延伸問題：\n1. 延伸 1\n2. 延伸 2"
+    _, quick_reply_outgoing = captured_outgoing[0]
+    assert (
+        quick_reply_outgoing.text
+        == "雙延伸回答\n\n你也可以選擇以下延伸問題：\n1. 延伸 1\n2. 延伸 2"
+    )
     assert [item.title for item in quick_reply_outgoing.quick_replies] == [
         "延伸問題一",
         "延伸問題二",
@@ -1081,16 +1082,10 @@ def test_webhook_post_quick_reply_for_linked_user_runs_followup_flow(
         CreditTransaction.action == "capture",
     ).count()
     assert capture_count == 1
-    assert outgoing_messages[0] == ("psid-followup-1", "text", "測試回答（messenger）")
-    assert outgoing_messages[1] == (
-        "psid-followup-1",
-        "text",
-        "你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
-    )
-    assert outgoing_messages[2] == (
+    assert outgoing_messages[0] == (
         "psid-followup-1",
         "quick_replies",
-        "請直接點選要追問的延伸問題：",
+        "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
     )
 
 
@@ -1309,15 +1304,13 @@ def test_webhook_post_postback_reshows_pending_followups_after_topup(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
-    assert len(captured_outgoing) == 2
-    _, followup_text_outgoing = captured_outgoing[0]
-    _, quick_reply_outgoing = captured_outgoing[1]
-    assert followup_text_outgoing.kind == "text"
+    assert len(captured_outgoing) == 1
+    _, quick_reply_outgoing = captured_outgoing[0]
+    assert quick_reply_outgoing.kind == "quick_replies"
     assert (
-        followup_text_outgoing.text
+        quick_reply_outgoing.text
         == "你也可以選擇以下延伸問題：\n1. 重新顯示的延伸問題一\n2. 重新顯示的延伸問題二"
     )
-    assert quick_reply_outgoing.kind == "quick_replies"
     assert [item.title for item in quick_reply_outgoing.quick_replies] == [
         "延伸問題一",
         "延伸問題二",
