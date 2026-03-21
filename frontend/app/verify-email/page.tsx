@@ -13,9 +13,12 @@ type VerifyEmailResponse = {
 
 export default function VerifyEmailPage() {
   const [tokenFromQuery, setTokenFromQuery] = useState("");
+  const [resendEmail, setResendEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState<string | null>(null);
   const [nextPath, setNextPath] = useState("/");
 
   useEffect(() => {
@@ -49,6 +52,24 @@ export default function VerifyEmailPage() {
     }
   }
 
+  async function handleResend(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setResendSuccess(null);
+    setResending(true);
+    try {
+      await apiRequest<{ status: "accepted" }>("/api/v1/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email: resendEmail }),
+      });
+      setResendSuccess("若帳號存在且尚未驗證，請查收 Email 內的新驗證連結。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重寄驗證信失敗");
+    } finally {
+      setResending(false);
+    }
+  }
+
   return (
     <main>
       <h1>Email 驗證</h1>
@@ -63,14 +84,30 @@ export default function VerifyEmailPage() {
         ) : (
           <div className="answer">
             <p>未偵測到驗證連結，請從 Email 中點擊驗證連結後再試一次。</p>
-            <p>
-              <Link href={`/register?next=${encodeURIComponent(nextPath)}`}>返回註冊</Link>
-            </p>
           </div>
         )}
         {error && <p className="error">{error}</p>}
         {success && <p className="success">Email 驗證成功，請前往登入。</p>}
+        {!success && (
+          <form onSubmit={handleResend}>
+            <label htmlFor="resend-email">重寄驗證信 Email</label>
+            <input
+              id="resend-email"
+              type="email"
+              value={resendEmail}
+              onChange={(event) => setResendEmail(event.target.value)}
+              required
+              autoComplete="email"
+            />
+            <button type="submit" disabled={resending}>
+              {resending ? "寄送中..." : "重寄驗證信"}
+            </button>
+          </form>
+        )}
+        {resendSuccess && <p className="success">{resendSuccess}</p>}
         <p className="helper-links">
+          <Link href={`/register?next=${encodeURIComponent(nextPath)}`}>返回註冊</Link>
+          <span> · </span>
           <Link href={`/login?next=${encodeURIComponent(nextPath)}`}>前往登入</Link>
         </p>
       </section>

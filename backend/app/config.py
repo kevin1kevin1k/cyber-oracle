@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     messenger_verify_signature: bool = False
     messenger_outbound_mode: Literal["noop", "meta_graph"] = "noop"
     messenger_web_base_url: str = "http://localhost:3000"
+    app_web_base_url: str = "http://localhost:3000"
+    email_provider: Literal["noop", "postmark"] = "noop"
+    postmark_server_token: str | None = None
+    email_from: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
@@ -60,6 +64,20 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "META_PAGE_ACCESS_TOKEN is required when MESSENGER_OUTBOUND_MODE=meta_graph"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_email_settings(self) -> "Settings":
+        app_env = self.app_env.strip().lower()
+        if app_env == "prod":
+            if self.email_provider != "postmark":
+                raise ValueError("EMAIL_PROVIDER must be postmark when APP_ENV=prod")
+            if not self.app_web_base_url.strip():
+                raise ValueError("APP_WEB_BASE_URL is required when APP_ENV=prod")
+            if not (self.postmark_server_token or "").strip():
+                raise ValueError("POSTMARK_SERVER_TOKEN is required when APP_ENV=prod")
+            if not (self.email_from or "").strip():
+                raise ValueError("EMAIL_FROM is required when APP_ENV=prod")
         return self
 
     @property

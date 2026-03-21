@@ -371,6 +371,24 @@ test("ask handles 402 insufficient credit", async ({ page }) => {
   await expect(page.getByText("點數不足，請先購點再提問。")).toBeVisible();
 });
 
+test("verify-email page can resend verification email", async ({ page }) => {
+  await page.route("**/api/v1/auth/resend-verification", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    expect(body.email).toBe("resend@example.com");
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "accepted" }),
+    });
+  });
+
+  await page.goto("/verify-email");
+  await page.getByLabel("重寄驗證信 Email").fill("resend@example.com");
+  await page.getByRole("button", { name: "重寄驗證信" }).click();
+
+  await expect(page.getByText("若帳號存在且尚未驗證，請查收 Email 內的新驗證連結。")).toBeVisible();
+});
+
 test("ask success updates credit balance immediately", async ({ page }) => {
   await page.route("**/api/v1/auth/login", async (route) => {
     await route.fulfill({

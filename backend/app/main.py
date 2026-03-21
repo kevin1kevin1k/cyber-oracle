@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -14,6 +15,7 @@ from app.ask_service import execute_ask_for_user, execute_followup_for_user
 from app.auth import AuthContext, require_authenticated, require_verified_email
 from app.config import settings
 from app.db import get_db
+from app.email import EmailDeliveryError, EmailMessage, NoopEmailClient, PostmarkEmailClient
 from app.messenger.routes import router as messenger_router
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
@@ -46,6 +48,8 @@ from app.schemas import (
     OrderResponse,
     RegisterRequest,
     RegisterResponse,
+    ResendVerificationRequest,
+    ResendVerificationResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     SimulatePaidResponse,
@@ -75,6 +79,8 @@ app.add_middleware(
 
 app.include_router(messenger_router, prefix="/api/v1/messenger", tags=["messenger"])
 
+logger = logging.getLogger(__name__)
+
 CREDIT_COST_PER_ASK = 1
 ORDER_AMOUNT_TWD_BY_PACKAGE_SIZE = {
     1: 168,
@@ -91,6 +97,62 @@ class AskOpenAIConfigError(Exception):
 
 class AskOpenAIRuntimeError(Exception):
     pass
+
+
+def _get_email_client():
+    if settings.email_provider == "postmark":
+        return PostmarkEmailClient(
+            server_token=(settings.postmark_server_token or "").strip(),
+            from_email=(settings.email_from or "").strip(),
+        )
+    return NoopEmailClient()
+
+
+def _verification_link(token: str) -> str:
+    base_url = settings.app_web_base_url.rstrip("/")
+    return f"{base_url}/verify-email?token={token}"
+
+
+def _reset_password_link(token: str) -> str:
+    base_url = settings.app_web_base_url.rstrip("/")
+    return f"{base_url}/reset-password?token={token}"
+
+
+def _send_verification_email(*, to_email: str, token: str) -> None:
+    verify_link = _verification_link(token)
+    _get_email_client().send(
+        message=EmailMessage(
+            to_email=to_email,
+            subject="請完成 ELIN Email 驗證",
+            html_body=(
+                "<p>請點擊以下連結完成 Email 驗證：</p>"
+                f"<p><a href=\"{verify_link}\">{verify_link}</a></p>"
+            ),
+            text_body=f"請點擊以下連結完成 Email 驗證：\n{verify_link}",
+        )
+    )
+
+
+def _send_password_reset_email(*, to_email: str, token: str) -> None:
+    reset_link = _reset_password_link(token)
+    _get_email_client().send(
+        message=EmailMessage(
+            to_email=to_email,
+            subject="ELIN 密碼重設連結",
+            html_body=(
+                "<p>請點擊以下連結重設密碼：</p>"
+                f"<p><a href=\"{reset_link}\">{reset_link}</a></p>"
+            ),
+            text_body=f"請點擊以下連結重設密碼：\n{reset_link}",
+        )
+    )
+
+
+def _rotate_verification_token(user: User) -> str:
+    token = generate_verification_token()
+    user.verify_token = token
+    user.verify_token_expires_at = verification_token_expiry()
+    return token
 
 
 def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
@@ -525,7 +587,10 @@ def health() -> dict[str, str]:
     response_model=RegisterResponse,
     responses={409: {"model": ApiErrorDetail}},
 )
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+def register(
+    payload: RegisterRequest,
+    db: Session = Depends(get_db),
+) -> RegisterResponse:
     token = generate_verification_token()
     user = User(
         email=payload.email,
@@ -542,11 +607,31 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        logger.warning("auth.register.duplicate email=%s", payload.email)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "EMAIL_ALREADY_EXISTS", "message": "Email already exists"},
         ) from exc
     db.refresh(user)
+
+    if settings.app_env == "prod":
+        try:
+            _send_verification_email(to_email=user.email, token=token)
+        except EmailDeliveryError as exc:
+            logger.exception(
+                "Verification email delivery failed: user_id=%s email=%s",
+                user.id,
+                user.email,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "EMAIL_DELIVERY_FAILED",
+                    "message": "Unable to deliver verification email",
+                },
+            ) from exc
+
+    logger.info("auth.register.created user_id=%s email=%s", user.id, user.email)
 
     response_token = token if settings.app_env in {"dev", "test"} else None
     return RegisterResponse(
@@ -562,7 +647,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
     response_model=LoginResponse,
     responses={401: {"model": ApiErrorDetail}},
 )
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(
+    payload: LoginRequest,
+    db: Session = Depends(get_db),
+) -> LoginResponse:
     user = db.scalar(select(User).where(User.email == payload.email))
     password_valid = False
     if user is not None:
@@ -572,6 +660,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             password_valid = False
 
     if user is None or not password_valid:
+        logger.warning("auth.login.invalid email=%s", payload.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "INVALID_CREDENTIALS", "message": "Invalid email or password"},
@@ -605,6 +694,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     )
     db.add(session_record)
     db.commit()
+    logger.info("auth.login.success user_id=%s email_verified=%s", user.id, user.email_verified)
 
     return LoginResponse(
         access_token=access_token,
@@ -650,6 +740,25 @@ def forgot_password(
         user.password_reset_token_expires_at = password_reset_token_expiry()
         db.add(user)
         db.commit()
+        if settings.app_env == "prod":
+            try:
+                _send_password_reset_email(to_email=user.email, token=reset_token)
+            except EmailDeliveryError as exc:
+                logger.exception(
+                    "Password reset email delivery failed: user_id=%s email=%s",
+                    user.id,
+                    user.email,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "code": "EMAIL_DELIVERY_FAILED",
+                        "message": "Unable to deliver password reset email",
+                    },
+                ) from exc
+        logger.info("auth.forgot_password.issued user_id=%s", user.id)
+    else:
+        logger.info("auth.forgot_password.accepted_unknown email=%s", payload.email)
 
     if settings.app_env in {"dev", "test"}:
         return ForgotPasswordResponse(status="accepted", reset_token=reset_token)
@@ -687,6 +796,44 @@ def reset_password(
 
 
 @app.post(
+    "/api/v1/auth/resend-verification",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ResendVerificationResponse,
+)
+def resend_verification(
+    payload: ResendVerificationRequest,
+    db: Session = Depends(get_db),
+) -> ResendVerificationResponse:
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if user is None or user.email_verified:
+        logger.info("auth.resend_verification.ignored email=%s", payload.email)
+        return ResendVerificationResponse(status="accepted")
+
+    token = _rotate_verification_token(user)
+    db.add(user)
+    db.commit()
+
+    if settings.app_env == "prod":
+        try:
+            _send_verification_email(to_email=user.email, token=token)
+        except EmailDeliveryError as exc:
+            logger.exception(
+                "Resend verification email delivery failed: user_id=%s email=%s",
+                user.id,
+                user.email,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "EMAIL_DELIVERY_FAILED",
+                    "message": "Unable to deliver verification email",
+                },
+            ) from exc
+    logger.info("auth.resend_verification.sent user_id=%s", user.id)
+    return ResendVerificationResponse(status="accepted")
+
+
+@app.post(
     "/api/v1/auth/verify-email",
     response_model=VerifyEmailResponse,
     responses={400: {"model": ApiErrorDetail}},
@@ -706,6 +853,7 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
     user.verify_token_expires_at = None
     db.add(user)
     db.commit()
+    logger.info("auth.verify_email.success user_id=%s", user.id)
 
     return VerifyEmailResponse(status="verified")
 

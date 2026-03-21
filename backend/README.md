@@ -25,17 +25,22 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
 - `POST /api/v1/auth/register`
   - creates user with hashed password
   - returns `verification_token` only in `dev`/`test`; production returns `null`
+  - production sends a verification email using the configured provider
 - `POST /api/v1/auth/login`
   - verifies email/password
   - returns HS256 bearer token with `email_verified` + `jti` claims
   - creates a `sessions` record for token revocation/expiration checks
 - `POST /api/v1/auth/verify-email`
   - verifies token and flips `email_verified=true`
+- `POST /api/v1/auth/resend-verification`
+  - always returns `202` to avoid user enumeration
+  - for an existing unverified user, rotates the old verify token and sends a fresh verification email in production
 - `POST /api/v1/auth/logout`
   - revokes current session by token `jti` and returns `204`
 - `POST /api/v1/auth/forgot-password`
   - always returns `202` to avoid user enumeration
   - returns `reset_token` only in `dev`/`test` app env; production returns `null`
+  - production sends a password reset email using the configured provider
 - `POST /api/v1/auth/reset-password`
   - resets password by token, token is single-use with expiration
 
@@ -110,6 +115,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
 
 Environment variables:
 - `APP_ENV`: runtime env (`dev` / `test` / `prod`, default `dev`)
+- `APP_WEB_BASE_URL`: public frontend base URL used in verification/reset email links
 - `CORS_ORIGINS`: comma-separated browser origins allowed to call backend APIs (must include public frontend/WebView origins such as Messenger frontend tunnel URLs)
 - `DATABASE_URL`: app runtime database
 - `TEST_DATABASE_URL`: test-only database (use `elin_test`)

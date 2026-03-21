@@ -94,7 +94,12 @@ def test_register_in_prod_does_not_return_verification_token(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    sent: dict[str, str] = {}
     monkeypatch.setattr(settings, "app_env", "prod")
+    monkeypatch.setattr(
+        "app.main._send_verification_email",
+        lambda *, to_email, token: sent.update({"to_email": to_email, "token": token}),
+    )
 
     response = client.post(
         "/api/v1/auth/register",
@@ -108,6 +113,35 @@ def test_register_in_prod_does_not_return_verification_token(
     user = db_session.scalar(select(User).where(User.email == "prod-user@example.com"))
     assert user is not None
     assert user.verify_token is not None
+    assert sent == {"to_email": "prod-user@example.com", "token": user.verify_token}
+
+
+def test_register_in_prod_sends_verification_email(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    def _capture_send(*, to_email: str, token: str) -> None:
+        captured["to_email"] = to_email
+        captured["token"] = token
+
+    monkeypatch.setattr(settings, "app_env", "prod")
+    monkeypatch.setattr("app.main._send_verification_email", _capture_send)
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "prod-email-send@example.com", "password": "Password123"},
+    )
+
+    assert response.status_code == 201
+    user = db_session.scalar(select(User).where(User.email == "prod-email-send@example.com"))
+    assert user is not None
+    assert captured == {
+        "to_email": "prod-email-send@example.com",
+        "token": user.verify_token,
+    }
 
 
 def test_register_duplicate_email_returns_409(client: TestClient, db_session: Session) -> None:
@@ -363,6 +397,114 @@ def test_forgot_password_unknown_email_returns_202_without_token_in_prod(
     assert payload["status"] == "accepted"
     assert payload["reset_token"] is None
 
+
+def test_forgot_password_in_prod_sends_reset_email_and_hides_token(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: dict[str, str] = {}
+
+    user = User(
+        id=uuid.uuid4(),
+        email="prod-forgot@example.com",
+        password_hash=hash_password("OldPassword123"),
+        email_verified=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    monkeypatch.setattr(settings, "app_env", "prod")
+    monkeypatch.setattr(
+        "app.main._send_password_reset_email",
+        lambda *, to_email, token: sent.update({"to_email": to_email, "token": token}),
+    )
+
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "prod-forgot@example.com"},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "accepted"
+    assert payload["reset_token"] is None
+
+    db_session.refresh(user)
+    assert user.password_reset_token is not None
+    assert sent == {"to_email": "prod-forgot@example.com", "token": user.password_reset_token}
+
+
+def test_resend_verification_rotates_token_and_sends_email_in_prod(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: dict[str, str] = {}
+    monkeypatch.setattr(settings, "app_env", "prod")
+    monkeypatch.setattr(
+        "app.main._send_verification_email",
+        lambda *, to_email, token: sent.update({"to_email": to_email, "token": token}),
+    )
+
+    user = User(
+        id=uuid.uuid4(),
+        email="resend@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=False,
+        verify_token="old-verify-token",
+        verify_token_expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/resend-verification",
+        json={"email": "resend@example.com"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+
+    db_session.refresh(user)
+    assert user.verify_token is not None
+    assert user.verify_token != "old-verify-token"
+    assert sent == {"to_email": "resend@example.com", "token": user.verify_token}
+
+
+def test_resend_verification_ignores_verified_or_unknown_email(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(settings, "app_env", "prod")
+    monkeypatch.setattr(
+        "app.main._send_verification_email",
+        lambda *, to_email, token: calls.append(f"{to_email}:{token}"),
+    )
+
+    verified_user = User(
+        id=uuid.uuid4(),
+        email="verified@example.com",
+        password_hash=hash_password("Password123"),
+        email_verified=True,
+    )
+    db_session.add(verified_user)
+    db_session.commit()
+
+    verified_response = client.post(
+        "/api/v1/auth/resend-verification",
+        json={"email": "verified@example.com"},
+    )
+    unknown_response = client.post(
+        "/api/v1/auth/resend-verification",
+        json={"email": "unknown@example.com"},
+    )
+
+    assert verified_response.status_code == 202
+    assert unknown_response.status_code == 202
+    assert calls == []
 
 def test_reset_password_invalid_or_expired_returns_400(
     client: TestClient,

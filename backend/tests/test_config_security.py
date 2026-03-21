@@ -16,8 +16,14 @@ def test_prod_rejects_short_jwt_secret() -> None:
 
 def test_prod_accepts_strong_jwt_secret() -> None:
     settings = Settings(
+        _env_file=None,
         app_env="prod",
         jwt_secret="prod-very-strong-secret-01234567890123456789",
+        app_web_base_url="https://app.example.com",
+        email_provider="postmark",
+        postmark_server_token="postmark-token",
+        email_from="no-reply@example.com",
+        messenger_enabled=False,
     )
 
     assert settings.app_env == "prod"
