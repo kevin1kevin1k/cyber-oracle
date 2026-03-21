@@ -46,6 +46,7 @@ from app.messenger.security import (
 )
 from app.messenger.service import MessengerEventService
 from app.models.messenger_identity import MessengerIdentity
+from app.rate_limit import RateLimitRule, enforce_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -132,10 +133,22 @@ def verify_webhook(
 @router.post("/link", response_model=MessengerLinkResponse)
 def link_identity(
     payload: MessengerLinkRequest,
+    request: Request,
     auth_context: AuthContext = Depends(require_verified_email),
     db: Session = Depends(get_db),
 ) -> MessengerLinkResponse:
     _ensure_messenger_enabled()
+    client_ip = request.headers.get("x-forwarded-for", "")
+    if client_ip.strip():
+        client_ip = client_ip.split(",")[0].strip()
+    elif request.client is not None and request.client.host:
+        client_ip = request.client.host
+    else:
+        client_ip = "unknown"
+    enforce_rate_limit(
+        rule=RateLimitRule(name="messenger-link", limit=10, window_seconds=900),
+        subject=f"ip:{client_ip}",
+    )
 
     claims = decode_messenger_link_token(
         token=payload.token,

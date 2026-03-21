@@ -1814,6 +1814,65 @@ def test_messenger_link_endpoint_rejects_invalid_token(
     assert response.json()["detail"]["code"] == "MESSENGER_LINK_TOKEN_INVALID"
 
 
+
+def test_messenger_link_endpoint_rate_limit_returns_429(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, token = _create_verified_user_with_token(db_session)
+    monkeypatch.setattr(settings, "launch_credit_grant_amount", 0)
+
+    for attempt in range(10):
+        identity = MessengerIdentity(
+            platform="messenger",
+            psid=f"psid-link-rate-{attempt}",
+            page_id=f"page-link-rate-{attempt}",
+            status="unlinked",
+            is_active=True,
+        )
+        db_session.add(identity)
+        db_session.commit()
+        link_token = create_messenger_link_token(
+            psid=identity.psid,
+            page_id=identity.page_id,
+            secret_key=settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+        response = client.post(
+            "/api/v1/messenger/link",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"token": link_token},
+        )
+        assert response.status_code == 200
+
+    overflow_identity = MessengerIdentity(
+        platform="messenger",
+        psid="psid-link-rate-overflow",
+        page_id="page-link-rate-overflow",
+        status="unlinked",
+        is_active=True,
+    )
+    db_session.add(overflow_identity)
+    db_session.commit()
+    overflow_token = create_messenger_link_token(
+        psid=overflow_identity.psid,
+        page_id=overflow_identity.page_id,
+        secret_key=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    blocked = client.post(
+        "/api/v1/messenger/link",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"token": overflow_token},
+    )
+
+    assert user.id is not None
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+
 def test_webhook_outbound_failure_returns_accepted_instead_of_500(
     client: TestClient,
     db_session: Session,

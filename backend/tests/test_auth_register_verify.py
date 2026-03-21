@@ -506,6 +506,23 @@ def test_resend_verification_ignores_verified_or_unknown_email(
     assert unknown_response.status_code == 202
     assert calls == []
 
+
+def test_register_rate_limit_returns_429(client: TestClient) -> None:
+    for attempt in range(5):
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": f"rate-limit-{attempt}@example.com", "password": "Password123"},
+        )
+        assert response.status_code == 201
+
+    blocked = client.post(
+        "/api/v1/auth/register",
+        json={"email": "rate-limit-blocked@example.com", "password": "Password123"},
+    )
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+
 def test_reset_password_invalid_or_expired_returns_400(
     client: TestClient,
     db_session: Session,

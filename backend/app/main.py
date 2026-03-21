@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import jwt
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -25,6 +25,7 @@ from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.rate_limit import rate_limiter
 from app.schemas import (
     ApiErrorDetail,
     AskHistoryDetailNode,
@@ -97,6 +98,45 @@ class AskOpenAIConfigError(Exception):
 
 class AskOpenAIRuntimeError(Exception):
     pass
+
+
+def _client_ip_from_request(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for.strip():
+        return forwarded_for.split(",")[0].strip()
+    client = request.client
+    if client is not None and client.host:
+        return client.host
+    return "unknown"
+
+
+def _enforce_ip_rate_limit(
+    *,
+    request: Request,
+    scope: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    ip_address = _client_ip_from_request(request)
+    rate_limiter.enforce(
+        key=f"ip:{scope}:{ip_address}",
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+
+
+def _enforce_user_rate_limit(
+    *,
+    user_id: UUID,
+    scope: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    rate_limiter.enforce(
+        key=f"user:{scope}:{user_id}",
+        limit=limit,
+        window_seconds=window_seconds,
+    )
 
 
 def _get_email_client():
@@ -589,8 +629,10 @@ def health() -> dict[str, str]:
 )
 def register(
     payload: RegisterRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> RegisterResponse:
+    _enforce_ip_rate_limit(request=request, scope="auth-register", limit=5, window_seconds=900)
     token = generate_verification_token()
     user = User(
         email=payload.email,
@@ -649,8 +691,10 @@ def register(
 )
 def login(
     payload: LoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> LoginResponse:
+    _enforce_ip_rate_limit(request=request, scope="auth-login", limit=20, window_seconds=900)
     user = db.scalar(select(User).where(User.email == payload.email))
     password_valid = False
     if user is not None:
@@ -730,8 +774,15 @@ def logout(
 )
 def forgot_password(
     payload: ForgotPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ForgotPasswordResponse:
+    _enforce_ip_rate_limit(
+        request=request,
+        scope="auth-forgot-password",
+        limit=5,
+        window_seconds=900,
+    )
     user = db.scalar(select(User).where(User.email == payload.email))
     reset_token: str | None = None
     if user is not None:
@@ -802,8 +853,15 @@ def reset_password(
 )
 def resend_verification(
     payload: ResendVerificationRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ResendVerificationResponse:
+    _enforce_ip_rate_limit(
+        request=request,
+        scope="auth-resend-verification",
+        limit=5,
+        window_seconds=900,
+    )
     user = db.scalar(select(User).where(User.email == payload.email))
     if user is None or user.email_verified:
         logger.info("auth.resend_verification.ignored email=%s", payload.email)
@@ -1278,10 +1336,18 @@ def simulate_order_paid(
 )
 def ask(
     payload: AskRequest,
+    request: Request,
     auth_context: AuthContext = Depends(require_verified_email),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ) -> AskResponse:
+    _enforce_ip_rate_limit(request=request, scope="ask", limit=30, window_seconds=60)
+    _enforce_user_rate_limit(
+        user_id=auth_context.user_id,
+        scope="ask",
+        limit=30,
+        window_seconds=60,
+    )
     normalized_key = (idempotency_key or "").strip()
     if normalized_key and len(normalized_key) > 128:
         raise HTTPException(
@@ -1318,9 +1384,17 @@ def ask(
 )
 def ask_followup(
     followup_id: UUID,
+    request: Request,
     auth_context: AuthContext = Depends(require_verified_email),
     db: Session = Depends(get_db),
 ) -> AskResponse:
+    _enforce_ip_rate_limit(request=request, scope="ask-followup", limit=30, window_seconds=60)
+    _enforce_user_rate_limit(
+        user_id=auth_context.user_id,
+        scope="ask-followup",
+        limit=30,
+        window_seconds=60,
+    )
     ask_result = execute_followup_for_user(
         db=db,
         user_id=auth_context.user_id,
