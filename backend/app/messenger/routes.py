@@ -15,7 +15,7 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import AuthContext, require_verified_email
+from app.auth import issue_user_session
 from app.config import settings
 from app.db import SessionLocal, get_db
 from app.launch import issue_public_launch_grant_if_needed
@@ -27,7 +27,6 @@ from app.messenger.client import (
 )
 from app.messenger.constants import (
     ERROR_CODE_MESSENGER_DISABLED,
-    ERROR_CODE_MESSENGER_IDENTITY_ALREADY_LINKED,
     ERROR_CODE_MESSENGER_IDENTITY_NOT_FOUND,
     ERROR_CODE_MESSENGER_LINK_TOKEN_INVALID,
     ERROR_CODE_WEBHOOK_SIGNATURE_INVALID,
@@ -47,6 +46,7 @@ from app.messenger.security import (
 )
 from app.messenger.service import MessengerEventService
 from app.models.messenger_identity import MessengerIdentity
+from app.models.user import User
 from app.rate_limit import RateLimitRule, enforce_rate_limit
 
 router = APIRouter()
@@ -135,7 +135,6 @@ def verify_webhook(
 def link_identity(
     payload: MessengerLinkRequest,
     request: Request,
-    auth_context: AuthContext = Depends(require_verified_email),
     db: Session = Depends(get_db),
 ) -> MessengerLinkResponse:
     _ensure_messenger_enabled()
@@ -180,34 +179,47 @@ def link_identity(
                 "message": "Messenger identity not found",
             },
         )
-    if identity.user_id is not None and identity.user_id != auth_context.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": ERROR_CODE_MESSENGER_IDENTITY_ALREADY_LINKED,
-                "message": "Messenger identity is already linked to another user",
-            },
+    link_status = "linked_new"
+    if identity.user_id is None:
+        user = User(
+            channel=MESSENGER_PLATFORM,
+            channel_user_id=f"{identity.page_id}:{identity.psid}",
         )
+        db.add(user)
+        db.flush()
+        identity.user_id = user.id
+        identity.status = "linked"
+        identity.is_active = True
+        identity.linked_at = identity.linked_at or datetime.now(UTC)
+        db.add(identity)
+        db.commit()
+        db.refresh(identity)
+    else:
+        link_status = "session_restored"
+        identity.status = "linked"
+        identity.is_active = True
+        identity.linked_at = identity.linked_at or datetime.now(UTC)
+        db.add(identity)
+        db.commit()
+        db.refresh(identity)
 
-    identity.user_id = auth_context.user_id
-    identity.status = "linked"
-    identity.is_active = True
-    identity.linked_at = identity.linked_at or datetime.now(UTC)
-    db.add(identity)
-    db.commit()
-    db.refresh(identity)
-    wallet_balance = issue_public_launch_grant_if_needed(db=db, user_id=auth_context.user_id)
+    access_token = issue_user_session(db=db, user_id=identity.user_id)
+    wallet_balance = issue_public_launch_grant_if_needed(db=db, user_id=identity.user_id)
     logger.info(
-        "messenger.link.success user_id=%s psid=%s balance=%s",
-        auth_context.user_id,
+        "messenger.link.success user_id=%s psid=%s link_status=%s balance=%s",
+        identity.user_id,
         identity.psid,
+        link_status,
         wallet_balance,
     )
     return MessengerLinkResponse(
         status="linked",
-        user_id=str(auth_context.user_id),
+        link_status=link_status,
+        user_id=str(identity.user_id),
         psid=identity.psid,
         page_id=identity.page_id,
+        access_token=access_token,
+        token_type="bearer",
     )
 
 

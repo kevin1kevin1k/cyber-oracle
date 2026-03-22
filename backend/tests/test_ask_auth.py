@@ -173,20 +173,11 @@ def test_ask_legacy_token_without_jti_returns_401(client: TestClient) -> None:
     assert response.json()["detail"]["code"] == "UNAUTHORIZED"
 
 
-def test_ask_unverified_email_returns_403(client: TestClient, db_session: Session) -> None:
-    token = _make_token_with_session(db_session=db_session, email_verified=False)
-    response = client.post(
-        "/api/v1/ask",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "EMAIL_NOT_VERIFIED"
-
-
-def test_ask_verified_email_returns_200(client: TestClient, db_session: Session) -> None:
-    token = _make_token_with_session(db_session=db_session, email_verified=True, wallet_balance=1)
+def test_ask_authenticated_user_returns_200_without_email_verification_gate(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    token = _make_token_with_session(db_session=db_session, email_verified=False, wallet_balance=1)
     response = client.post(
         "/api/v1/ask",
         headers={"Authorization": f"Bearer {token}"},
@@ -198,3 +189,19 @@ def test_ask_verified_email_returns_200(client: TestClient, db_session: Session)
     assert payload["source"] == "rag"
     assert len(payload["layer_percentages"]) == 3
     assert len(payload["followup_options"]) == 3
+
+
+def test_ask_authenticated_user_with_wallet_returns_200(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    token = _make_token_with_session(db_session=db_session, email_verified=True, wallet_balance=1)
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "rag"

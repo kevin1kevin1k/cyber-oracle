@@ -83,7 +83,7 @@ class AskHistoryDetailResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    code: Literal["UNAUTHORIZED", "EMAIL_NOT_VERIFIED", "INSUFFICIENT_CREDIT"]
+    code: str
     message: str
 
 
@@ -125,7 +125,7 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"]
-    email_verified: bool
+    email_verified: bool | None = None
 
 
 class VerifyEmailRequest(BaseModel):

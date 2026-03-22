@@ -1,6 +1,5 @@
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -10,12 +9,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.auth import issue_user_session
 from app.config import settings
 from app.db import Base, get_db
 from app.main import app
 from app.models.session_record import SessionRecord
 from app.models.user import User
-from app.security import hash_password, verify_password
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -71,257 +70,42 @@ def client(db_session: Session):
     app.dependency_overrides.clear()
 
 
-def test_register_success(client: TestClient, db_session: Session) -> None:
-    response = client.post(
-        "/api/v1/auth/register",
-        json={"email": "NewUser@example.com", "password": "Password123"},
-    )
-    assert response.status_code == 201
-    payload = response.json()
-    assert payload["email"] == "newuser@example.com"
-    assert payload["email_verified"] is False
-    assert payload["verification_token"]
-
-    user = db_session.scalar(select(User).where(User.email == "newuser@example.com"))
-    assert user is not None
-    assert user.email_verified is False
-    assert user.verify_token == payload["verification_token"]
-    assert user.password_hash != "Password123"
-
-
-def test_register_in_prod_does_not_return_verification_token(
-    client: TestClient,
-    db_session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sent: dict[str, str] = {}
-    monkeypatch.setattr(settings, "app_env", "prod")
-    monkeypatch.setattr(
-        "app.main._send_verification_email",
-        lambda *, to_email, token: sent.update({"to_email": to_email, "token": token}),
-    )
-
-    response = client.post(
-        "/api/v1/auth/register",
-        json={"email": "prod-user@example.com", "password": "Password123"},
-    )
-    assert response.status_code == 201
-    payload = response.json()
-    assert payload["email"] == "prod-user@example.com"
-    assert payload["verification_token"] is None
-
-    user = db_session.scalar(select(User).where(User.email == "prod-user@example.com"))
-    assert user is not None
-    assert user.verify_token is not None
-    assert sent == {"to_email": "prod-user@example.com", "token": user.verify_token}
-
-
-def test_register_in_prod_sends_verification_email(
-    client: TestClient,
-    db_session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, str] = {}
-
-    def _capture_send(*, to_email: str, token: str) -> None:
-        captured["to_email"] = to_email
-        captured["token"] = token
-
-    monkeypatch.setattr(settings, "app_env", "prod")
-    monkeypatch.setattr("app.main._send_verification_email", _capture_send)
-
-    response = client.post(
-        "/api/v1/auth/register",
-        json={"email": "prod-email-send@example.com", "password": "Password123"},
-    )
-
-    assert response.status_code == 201
-    user = db_session.scalar(select(User).where(User.email == "prod-email-send@example.com"))
-    assert user is not None
-    assert captured == {
-        "to_email": "prod-email-send@example.com",
-        "token": user.verify_token,
-    }
-
-
-def test_register_duplicate_email_returns_409(client: TestClient, db_session: Session) -> None:
-    db_session.add(
-        User(
-            id=uuid.uuid4(),
-            email="dup@example.com",
-            password_hash="hash",
-            email_verified=False,
-        )
-    )
-    db_session.commit()
-
-    response = client.post(
-        "/api/v1/auth/register",
-        json={"email": "dup@example.com", "password": "Password123"},
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "EMAIL_ALREADY_EXISTS"
-
-
-def test_verify_email_success(client: TestClient, db_session: Session) -> None:
-    user = User(
-        id=uuid.uuid4(),
-        email="verify@example.com",
-        password_hash="hash",
-        email_verified=False,
-        verify_token="valid-token",
-        verify_token_expires_at=datetime.now(UTC) + timedelta(hours=1),
-    )
+def _create_user(db_session: Session) -> User:
+    user = User(id=uuid.uuid4(), channel="messenger", channel_user_id=f"test:{uuid.uuid4()}")
     db_session.add(user)
     db_session.commit()
-
-    response = client.post("/api/v1/auth/verify-email", json={"token": "valid-token"})
-    assert response.status_code == 200
-    assert response.json()["status"] == "verified"
-
     db_session.refresh(user)
-    assert user.email_verified is True
-    assert user.verify_token is None
-    assert user.verify_token_expires_at is None
+    return user
 
 
-def test_verify_email_invalid_or_expired_returns_400(
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        ("/api/v1/auth/register", {"email": "user@example.com", "password": "Password123"}),
+        ("/api/v1/auth/login", {"email": "user@example.com", "password": "Password123"}),
+        ("/api/v1/auth/forgot-password", {"email": "user@example.com"}),
+        ("/api/v1/auth/reset-password", {"token": "reset-token", "new_password": "Password123"}),
+        ("/api/v1/auth/resend-verification", {"email": "user@example.com"}),
+        ("/api/v1/auth/verify-email", {"token": "verify-token"}),
+    ],
+)
+def test_email_password_auth_flows_are_disabled(
     client: TestClient,
-    db_session: Session,
+    path: str,
+    payload: dict[str, str],
 ) -> None:
-    expired = User(
-        id=uuid.uuid4(),
-        email="expired@example.com",
-        password_hash="hash",
-        email_verified=False,
-        verify_token="expired-token",
-        verify_token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
-    )
-    db_session.add(expired)
-    db_session.commit()
+    response = client.post(path, json=payload)
 
-    invalid_response = client.post("/api/v1/auth/verify-email", json={"token": "not-found"})
-    assert invalid_response.status_code == 400
-    assert invalid_response.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"
-
-    expired_response = client.post("/api/v1/auth/verify-email", json={"token": "expired-token"})
-    assert expired_response.status_code == 400
-    assert expired_response.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"
-
-
-def test_login_success_returns_bearer_token(client: TestClient, db_session: Session) -> None:
-    user = User(
-        id=uuid.uuid4(),
-        email="login@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": "Login@example.com", "password": "Password123"},
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["token_type"] == "bearer"
-    assert payload["email_verified"] is True
-    assert payload["access_token"]
-
-    claims = jwt.decode(
-        payload["access_token"],
-        settings.jwt_secret,
-        algorithms=[settings.jwt_algorithm],
-    )
-    assert claims["sub"] == str(user.id)
-    assert claims["email"] == "login@example.com"
-    assert claims["email_verified"] is True
-    assert isinstance(claims["jti"], str)
-    assert claims["exp"] > claims["iat"]
-
-    session_record = db_session.scalar(
-        select(SessionRecord).where(SessionRecord.jti == claims["jti"])
-    )
-    assert session_record is not None
-    assert session_record.user_id == user.id
-    assert session_record.revoked_at is None
-
-
-def test_login_unverified_user_returns_token_but_not_verified(
-    client: TestClient,
-    db_session: Session,
-) -> None:
-    user = User(
-        id=uuid.uuid4(),
-        email="unverified@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=False,
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": "unverified@example.com", "password": "Password123"},
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["email_verified"] is False
-
-    claims = jwt.decode(
-        payload["access_token"],
-        settings.jwt_secret,
-        algorithms=[settings.jwt_algorithm],
-    )
-    assert claims["email_verified"] is False
-    assert isinstance(claims["jti"], str)
-
-
-def test_login_invalid_credentials_return_401(client: TestClient, db_session: Session) -> None:
-    user = User(
-        id=uuid.uuid4(),
-        email="invalid-login@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    wrong_password = client.post(
-        "/api/v1/auth/login",
-        json={"email": "invalid-login@example.com", "password": "wrong-pass-123"},
-    )
-    assert wrong_password.status_code == 401
-    assert wrong_password.json()["detail"]["code"] == "INVALID_CREDENTIALS"
-
-    unknown_email = client.post(
-        "/api/v1/auth/login",
-        json={"email": "missing@example.com", "password": "Password123"},
-    )
-    assert unknown_email.status_code == 401
-    assert unknown_email.json()["detail"]["code"] == "INVALID_CREDENTIALS"
+    assert response.status_code == 410
+    assert response.json()["detail"]["code"] == "AUTH_FLOW_DISABLED"
 
 
 def test_logout_revokes_session_and_invalidates_token(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    user = User(
-        id=uuid.uuid4(),
-        email="logout@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={"email": "logout@example.com", "password": "Password123"},
-    )
-    assert login_response.status_code == 200
-    access_token = login_response.json()["access_token"]
+    user = _create_user(db_session)
+    access_token = issue_user_session(db=db_session, user_id=user.id)
     claims = jwt.decode(access_token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 
     logout_response = client.post(
@@ -343,211 +127,3 @@ def test_logout_revokes_session_and_invalidates_token(
     )
     assert ask_after_logout.status_code == 401
     assert ask_after_logout.json()["detail"]["code"] == "UNAUTHORIZED"
-
-
-def test_forgot_password_and_reset_password_success(
-    client: TestClient,
-    db_session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "app_env", "test")
-
-    user = User(
-        id=uuid.uuid4(),
-        email="forgot@example.com",
-        password_hash=hash_password("OldPassword123"),
-        email_verified=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    forgot_response = client.post(
-        "/api/v1/auth/forgot-password",
-        json={"email": "forgot@example.com"},
-    )
-    assert forgot_response.status_code == 202
-    forgot_payload = forgot_response.json()
-    assert forgot_payload["status"] == "accepted"
-    assert forgot_payload["reset_token"]
-
-    reset_response = client.post(
-        "/api/v1/auth/reset-password",
-        json={"token": forgot_payload["reset_token"], "new_password": "NewPassword123"},
-    )
-    assert reset_response.status_code == 200
-    assert reset_response.json()["status"] == "password_reset"
-
-    db_session.refresh(user)
-    assert user.password_reset_token is None
-    assert user.password_reset_token_expires_at is None
-    assert verify_password("NewPassword123", user.password_hash)
-
-
-def test_forgot_password_unknown_email_returns_202_without_token_in_prod(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "app_env", "prod")
-    response = client.post(
-        "/api/v1/auth/forgot-password",
-        json={"email": "not-found@example.com"},
-    )
-    assert response.status_code == 202
-    payload = response.json()
-    assert payload["status"] == "accepted"
-    assert payload["reset_token"] is None
-
-
-def test_forgot_password_in_prod_sends_reset_email_and_hides_token(
-    client: TestClient,
-    db_session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sent: dict[str, str] = {}
-
-    user = User(
-        id=uuid.uuid4(),
-        email="prod-forgot@example.com",
-        password_hash=hash_password("OldPassword123"),
-        email_verified=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    monkeypatch.setattr(settings, "app_env", "prod")
-    monkeypatch.setattr(
-        "app.main._send_password_reset_email",
-        lambda *, to_email, token: sent.update({"to_email": to_email, "token": token}),
-    )
-
-    response = client.post(
-        "/api/v1/auth/forgot-password",
-        json={"email": "prod-forgot@example.com"},
-    )
-
-    assert response.status_code == 202
-    payload = response.json()
-    assert payload["status"] == "accepted"
-    assert payload["reset_token"] is None
-
-    db_session.refresh(user)
-    assert user.password_reset_token is not None
-    assert sent == {"to_email": "prod-forgot@example.com", "token": user.password_reset_token}
-
-
-def test_resend_verification_rotates_token_and_sends_email_in_prod(
-    client: TestClient,
-    db_session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sent: dict[str, str] = {}
-    monkeypatch.setattr(settings, "app_env", "prod")
-    monkeypatch.setattr(
-        "app.main._send_verification_email",
-        lambda *, to_email, token: sent.update({"to_email": to_email, "token": token}),
-    )
-
-    user = User(
-        id=uuid.uuid4(),
-        email="resend@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=False,
-        verify_token="old-verify-token",
-        verify_token_expires_at=datetime.now(UTC) + timedelta(hours=1),
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    response = client.post(
-        "/api/v1/auth/resend-verification",
-        json={"email": "resend@example.com"},
-    )
-
-    assert response.status_code == 202
-    assert response.json()["status"] == "accepted"
-
-    db_session.refresh(user)
-    assert user.verify_token is not None
-    assert user.verify_token != "old-verify-token"
-    assert sent == {"to_email": "resend@example.com", "token": user.verify_token}
-
-
-def test_resend_verification_ignores_verified_or_unknown_email(
-    client: TestClient,
-    db_session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[str] = []
-    monkeypatch.setattr(settings, "app_env", "prod")
-    monkeypatch.setattr(
-        "app.main._send_verification_email",
-        lambda *, to_email, token: calls.append(f"{to_email}:{token}"),
-    )
-
-    verified_user = User(
-        id=uuid.uuid4(),
-        email="verified@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=True,
-    )
-    db_session.add(verified_user)
-    db_session.commit()
-
-    verified_response = client.post(
-        "/api/v1/auth/resend-verification",
-        json={"email": "verified@example.com"},
-    )
-    unknown_response = client.post(
-        "/api/v1/auth/resend-verification",
-        json={"email": "unknown@example.com"},
-    )
-
-    assert verified_response.status_code == 202
-    assert unknown_response.status_code == 202
-    assert calls == []
-
-
-def test_register_rate_limit_returns_429(client: TestClient) -> None:
-    for attempt in range(5):
-        response = client.post(
-            "/api/v1/auth/register",
-            json={"email": f"rate-limit-{attempt}@example.com", "password": "Password123"},
-        )
-        assert response.status_code == 201
-
-    blocked = client.post(
-        "/api/v1/auth/register",
-        json={"email": "rate-limit-blocked@example.com", "password": "Password123"},
-    )
-    assert blocked.status_code == 429
-    assert blocked.json()["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
-
-
-def test_reset_password_invalid_or_expired_returns_400(
-    client: TestClient,
-    db_session: Session,
-) -> None:
-    user = User(
-        id=uuid.uuid4(),
-        email="expired-reset@example.com",
-        password_hash=hash_password("Password123"),
-        email_verified=True,
-        password_reset_token="expired-reset-token",
-        password_reset_token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
-    )
-    db_session.add(user)
-    db_session.commit()
-
-    invalid = client.post(
-        "/api/v1/auth/reset-password",
-        json={"token": "not-found", "new_password": "NewPassword123"},
-    )
-    assert invalid.status_code == 400
-    assert invalid.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"
-
-    expired = client.post(
-        "/api/v1/auth/reset-password",
-        json={"token": "expired-reset-token", "new_password": "NewPassword123"},
-    )
-    assert expired.status_code == 400
-    assert expired.json()["detail"]["code"] == "INVALID_OR_EXPIRED_TOKEN"

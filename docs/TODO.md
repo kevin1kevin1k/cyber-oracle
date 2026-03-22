@@ -1,21 +1,19 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.10` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.12` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
-- [x] 建立 Auth 流程：register/login/logout/verify-email/forgot-password
-  - [x] `register` API
-  - [x] `verify-email` API
-  - [x] `login` API
-  - [x] `logout` API
-  - [x] `forgot-password` API
-- [x] 前端 Auth 流程整合（使用既有 API）
-  - [x] `register/login/verify-email/forgot-password/reset-password` 頁面與互動流程
+- [x] 建立 Messenger-primary Auth 流程
+  - [x] `POST /api/v1/messenger/link` 可建立或恢復 WebView session
+  - [x] `POST /api/v1/auth/logout` 保留
+  - [x] `register/login/verify-email/forgot-password/reset-password` 停用
+- [x] 前端 Auth 流程整合（Messenger WebView）
+  - [x] `/messenger/link` 進頁即完成 linking / session bootstrap
   - [x] access token 儲存與失效處理（含 logout）
   - [x] 移除 `NEXT_PUBLIC_DEV_BEARER_TOKEN` 依賴，改為正式登入態
-- [x] 未驗證 Email 不可提問（API 與前端雙重限制）
+- [x] 提問不再依賴 Email 驗證 gate（API 與前端同步移除）
 - [x] 建立核心資料表：users/sessions/questions/answers/credit_wallets/credit_transactions/orders/followups
   - [x] `users`
   - [x] `sessions`
@@ -134,13 +132,13 @@
   - [x] Backend：新增最小後處理過濾，濾掉明顯要求使用者先補資料或先做選擇的選項
   - [x] 測試：覆蓋問卷式 followups 被過濾、完整問題保留
 - [x] 新增 Messenger 驗證 runbook（local / pre-prod / prod webhook 綁定與驗證流程）
-- [x] 完成 Messenger WebView 帳號綁定流程（註冊/登入/綁定）
+- [x] 完成 Messenger WebView 帳號綁定流程（Messenger-primary）
   - [x] Backend：未綁定使用者回覆改為 signed web_url linking button
-  - [x] Backend：新增 `POST /api/v1/messenger/link` 驗證 token 並完成 identity linking
-  - [x] Frontend：新增 `/messenger/link` 頁，支援 login return path 後自動完成綁定
-  - [x] Frontend：`register -> verify-email -> login` 保留 linking `next` 路徑
+  - [x] Backend：`POST /api/v1/messenger/link` 驗證 token，建立或恢復 WebView session
+  - [x] Frontend：新增 `/messenger/link` 頁，進頁即完成綁定與 session 建立
+  - [x] Frontend：停用獨立 `register/login/verify-email/forgot-password/reset-password` 主流程
   - [x] 測試：backend linking token / endpoint / unlinked button 覆蓋
-  - [x] 測試：frontend e2e 覆蓋 Messenger linking login-return-path flow
+  - [x] 測試：frontend e2e 覆蓋 Messenger session bootstrap flow
 - [x] 完成 Messenger persistent menu MVP（常用入口）
   - [x] Backend：新增 persistent menu payload builder（查看剩餘點數 / 前往購點 / 查看歷史）
   - [x] Backend：新增 Messenger profile sync script，將 persistent menu 寫入 Meta Graph API
@@ -162,10 +160,8 @@
 - [ ] 完成 Meta 平台政策與合規要求檢查清單落地
 
 ## Test Cases（必測）
-- [x] 未驗證 Email 呼叫 `POST /api/v1/ask` 應被拒絕
-- [x] `register` 成功建立 user，重複 email 回傳 409
-- [x] `verify-email` 成功啟用帳號，無效或過期 token 回傳 400
-- [x] `login` 成功回傳 bearer token，錯誤帳密回傳 401
+- [x] `POST /api/v1/messenger/link` 可建立新 session 與恢復既有 linked session
+- [x] Email/password auth endpoints 停用後統一回 `410 AUTH_FLOW_DISABLED`
 - [x] 餘額不足時提問失敗且不產生 capture
 - [x] 提問成功流程：reserve -> capture
 - [x] 提問失敗流程：reserve -> refund
@@ -173,8 +169,8 @@
 - [x] 前台不顯示內部演算法名稱/規則編號/來源/request id/三層比例
 - [x] 回答尾端 0..3 個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
 - [x] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
-- [x] 導覽列帳號選單需顯示 email，並可由三個主頁執行登出
-- [x] 未登入時導覽列右上角需顯示登入與註冊入口
+- [x] 導覽列帳號選單需顯示 Messenger session 標籤，並可由三個主頁執行登出
+- [x] 未登入時需顯示「請從 Messenger 重新進入」提示，而非登入/註冊入口
 - [x] 購點成功後餘額更新正確（含重試冪等）
 - [x] 歷史紀錄可查完整問答與交易流水
 - [ ] 每次回答尾端依回傳顯示 0..3 個延伸問題按鈕（若超過 1 個則互異）
@@ -207,16 +203,14 @@
 ## Production Readiness（Dev -> Production）
 
 ### 本次公開小流量上線版本
-- [x] Auth：`POST /api/v1/auth/register` production 不回傳 `verification_token`
-- [x] Auth：`POST /api/v1/auth/forgot-password` production 僅回 `202 accepted`，不回傳 `reset_token`
-- [x] Auth：導入 email provider（目前實作 `Postmark` / `noop`），production 會寄送驗證信與重設信
-- [x] Auth：新增 `POST /api/v1/auth/resend-verification`，重發時舊 token 失效
-- [x] Secrets：production 啟動時強制檢查 `JWT_SECRET`、email 設定與 Messenger signature 設定
+- [x] Auth：改為 Messenger-primary，`POST /api/v1/messenger/link` 為唯一主 session bootstrap 入口
+- [x] Auth：停用 `register/login/verify-email/forgot-password/reset-password` email/password 流程
+- [x] Secrets：production 啟動時強制檢查 `JWT_SECRET` 與 Messenger signature 設定
 - [x] Launch：新增 `PAYMENTS_ENABLED` 開關，付款關閉時 backend 拒絕建立訂單
 - [x] Launch：`GET /api/v1/credits/balance` 回傳 `payments_enabled`，frontend 依 capability 顯示唯讀錢包
 - [x] Launch：Messenger 綁定成功後一次性發送 `LAUNCH_CREDIT_GRANT_AMOUNT` 體驗點數
 - [x] Launch：新增內部補發腳本 `backend/scripts/grant_launch_credits.py`
-- [x] Frontend：驗證信/重設信改為正式查信文案，並可從驗證頁重寄驗證信
+- [x] Frontend：停用獨立 auth 頁面，改為 Messenger-only 文案與 re-entry 提示
 - [x] Frontend：付款關閉時移除購買按鈕與購點 CTA，改為體驗版說明
 - [x] Docker：backend Dockerfile 改為 production 啟動模式；`docker-compose.yml` 明確保留 local-dev override
 
@@ -224,16 +218,13 @@
 - [ ] Deploy：建立 Render production 服務（frontend / backend / postgres）與固定網域
   - [ ] frontend 固定 `APP` 網域（例如 `https://app.<domain>`）
   - [ ] backend 固定 `API` 網域（例如 `https://api.<domain>`）
-  - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`APP_WEB_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
-- [ ] Email：完成 Postmark production 設定與實寄驗證
-  - [ ] 在 Postmark 建立 production server，填入 `POSTMARK_SERVER_TOKEN`
-  - [ ] 驗證寄件網域或 sender signature，填入 `EMAIL_FROM`
-  - [ ] 以真實信箱驗證 `register`、`resend-verification`、`forgot-password` 三種 email 都可成功送達
+  - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
 - [ ] DB：production 部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
 - [ ] Messenger：Meta 後台切換正式 webhook callback URL、Page 訂閱與 persistent menu sync
+- [ ] Messenger：驗證 persistent menu 靜態 `/wallet`、`/history` 在 session 遺失時會正確提示回聊天室重新進入
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
-- [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly
+- [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制
 - [ ] Billing：正式串接真實 Stripe callback、簽章驗證與 Messenger 回饋閉環
 - [ ] Observability：補 auth / billing / messenger / launch grant 的 request-level 審計與告警
 - [ ] Runbook：補「發生 UndefinedColumn / 版本不一致」與 production rollback 標準排障步驟

@@ -27,6 +27,8 @@ Backend local run:
 - Root cause to avoid: a Docker multi-stage `COPY --from=...` references a path that is not guaranteed to exist in the source stage (for example `/app/public`), causing `docker compose up --build` to fail during image build.
 - Any change touching `Dockerfile`, `.dockerignore`, `docker-compose.yml`, or app build-output paths (for example `.next`, `public`, dist artifacts) must verify that every `COPY` / `COPY --from` source path always exists at build time.
 - For Python services that bind-mount the project directory and use a project-local `.venv`, isolate the container's `.venv` path with a named volume (for example `/app/.venv`) so Docker does not reuse a host virtualenv built against a different interpreter or OS.
+- For frontend Docker dev setups that bind-mount the app directory and use a custom Next.js `distDir` (for example `.next-docker`), isolate both `node_modules` and that `distDir` with container-only volumes so webpack/HMR cache is not shared back to the host bind mount.
+- If a Docker image sets `NODE_ENV=production` but Docker Compose runs that container as a local dev server (`npm run dev` / `next dev`), override `NODE_ENV=development` in Compose or force `npm install --include=dev`; otherwise devDependencies may be skipped and Next.js dev/runtime errors can become misleading.
 - For optional or sometimes-empty directories, do not rely on the repository happening to contain the path. You must either:
   - create the directory explicitly in the producing stage (for example `mkdir -p public`), or
   - change the Dockerfile so it does not copy a path that may be absent.

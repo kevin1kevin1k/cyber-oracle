@@ -19,8 +19,8 @@ def verify_password(password: str, password_hash: str) -> bool:
 def create_access_token(
     *,
     subject: str,
-    email: str,
-    email_verified: bool,
+    email: str | None = None,
+    email_verified: bool | None = None,
     secret_key: str,
     algorithm: str,
     expires_minutes: int,
@@ -30,12 +30,14 @@ def create_access_token(
     jti = str(uuid.uuid4())
     payload = {
         "sub": subject,
-        "email": email,
-        "email_verified": email_verified,
         "jti": jti,
         "iat": int(now.timestamp()),
         "exp": int(expires_at.timestamp()),
     }
+    if email is not None:
+        payload["email"] = email
+    if email_verified is not None:
+        payload["email_verified"] = email_verified
     return jwt.encode(payload, secret_key, algorithm=algorithm)
 
 

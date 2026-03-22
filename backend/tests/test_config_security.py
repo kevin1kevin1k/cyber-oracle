@@ -14,15 +14,11 @@ def test_prod_rejects_short_jwt_secret() -> None:
         Settings(app_env="prod", jwt_secret="short-secret")
 
 
-def test_prod_accepts_strong_jwt_secret() -> None:
+def test_prod_accepts_strong_jwt_secret_without_email_settings() -> None:
     settings = Settings(
         _env_file=None,
         app_env="prod",
         jwt_secret="prod-very-strong-secret-01234567890123456789",
-        app_web_base_url="https://app.example.com",
-        email_provider="postmark",
-        postmark_server_token="postmark-token",
-        email_from="no-reply@example.com",
         messenger_enabled=False,
     )
 
@@ -45,4 +41,15 @@ def test_messenger_meta_graph_requires_page_access_token() -> None:
         Settings(
             messenger_outbound_mode="meta_graph",
             meta_page_access_token="",
+        )
+
+
+def test_prod_messenger_requires_signature_verification() -> None:
+    with pytest.raises(ValidationError, match="MESSENGER_VERIFY_SIGNATURE must be true"):
+        Settings(
+            app_env="prod",
+            jwt_secret="prod-very-strong-secret-01234567890123456789",
+            messenger_enabled=True,
+            meta_verify_token="verify-token",
+            messenger_verify_signature=False,
         )

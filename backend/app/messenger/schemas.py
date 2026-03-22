@@ -81,6 +81,9 @@ class MessengerLinkRequest(BaseModel):
 
 class MessengerLinkResponse(BaseModel):
     status: Literal["linked"]
+    link_status: Literal["linked_new", "session_restored"]
     user_id: str
     psid: str
     page_id: str
+    access_token: str
+    token_type: Literal["bearer"]

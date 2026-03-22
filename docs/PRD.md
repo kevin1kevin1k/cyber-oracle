@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.11（Messenger-first MVP）
+- 文件版本：v0.12（Messenger-primary Auth MVP）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -28,7 +28,7 @@ MVP 目標：
 - 身份與綁定：
   - 支援 Messenger 身份（PSID / external identity）建檔與對應。
   - 使用者可先以未綁定狀態互動，必要時透過 Messenger WebView 完成站內帳號建立/綁定。
-  - Email-based 帳號仍存在，但不再是唯一起始流程。
+  - MVP 以 Messenger 為唯一主身份來源；不要求 Email 驗證，也不提供獨立 Web 註冊/登入作為主流程。
 - 問答系統：
   - 使用者可直接在 Messenger 發問並收到回覆。
   - 保留 RAG 為主、Router（rule/rag/openai）分流、structured output、followups。
@@ -61,7 +61,7 @@ MVP 目標：
 
 ### 4.3 MVP 假設與待確認
 - MVP 先以單一 Facebook Page / 單一 Messenger 通路為主。
-- WebView 帳號綁定流程以最小可用版本優先，進階 SSO 與更完整風險控管列為後續。
+- WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 的靜態 WebView 入口先依賴既有 session。
 - Stripe Checkout 成功/失敗回傳以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
 
 ## 5. 核心使用流程
@@ -93,7 +93,7 @@ MVP 目標：
 6. 常用功能入口
    - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。
    - 使用者可透過 Messenger persistent menu 開啟購點頁與歷史頁。
-   - 若尚未綁定帳號，點擊需要站內身份的入口時，系統需回覆綁定引導。
+   - 若尚未綁定帳號或 WebView session 已失效，點擊需要站內身份的入口時，系統需回覆綁定引導或要求回聊天室重新進入。
 
 ### 5.2 Messenger-first 問答流程
 1. Intake：接收 Messenger 訊息事件（text/postback/quick reply）與 channel context。
@@ -165,7 +165,7 @@ sequenceDiagram
 - 系統需支援 Messenger persistent menu / postback 常用入口（如查點數）。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
-- 帳號綁定、註冊、登入等頁面操作需可透過 Messenger WebView 完成。
+- 帳號綁定與 WebView session 建立需可透過 Messenger WebView 完成。
 
 ### 6.2 問答與知識檢索
 - 問題字數上限（建議 1,000 字）。

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.models.session_record import SessionRecord
+from app.security import create_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -19,7 +20,6 @@ bearer_scheme = HTTPBearer(auto_error=False)
 @dataclass
 class AuthContext:
     user_id: uuid.UUID
-    email_verified: bool
     jti: str
 
 
@@ -46,19 +46,9 @@ def _unauthorized() -> HTTPException:
     )
 
 
-def _forbidden_email_not_verified() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail={"code": "EMAIL_NOT_VERIFIED", "message": "Email verification required"},
-    )
-
-
 def _parse_auth_context(payload: dict) -> AuthContext:
-    email_verified = payload.get("email_verified")
     subject = payload.get("sub")
     jti = payload.get("jti")
-    if not isinstance(email_verified, bool):
-        raise ValueError("invalid email_verified claim")
     if not isinstance(subject, str):
         raise ValueError("invalid subject claim")
     if not isinstance(jti, str) or not jti.strip():
@@ -67,7 +57,7 @@ def _parse_auth_context(payload: dict) -> AuthContext:
         user_id = uuid.UUID(subject)
     except ValueError as exc:
         raise ValueError("invalid subject uuid") from exc
-    return AuthContext(user_id=user_id, email_verified=email_verified, jti=jti)
+    return AuthContext(user_id=user_id, jti=jti)
 
 
 def require_authenticated(
@@ -100,7 +90,36 @@ def require_authenticated(
 def require_verified_email(
     auth_context: AuthContext = Depends(require_authenticated),
 ) -> AuthContext:
-    if not auth_context.email_verified:
-        raise _forbidden_email_not_verified()
-
     return auth_context
+
+
+def issue_user_session(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    email: str | None = None,
+) -> str:
+    access_token = create_access_token(
+        subject=str(user_id),
+        email=email,
+        secret_key=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+        expires_minutes=settings.jwt_exp_minutes,
+    )
+    payload = _decode_jwt_payload(access_token)
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    iat = payload.get("iat")
+    if not isinstance(jti, str) or not isinstance(exp, int) or not isinstance(iat, int):
+        raise ValueError("invalid access token payload")
+
+    db.add(
+        SessionRecord(
+            user_id=user_id,
+            jti=jti,
+            issued_at=datetime.fromtimestamp(iat, tz=UTC),
+            expires_at=datetime.fromtimestamp(exp, tz=UTC),
+        )
+    )
+    db.commit()
+    return access_token

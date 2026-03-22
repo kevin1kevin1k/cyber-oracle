@@ -29,7 +29,6 @@ from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
 from app.models.user import User
-from app.security import create_access_token
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -153,36 +152,6 @@ def _create_linked_messenger_user(
     )
     db_session.commit()
     return user
-
-
-def _create_verified_user_with_token(db_session: Session) -> tuple[User, str]:
-    user = User(
-        id=uuid.uuid4(),
-        email=f"{uuid.uuid4()}@example.com",
-        password_hash="hash",
-        email_verified=True,
-    )
-    db_session.add(user)
-    db_session.flush()
-    token = create_access_token(
-        subject=str(user.id),
-        email=user.email,
-        email_verified=True,
-        secret_key=settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-        expires_minutes=60,
-    )
-    claims = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    db_session.add(
-        SessionRecord(
-            user_id=user.id,
-            jti=claims["jti"],
-            issued_at=datetime.fromtimestamp(claims["iat"], tz=UTC),
-            expires_at=datetime.fromtimestamp(claims["exp"], tz=UTC),
-        )
-    )
-    db_session.commit()
-    return user, token
 
 
 def _create_pending_followup(
@@ -398,8 +367,11 @@ def test_webhook_post_message_event_for_unlinked_user_returns_link_button(
     psid, outgoing = captured_outgoing[0]
     assert psid == "psid-unlinked-link"
     assert outgoing.kind == "button_template"
-    assert outgoing.text == "已收到你的訊息。請先完成網站登入與帳號綁定後再提問。"
-    assert outgoing.buttons[0]["title"] == "登入並綁定"
+    assert (
+        outgoing.text
+        == "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。"
+    )
+    assert outgoing.buttons[0]["title"] == "開始綁定"
     assert outgoing.buttons[0]["url"].startswith("https://frontend.example.com/messenger/link?token=")
 
 
@@ -968,7 +940,7 @@ def test_webhook_post_postback_get_started_for_unlinked_user_returns_linking(
     assert outgoing_messages[-1] == (
         "psid-get-started-unlinked",
         "button_template",
-        "已收到你的訊息。請先完成網站登入與帳號綁定後再提問。",
+        "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。",
     )
 
 
@@ -1047,7 +1019,7 @@ def test_webhook_post_postback_show_balance_for_unlinked_user_returns_linking(
     assert outgoing_messages[-1] == (
         "psid-balance-unlinked",
         "button_template",
-        "已收到你的訊息。請先完成網站登入與帳號綁定後再提問。",
+        "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。",
     )
 
 
@@ -1113,7 +1085,7 @@ def test_webhook_post_quick_reply_for_unlinked_user_returns_linking_reply(
     assert outgoing_messages[-1] == (
         "psid-unlinked-qr",
         "button_template",
-        "已收到你的訊息。請先完成網站登入與帳號綁定後再提問。",
+        "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。",
     )
 
 
@@ -1687,12 +1659,10 @@ def test_webhook_post_invalid_payload_returns_422(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_messenger_link_endpoint_links_identity_to_verified_user(
+def test_messenger_link_endpoint_bootstraps_new_session_and_launch_grant(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    user, token = _create_verified_user_with_token(db_session)
-    user_id = user.id
     identity = MessengerIdentity(
         platform="messenger",
         psid="psid-link-1",
@@ -1711,56 +1681,81 @@ def test_messenger_link_endpoint_links_identity_to_verified_user(
 
     response = client.post(
         "/api/v1/messenger/link",
-        headers={"Authorization": f"Bearer {token}"},
         json={"token": link_token},
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "linked"
+    payload = response.json()
+    assert payload["status"] == "linked"
+    assert payload["link_status"] == "linked_new"
+    assert payload["token_type"] == "bearer"
+    assert payload["access_token"]
     db_session.refresh(identity)
-    assert identity.user_id == user_id
+    assert identity.user_id is not None
     assert identity.status == "linked"
     assert identity.linked_at is not None
 
-    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    claims = jwt.decode(
+        payload["access_token"],
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+    )
+    assert claims["sub"] == str(identity.user_id)
+    session_record = db_session.scalar(
+        select(SessionRecord).where(SessionRecord.jti == claims["jti"])
+    )
+    assert session_record is not None
+    assert session_record.user_id == identity.user_id
+
+    user = db_session.get(User, identity.user_id)
+    assert user is not None
+    assert user.channel == "messenger"
+    assert user.channel_user_id == "page-link-1:psid-link-1"
+
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == identity.user_id))
     assert wallet is not None
     assert wallet.balance == settings.launch_credit_grant_amount
 
     launch_grant = db_session.scalar(
         select(CreditTransaction).where(
-            CreditTransaction.user_id == user_id,
+            CreditTransaction.user_id == identity.user_id,
             CreditTransaction.action == "grant",
             CreditTransaction.reason_code == "MESSENGER_LINK_BETA_GRANT",
         )
     )
     assert launch_grant is not None
 
-    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
-    assert wallet is not None
-    assert wallet.balance == settings.launch_credit_grant_amount
-    grant_count = db_session.scalar(
-        select(CreditTransaction).where(
-            CreditTransaction.user_id == user_id,
-            CreditTransaction.action == "grant",
-        )
-    )
-    assert grant_count is not None
-
-
-def test_messenger_link_endpoint_is_idempotent_for_same_user(
+def test_messenger_link_endpoint_restores_session_for_existing_linked_identity(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    user, token = _create_verified_user_with_token(db_session)
-    user_id = user.id
+    user = User(
+        id=uuid.uuid4(),
+        channel="messenger",
+        channel_user_id="page-link-2:psid-link-2",
+    )
+    db_session.add(user)
+    db_session.flush()
     identity = MessengerIdentity(
         platform="messenger",
         psid="psid-link-2",
         page_id="page-link-2",
+        user_id=user.id,
         status="unlinked",
         is_active=True,
     )
     db_session.add(identity)
+    db_session.add(CreditWallet(user_id=user.id, balance=settings.launch_credit_grant_amount))
+    db_session.add(
+        CreditTransaction(
+            user_id=user.id,
+            action="grant",
+            amount=settings.launch_credit_grant_amount,
+            reason_code="MESSENGER_LINK_BETA_GRANT",
+            idempotency_key=f"launch-grant:{user.id}",
+            request_id=str(uuid.uuid4()),
+        )
+    )
     db_session.commit()
     link_token = create_messenger_link_token(
         psid="psid-link-2",
@@ -1771,84 +1766,37 @@ def test_messenger_link_endpoint_is_idempotent_for_same_user(
 
     first = client.post(
         "/api/v1/messenger/link",
-        headers={"Authorization": f"Bearer {token}"},
         json={"token": link_token},
     )
     second = client.post(
         "/api/v1/messenger/link",
-        headers={"Authorization": f"Bearer {token}"},
         json={"token": link_token},
     )
 
     assert first.status_code == 200
     assert second.status_code == 200
+    assert first.json()["link_status"] == "session_restored"
+    assert second.json()["link_status"] == "session_restored"
     db_session.refresh(identity)
-    assert identity.user_id == user_id
+    assert identity.user_id == user.id
     assert identity.status == "linked"
-    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user.id))
     assert wallet is not None
     assert wallet.balance == settings.launch_credit_grant_amount
     grant_count = db_session.query(CreditTransaction).filter(
-        CreditTransaction.user_id == user_id,
+        CreditTransaction.user_id == user.id,
         CreditTransaction.action == "grant",
         CreditTransaction.reason_code == "MESSENGER_LINK_BETA_GRANT",
     ).count()
     assert grant_count == 1
-    wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
-    assert wallet is not None
-    assert wallet.balance == settings.launch_credit_grant_amount
-    grant_count = db_session.query(CreditTransaction).filter(
-        CreditTransaction.user_id == user_id,
-        CreditTransaction.action == "grant",
-    ).count()
-    assert grant_count == 1
-
-
-def test_messenger_link_endpoint_rejects_other_user_link_takeover(
-    client: TestClient,
-    db_session: Session,
-) -> None:
-    linked_user, _ = _create_verified_user_with_token(db_session)
-    other_user, token = _create_verified_user_with_token(db_session)
-    linked_user_id = linked_user.id
-    other_user_id = other_user.id
-    identity = MessengerIdentity(
-        platform="messenger",
-        psid="psid-link-3",
-        page_id="page-link-3",
-        user_id=linked_user_id,
-        status="linked",
-        is_active=True,
-    )
-    db_session.add(identity)
-    db_session.commit()
-    link_token = create_messenger_link_token(
-        psid="psid-link-3",
-        page_id="page-link-3",
-        secret_key=settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-    )
-
-    response = client.post(
-        "/api/v1/messenger/link",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"token": link_token},
-    )
-
-    assert other_user_id != linked_user_id
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "MESSENGER_IDENTITY_ALREADY_LINKED"
 
 
 def test_messenger_link_endpoint_rejects_invalid_token(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    _, token = _create_verified_user_with_token(db_session)
-
     response = client.post(
         "/api/v1/messenger/link",
-        headers={"Authorization": f"Bearer {token}"},
         json={"token": "bad-token"},
     )
 
@@ -1861,7 +1809,6 @@ def test_messenger_link_endpoint_rate_limit_returns_429(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    user, token = _create_verified_user_with_token(db_session)
     monkeypatch.setattr(settings, "launch_credit_grant_amount", 0)
 
     for attempt in range(10):
@@ -1882,7 +1829,6 @@ def test_messenger_link_endpoint_rate_limit_returns_429(
         )
         response = client.post(
             "/api/v1/messenger/link",
-            headers={"Authorization": f"Bearer {token}"},
             json={"token": link_token},
         )
         assert response.status_code == 200
@@ -1905,11 +1851,9 @@ def test_messenger_link_endpoint_rate_limit_returns_429(
 
     blocked = client.post(
         "/api/v1/messenger/link",
-        headers={"Authorization": f"Bearer {token}"},
         json={"token": overflow_token},
     )
 
-    assert user.id is not None
     assert blocked.status_code == 429
     assert blocked.json()["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
 

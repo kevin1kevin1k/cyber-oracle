@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import { getAuthSession } from "@/lib/auth";
 import { getAskHistory, type AskHistoryItem } from "@/lib/history";
-import { buildLoginPathWithNext } from "@/lib/navigation";
 import AppTopNav from "@/components/AppTopNav";
+import MessengerSessionRequired from "@/components/MessengerSessionRequired";
 
 const PAGE_SIZE = 20;
 
@@ -17,7 +16,6 @@ function formatDatetime(value: string): string {
 }
 
 export default function HistoryPage() {
-  const router = useRouter();
   const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [items, setItems] = useState<AskHistoryItem[]>([]);
@@ -48,13 +46,12 @@ export default function HistoryPage() {
       return;
     }
 
-    if (!isLoggedIn) {
-      router.replace(buildLoginPathWithNext("/history"));
-      return;
-    }
-
     let active = true;
     async function loadInitial() {
+      if (!isLoggedIn) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -64,7 +61,8 @@ export default function HistoryPage() {
           return;
         }
         if (err instanceof ApiError && err.status === 401) {
-          router.replace(buildLoginPathWithNext("/history"));
+          setAuthSession(null);
+          setError("登入狀態已失效，請回 Messenger 重新進入。");
           return;
         }
         setError(err instanceof Error ? err.message : "讀取歷史問答失敗");
@@ -79,7 +77,7 @@ export default function HistoryPage() {
     return () => {
       active = false;
     };
-  }, [authLoaded, isLoggedIn, loadHistory, router]);
+  }, [authLoaded, isLoggedIn, loadHistory]);
 
   async function handleLoadMore() {
     if (loadingMore || !hasMore) {
@@ -91,7 +89,8 @@ export default function HistoryPage() {
       await loadHistory(items.length, true);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        router.replace(buildLoginPathWithNext("/history"));
+        setAuthSession(null);
+        setError("登入狀態已失效，請回 Messenger 重新進入。");
         return;
       }
       setError(err instanceof Error ? err.message : "讀取更多歷史問答失敗");
@@ -110,7 +109,12 @@ export default function HistoryPage() {
   }
 
   if (!isLoggedIn) {
-    return null;
+    return (
+      <MessengerSessionRequired
+        title="歷史問答"
+        detail="這個頁面需要既有 Messenger WebView session。若目前沒有登入態，請回聊天室重新點擊綁定或歷史入口。"
+      />
+    );
   }
 
   return (

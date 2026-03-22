@@ -1,6 +1,5 @@
 import { apiRequest } from "@/lib/api";
 import { clearAuthSession } from "@/lib/auth";
-import { buildLoginPathWithNext } from "@/lib/navigation";
 
 type RouterLike = {
   replace: (href: string) => void;
@@ -19,6 +18,6 @@ export async function logoutAndRedirect(
     // Ignore logout failures and clear local state anyway.
   } finally {
     clearAuthSession();
-    router.replace(buildLoginPathWithNext(nextPath));
+    router.replace(nextPath);
   }
 }

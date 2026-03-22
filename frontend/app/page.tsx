@@ -1,18 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import { askFollowup, askQuestion, type AskResponse } from "@/lib/ask";
 import { getAuthSession } from "@/lib/auth";
 import { getCreditsBalance } from "@/lib/billing";
-import { buildLoginPathWithNext } from "@/lib/navigation";
 import AppTopNav from "@/components/AppTopNav";
 
 export default function HomePage() {
-  const router = useRouter();
   const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [question, setQuestion] = useState("");
@@ -27,10 +24,9 @@ export default function HomePage() {
   const creditDeltaTimerRef = useRef<number | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
-  const isVerified = !!authSession?.emailVerified;
   const canSubmit = useMemo(
-    () => authLoaded && question.trim().length > 0 && !loading && isLoggedIn && isVerified,
-    [authLoaded, question, loading, isLoggedIn, isVerified]
+    () => authLoaded && question.trim().length > 0 && !loading && isLoggedIn,
+    [authLoaded, question, loading, isLoggedIn]
   );
 
   useEffect(() => {
@@ -88,14 +84,10 @@ export default function HomePage() {
   }, [refreshBalance]);
 
   function handleAskApiError(err: unknown) {
-    if (err instanceof ApiError) {
+      if (err instanceof ApiError) {
       if (err.status === 401 || err.code === "UNAUTHORIZED") {
-        setError("尚未登入或登入資訊失效，請重新登入。");
-        router.replace(buildLoginPathWithNext("/"));
-        return;
-      }
-      if (err.code === "EMAIL_NOT_VERIFIED") {
-        setError("Email 尚未驗證，請先完成驗證後再提問。");
+        setAuthSession(null);
+        setError("登入狀態已失效，請回 Messenger 重新進入。");
         return;
       }
       if (err.code === "INSUFFICIENT_CREDIT") {
@@ -138,12 +130,7 @@ export default function HomePage() {
     }
 
     if (!isLoggedIn) {
-      setError("請先登入後再提問。");
-      return;
-    }
-
-    if (!isVerified) {
-      setError("Email 尚未驗證，請先完成驗證後再提問。");
+      setError("請從 Messenger 開啟這個頁面或重新點擊綁定按鈕後再提問。");
       return;
     }
 
@@ -196,16 +183,10 @@ export default function HomePage() {
           {!authLoaded ? (
             <p>登入狀態載入中...</p>
           ) : isLoggedIn ? (
-            <>
-              {!isVerified && (
-                <p className="error-inline">
-                  你已登入但尚未驗證 Email。請前往 <Link href="/verify-email">Email 驗證</Link>
-                </p>
-              )}
-            </>
+            <p>目前已連結 Messenger，可直接提問。</p>
           ) : (
             <p>
-              尚未登入，請先 <Link href="/login">登入</Link> 或 <Link href="/register">註冊</Link>。
+              這個頁面僅支援從 Messenger WebView 進入。請回 Messenger 點擊綁定或功能按鈕。
             </p>
           )}
           {isLoggedIn && (
@@ -228,7 +209,7 @@ export default function HomePage() {
               setQuestion(e.target.value);
             }}
             placeholder="請輸入你想詢問的問題"
-            disabled={!authLoaded || !isLoggedIn || !isVerified}
+            disabled={!authLoaded || !isLoggedIn}
           />
           <button type="submit" disabled={!canSubmit}>
             {loading ? "送出中..." : "送出問題"}

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "@/lib/api";
@@ -13,8 +12,8 @@ import {
   type CreditTransactionItem,
 } from "@/lib/billing";
 import { getAuthSession } from "@/lib/auth";
-import { buildLoginPathWithNext } from "@/lib/navigation";
 import AppTopNav from "@/components/AppTopNav";
+import MessengerSessionRequired from "@/components/MessengerSessionRequired";
 
 const PACKAGE_OPTIONS: Array<{ size: 1 | 3 | 5; amountTwd: 168 | 358 | 518 }> = [
   { size: 1, amountTwd: 168 },
@@ -45,7 +44,6 @@ function formatAction(action: CreditTransactionItem["action"]): string {
 }
 
 export default function WalletPage() {
-  const router = useRouter();
   const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [walletSource, setWalletSource] = useState<string | null>(null);
@@ -60,9 +58,6 @@ export default function WalletPage() {
   const isLoggedIn = !!authSession?.accessToken;
   const isMessengerWalletFlow =
     walletSource !== null && MESSENGER_WALLET_SOURCES.has(walletSource);
-  const walletPath = isMessengerWalletFlow
-    ? `/wallet?from=${encodeURIComponent(walletSource)}`
-    : "/wallet";
 
   useEffect(() => {
     setAuthSession(getAuthSession());
@@ -85,13 +80,12 @@ export default function WalletPage() {
       return;
     }
 
-    if (!isLoggedIn) {
-      router.replace(buildLoginPathWithNext(walletPath));
-      return;
-    }
-
     let active = true;
     async function load() {
+      if (!isLoggedIn) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -101,7 +95,8 @@ export default function WalletPage() {
           return;
         }
         if (err instanceof ApiError && err.status === 401) {
-          router.replace(buildLoginPathWithNext(walletPath));
+          setAuthSession(null);
+          setError("登入狀態已失效，請回 Messenger 重新進入。");
           return;
         }
         setError(err instanceof Error ? err.message : "讀取錢包資料失敗");
@@ -116,7 +111,7 @@ export default function WalletPage() {
     return () => {
       active = false;
     };
-  }, [authLoaded, isLoggedIn, reloadWallet, router, walletPath]);
+  }, [authLoaded, isLoggedIn, reloadWallet]);
 
   const canPurchase = useMemo(() => !loading && purchasingSize === null, [loading, purchasingSize]);
 
@@ -135,9 +130,10 @@ export default function WalletPage() {
           : `購買 ${packageSize} 題包成功，餘額已更新。`,
       );
     } catch (err) {
-      if (err instanceof ApiError) {
+        if (err instanceof ApiError) {
         if (err.status === 401) {
-          router.replace(buildLoginPathWithNext(walletPath));
+          setAuthSession(null);
+          setError("登入狀態已失效，請回 Messenger 重新進入。");
           return;
         }
         if (err.code === "PAYMENTS_DISABLED") {
@@ -166,7 +162,12 @@ export default function WalletPage() {
   }
 
   if (!isLoggedIn) {
-    return null;
+    return (
+      <MessengerSessionRequired
+        title="點數錢包"
+        detail="如果你是從 Messenger 選單第一次打開這個頁面，請先回聊天室點擊綁定按鈕建立 WebView session。"
+      />
+    );
   }
 
   return (

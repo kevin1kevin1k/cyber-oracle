@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
@@ -12,10 +11,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ask_service import execute_ask_for_user, execute_followup_for_user
-from app.auth import AuthContext, require_authenticated, require_verified_email
+from app.auth import AuthContext, require_authenticated
 from app.config import settings
 from app.db import get_db
-from app.email import EmailDeliveryError, EmailMessage, NoopEmailClient, PostmarkEmailClient
 from app.messenger.routes import router as messenger_router
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
@@ -24,7 +22,6 @@ from app.models.followup import Followup
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
-from app.models.user import User
 from app.rate_limit import rate_limiter
 from app.schemas import (
     ApiErrorDetail,
@@ -56,15 +53,6 @@ from app.schemas import (
     SimulatePaidResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
-)
-from app.security import (
-    create_access_token,
-    generate_password_reset_token,
-    generate_verification_token,
-    hash_password,
-    password_reset_token_expiry,
-    verification_token_expiry,
-    verify_password,
 )
 from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
@@ -139,60 +127,14 @@ def _enforce_user_rate_limit(
     )
 
 
-def _get_email_client():
-    if settings.email_provider == "postmark":
-        return PostmarkEmailClient(
-            server_token=(settings.postmark_server_token or "").strip(),
-            from_email=(settings.email_from or "").strip(),
-        )
-    return NoopEmailClient()
-
-
-def _verification_link(token: str) -> str:
-    base_url = settings.app_web_base_url.rstrip("/")
-    return f"{base_url}/verify-email?token={token}"
-
-
-def _reset_password_link(token: str) -> str:
-    base_url = settings.app_web_base_url.rstrip("/")
-    return f"{base_url}/reset-password?token={token}"
-
-
-def _send_verification_email(*, to_email: str, token: str) -> None:
-    verify_link = _verification_link(token)
-    _get_email_client().send(
-        message=EmailMessage(
-            to_email=to_email,
-            subject="請完成 ELIN Email 驗證",
-            html_body=(
-                "<p>請點擊以下連結完成 Email 驗證：</p>"
-                f"<p><a href=\"{verify_link}\">{verify_link}</a></p>"
-            ),
-            text_body=f"請點擊以下連結完成 Email 驗證：\n{verify_link}",
-        )
+def _raise_disabled_auth_flow() -> None:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail={
+            "code": "AUTH_FLOW_DISABLED",
+            "message": "Email/password auth has been disabled; start from Messenger instead",
+        },
     )
-
-
-def _send_password_reset_email(*, to_email: str, token: str) -> None:
-    reset_link = _reset_password_link(token)
-    _get_email_client().send(
-        message=EmailMessage(
-            to_email=to_email,
-            subject="ELIN 密碼重設連結",
-            html_body=(
-                "<p>請點擊以下連結重設密碼：</p>"
-                f"<p><a href=\"{reset_link}\">{reset_link}</a></p>"
-            ),
-            text_body=f"請點擊以下連結重設密碼：\n{reset_link}",
-        )
-    )
-
-
-def _rotate_verification_token(user: User) -> str:
-    token = generate_verification_token()
-    user.verify_token = token
-    user.verify_token_expires_at = verification_token_expiry()
-    return token
 
 
 def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
@@ -632,56 +574,8 @@ def register(
     request: Request,
     db: Session = Depends(get_db),
 ) -> RegisterResponse:
-    _enforce_ip_rate_limit(request=request, scope="auth-register", limit=5, window_seconds=900)
-    token = generate_verification_token()
-    user = User(
-        email=payload.email,
-        password_hash=hash_password(payload.password),
-        email_verified=False,
-        verify_token=token,
-        verify_token_expires_at=verification_token_expiry(),
-        channel=payload.channel or "email",
-        channel_user_id=payload.channel_user_id,
-    )
-
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        logger.warning("auth.register.duplicate email=%s", payload.email)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "EMAIL_ALREADY_EXISTS", "message": "Email already exists"},
-        ) from exc
-    db.refresh(user)
-
-    if settings.app_env == "prod":
-        try:
-            _send_verification_email(to_email=user.email, token=token)
-        except EmailDeliveryError as exc:
-            logger.exception(
-                "Verification email delivery failed: user_id=%s email=%s",
-                user.id,
-                user.email,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "code": "EMAIL_DELIVERY_FAILED",
-                    "message": "Unable to deliver verification email",
-                },
-            ) from exc
-
-    logger.info("auth.register.created user_id=%s email=%s", user.id, user.email)
-
-    response_token = token if settings.app_env in {"dev", "test"} else None
-    return RegisterResponse(
-        user_id=str(user.id),
-        email=user.email,
-        email_verified=user.email_verified,
-        verification_token=response_token,
-    )
+    _ = (payload, request, db)
+    _raise_disabled_auth_flow()
 
 
 @app.post(
@@ -694,57 +588,8 @@ def login(
     request: Request,
     db: Session = Depends(get_db),
 ) -> LoginResponse:
-    _enforce_ip_rate_limit(request=request, scope="auth-login", limit=20, window_seconds=900)
-    user = db.scalar(select(User).where(User.email == payload.email))
-    password_valid = False
-    if user is not None:
-        try:
-            password_valid = verify_password(payload.password, user.password_hash)
-        except Exception:
-            password_valid = False
-
-    if user is None or not password_valid:
-        logger.warning("auth.login.invalid email=%s", payload.email)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_CREDENTIALS", "message": "Invalid email or password"},
-        )
-
-    access_token = create_access_token(
-        subject=str(user.id),
-        email=user.email,
-        email_verified=user.email_verified,
-        secret_key=settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-        expires_minutes=settings.jwt_exp_minutes,
-    )
-    claims = jwt.decode(access_token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    jti = claims.get("jti")
-    exp = claims.get("exp")
-    iat = claims.get("iat")
-    if not isinstance(jti, str) or not isinstance(exp, int) or not isinstance(iat, int):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": "TOKEN_GENERATION_FAILED",
-                "message": "Unable to generate access token",
-            },
-        )
-    session_record = SessionRecord(
-        user_id=user.id,
-        jti=jti,
-        issued_at=datetime.fromtimestamp(iat, tz=UTC),
-        expires_at=datetime.fromtimestamp(exp, tz=UTC),
-    )
-    db.add(session_record)
-    db.commit()
-    logger.info("auth.login.success user_id=%s email_verified=%s", user.id, user.email_verified)
-
-    return LoginResponse(
-        access_token=access_token,
-        token_type="bearer",
-        email_verified=user.email_verified,
-    )
+    _ = (payload, request, db)
+    _raise_disabled_auth_flow()
 
 
 @app.post(
@@ -777,43 +622,8 @@ def forgot_password(
     request: Request,
     db: Session = Depends(get_db),
 ) -> ForgotPasswordResponse:
-    _enforce_ip_rate_limit(
-        request=request,
-        scope="auth-forgot-password",
-        limit=5,
-        window_seconds=900,
-    )
-    user = db.scalar(select(User).where(User.email == payload.email))
-    reset_token: str | None = None
-    if user is not None:
-        reset_token = generate_password_reset_token()
-        user.password_reset_token = reset_token
-        user.password_reset_token_expires_at = password_reset_token_expiry()
-        db.add(user)
-        db.commit()
-        if settings.app_env == "prod":
-            try:
-                _send_password_reset_email(to_email=user.email, token=reset_token)
-            except EmailDeliveryError as exc:
-                logger.exception(
-                    "Password reset email delivery failed: user_id=%s email=%s",
-                    user.id,
-                    user.email,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail={
-                        "code": "EMAIL_DELIVERY_FAILED",
-                        "message": "Unable to deliver password reset email",
-                    },
-                ) from exc
-        logger.info("auth.forgot_password.issued user_id=%s", user.id)
-    else:
-        logger.info("auth.forgot_password.accepted_unknown email=%s", payload.email)
-
-    if settings.app_env in {"dev", "test"}:
-        return ForgotPasswordResponse(status="accepted", reset_token=reset_token)
-    return ForgotPasswordResponse(status="accepted")
+    _ = (payload, request, db)
+    _raise_disabled_auth_flow()
 
 
 @app.post(
@@ -825,25 +635,8 @@ def reset_password(
     payload: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> ResetPasswordResponse:
-    now = datetime.now(UTC)
-    user = db.scalar(select(User).where(User.password_reset_token == payload.token))
-    if (
-        user is None
-        or user.password_reset_token_expires_at is None
-        or user.password_reset_token_expires_at < now
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "INVALID_OR_EXPIRED_TOKEN", "message": "Invalid or expired token"},
-        )
-
-    user.password_hash = hash_password(payload.new_password)
-    user.password_reset_token = None
-    user.password_reset_token_expires_at = None
-    db.add(user)
-    db.commit()
-
-    return ResetPasswordResponse(status="password_reset")
+    _ = (payload, db)
+    _raise_disabled_auth_flow()
 
 
 @app.post(
@@ -856,39 +649,8 @@ def resend_verification(
     request: Request,
     db: Session = Depends(get_db),
 ) -> ResendVerificationResponse:
-    _enforce_ip_rate_limit(
-        request=request,
-        scope="auth-resend-verification",
-        limit=5,
-        window_seconds=900,
-    )
-    user = db.scalar(select(User).where(User.email == payload.email))
-    if user is None or user.email_verified:
-        logger.info("auth.resend_verification.ignored email=%s", payload.email)
-        return ResendVerificationResponse(status="accepted")
-
-    token = _rotate_verification_token(user)
-    db.add(user)
-    db.commit()
-
-    if settings.app_env == "prod":
-        try:
-            _send_verification_email(to_email=user.email, token=token)
-        except EmailDeliveryError as exc:
-            logger.exception(
-                "Resend verification email delivery failed: user_id=%s email=%s",
-                user.id,
-                user.email,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "code": "EMAIL_DELIVERY_FAILED",
-                    "message": "Unable to deliver verification email",
-                },
-            ) from exc
-    logger.info("auth.resend_verification.sent user_id=%s", user.id)
-    return ResendVerificationResponse(status="accepted")
+    _ = (payload, request, db)
+    _raise_disabled_auth_flow()
 
 
 @app.post(
@@ -897,23 +659,8 @@ def resend_verification(
     responses={400: {"model": ApiErrorDetail}},
 )
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> VerifyEmailResponse:
-    now = datetime.now(UTC)
-    user = db.scalar(select(User).where(User.verify_token == payload.token))
-
-    if user is None or user.verify_token_expires_at is None or user.verify_token_expires_at < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "INVALID_OR_EXPIRED_TOKEN", "message": "Invalid or expired token"},
-        )
-
-    user.email_verified = True
-    user.verify_token = None
-    user.verify_token_expires_at = None
-    db.add(user)
-    db.commit()
-    logger.info("auth.verify_email.success user_id=%s", user.id)
-
-    return VerifyEmailResponse(status="verified")
+    _ = (payload, db)
+    _raise_disabled_auth_flow()
 
 
 @app.get(
@@ -1358,7 +1105,7 @@ def simulate_order_paid(
 def ask(
     payload: AskRequest,
     request: Request,
-    auth_context: AuthContext = Depends(require_verified_email),
+    auth_context: AuthContext = Depends(require_authenticated),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ) -> AskResponse:
@@ -1406,7 +1153,7 @@ def ask(
 def ask_followup(
     followup_id: UUID,
     request: Request,
-    auth_context: AuthContext = Depends(require_verified_email),
+    auth_context: AuthContext = Depends(require_authenticated),
     db: Session = Depends(get_db),
 ) -> AskResponse:
     _enforce_ip_rate_limit(request=request, scope="ask-followup", limit=30, window_seconds=60)

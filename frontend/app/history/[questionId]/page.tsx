@@ -12,7 +12,7 @@ import {
   type AskHistoryDetailResponse,
   type AskHistoryDetailTransactionItem,
 } from "@/lib/history";
-import { buildLoginPathWithNext } from "@/lib/navigation";
+import MessengerSessionRequired from "@/components/MessengerSessionRequired";
 
 function formatDatetime(value: string): string {
   return new Date(value).toLocaleString("zh-TW", { hour12: false });
@@ -93,7 +93,8 @@ export default function HistoryDetailPage() {
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        router.replace(buildLoginPathWithNext(`/history/${questionId}`));
+        setAuthSession(null);
+        setError("登入狀態已失效，請回 Messenger 重新進入。");
         return;
       }
       if (err instanceof ApiError && err.status === 404) {
@@ -111,7 +112,7 @@ export default function HistoryDetailPage() {
       return;
     }
     if (!isLoggedIn) {
-      router.replace(buildLoginPathWithNext(`/history/${questionId || ""}`));
+      setLoading(false);
       return;
     }
     void loadDetail();
@@ -127,7 +128,12 @@ export default function HistoryDetailPage() {
   }
 
   if (!isLoggedIn) {
-    return null;
+    return (
+      <MessengerSessionRequired
+        title="歷史問答詳情"
+        detail="如果 session 已失效，請回 Messenger 重新打開歷史入口，再查看這筆問答。"
+      />
+    );
   }
 
   return (

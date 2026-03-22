@@ -17,13 +17,13 @@ export default function AppTopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [authLoaded, setAuthLoaded] = useState(false);
-  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [authLabel, setAuthLabel] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const session = getAuthSession();
-    setAuthEmail(session?.email ?? null);
+    setAuthLabel(session?.userLabel ?? (session?.accessToken ? "Messenger 已連結" : null));
     setAuthLoaded(true);
   }, []);
 
@@ -72,7 +72,7 @@ export default function AppTopNav() {
         </ul>
 
         <div className="top-nav-account" ref={menuRef}>
-          {!authLoaded ? null : authEmail ? (
+          {!authLoaded ? null : authLabel ? (
             <>
               <button
                 type="button"
@@ -86,7 +86,7 @@ export default function AppTopNav() {
               </button>
               {menuOpen && (
                 <div className="account-menu" role="menu" data-testid="account-menu">
-                  <p className="account-email">{authEmail}</p>
+                  <p className="account-email">{authLabel}</p>
                   <button type="button" className="account-action" role="menuitem" disabled>
                     個人檔案（即將推出）
                   </button>
@@ -105,11 +105,7 @@ export default function AppTopNav() {
               )}
             </>
           ) : (
-            <p className="top-nav-auth-links">
-              <Link href="/login">登入</Link>
-              <span> · </span>
-              <Link href="/register">註冊</Link>
-            </p>
+            <p className="top-nav-auth-links">請從 Messenger 重新進入</p>
           )}
         </div>
       </div>

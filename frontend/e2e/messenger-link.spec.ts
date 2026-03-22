@@ -1,67 +1,68 @@
 import { expect, test } from "@playwright/test";
 
-test("messenger link page redirects to login and completes linking after login", async ({ page }) => {
-  await page.route("**/api/v1/auth/login", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        access_token: "token-messenger-link",
-        token_type: "bearer",
-        email_verified: true,
-      }),
-    });
-  });
-
+test("messenger link page bootstraps a new session", async ({ page }) => {
   await page.route("**/api/v1/messenger/link", async (route) => {
-    const auth = route.request().headers()["authorization"];
-    expect(auth).toBe("Bearer token-messenger-link");
-    expect(JSON.parse(route.request().postData() ?? "{}")).toEqual({ token: "link-token-123" });
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         status: "linked",
-        user_id: "u-messenger",
+        link_status: "linked_new",
+        user_id: "user-1",
         psid: "psid-1",
         page_id: "page-1",
+        access_token: "token-1",
+        token_type: "bearer",
       }),
     });
   });
 
   await page.goto("/messenger/link?token=link-token-123");
-  await expect(page).toHaveURL(/\/login\?next=%2Fmessenger%2Flink%3Ftoken%3Dlink-token-123$/);
 
-  await page.getByLabel("Email").fill("messenger@example.com");
-  await page.getByLabel("密碼", { exact: true }).fill("Password123");
-  await page.getByRole("button", { name: "登入" }).click();
-
-  await expect(page).toHaveURL("/messenger/link?token=link-token-123");
   await expect(page.getByText("綁定完成，請回 Messenger 繼續提問。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "前往錢包" })).toBeVisible();
+  const accessToken = await page.evaluate(() => window.localStorage.getItem("elin_access_token"));
+  expect(accessToken).toBe("token-1");
 });
 
-
-test("messenger link page shows verification guidance for unverified user", async ({ page }) => {
-  await page.route("**/api/v1/auth/login", async (route) => {
+test("messenger link page restores existing session", async ({ page }) => {
+  await page.route("**/api/v1/messenger/link", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        access_token: "token-messenger-unverified",
+        status: "linked",
+        link_status: "session_restored",
+        user_id: "user-2",
+        psid: "psid-2",
+        page_id: "page-2",
+        access_token: "token-2",
         token_type: "bearer",
-        email_verified: false,
       }),
     });
   });
 
   await page.goto("/messenger/link?token=link-token-456");
-  await expect(page).toHaveURL(/\/login\?next=%2Fmessenger%2Flink%3Ftoken%3Dlink-token-456$/);
 
-  await page.getByLabel("Email").fill("unverified@example.com");
-  await page.getByLabel("密碼", { exact: true }).fill("Password123");
-  await page.getByRole("button", { name: "登入" }).click();
+  await expect(
+    page.getByText("已恢復 Messenger WebView session，請回 Messenger 繼續使用。")
+  ).toBeVisible();
+});
 
-  await expect(page).toHaveURL("/messenger/link?token=link-token-456");
-  await expect(page.getByText("請先完成 Email 驗證後，再回到這裡完成 Messenger 綁定。")).toBeVisible();
+test("messenger link page handles invalid token", async ({ page }) => {
+  await page.route("**/api/v1/messenger/link", async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: {
+          code: "MESSENGER_LINK_TOKEN_INVALID",
+          message: "invalid token",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/messenger/link?token=bad-token");
+
+  await expect(page.getByText("綁定連結無效或已過期，請回 Messenger 重新點擊綁定按鈕。")).toBeVisible();
 });

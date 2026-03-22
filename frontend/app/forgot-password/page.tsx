@@ -1,65 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useState } from "react";
-
-import { apiRequest } from "@/lib/api";
-
-type ForgotPasswordResponse = {
-  status: "accepted";
-};
+import MessengerSessionRequired from "@/components/MessengerSessionRequired";
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ForgotPasswordResponse | null>(null);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setResult(null);
-    setLoading(true);
-    try {
-      const payload = await apiRequest<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      });
-      setResult(payload);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失敗");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
-    <main>
-      <h1>忘記密碼</h1>
-      <section className="card">
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <button type="submit" disabled={loading}>
-            {loading ? "送出中..." : "送出"}
-          </button>
-        </form>
-        {error && <p className="error">{error}</p>}
-        {result && (
-          <div className="answer">
-            <p>若帳號存在，請查收 Email 內的重設密碼連結。</p>
-          </div>
-        )}
-        <p className="helper-links">
-          <Link href="/login">返回登入</Link>
-        </p>
-      </section>
-    </main>
+    <MessengerSessionRequired
+      title="密碼重設已停用"
+      detail="目前不再提供 Email/Password 找回流程，請從 Messenger WebView 使用帳號。"
+    />
   );
 }

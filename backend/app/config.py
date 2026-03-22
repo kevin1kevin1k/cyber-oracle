@@ -33,10 +33,6 @@ class Settings(BaseSettings):
     messenger_verify_signature: bool = False
     messenger_outbound_mode: Literal["noop", "meta_graph"] = "noop"
     messenger_web_base_url: str = "http://localhost:3000"
-    app_web_base_url: str = "http://localhost:3000"
-    email_provider: Literal["noop", "postmark"] = "noop"
-    postmark_server_token: str | None = None
-    email_from: str | None = None
     payments_enabled: bool = True
     launch_credit_grant_amount: int = 50
 
@@ -71,20 +67,6 @@ class Settings(BaseSettings):
             raise ValueError("META_APP_SECRET is required when MESSENGER_VERIFY_SIGNATURE=true")
         if app_env == "prod" and self.messenger_enabled and not self.messenger_verify_signature:
             raise ValueError("MESSENGER_VERIFY_SIGNATURE must be true when APP_ENV=prod")
-        return self
-
-    @model_validator(mode="after")
-    def validate_email_settings(self) -> "Settings":
-        app_env = self.app_env.strip().lower()
-        if app_env == "prod":
-            if self.email_provider != "postmark":
-                raise ValueError("EMAIL_PROVIDER must be postmark when APP_ENV=prod")
-            if not self.app_web_base_url.strip():
-                raise ValueError("APP_WEB_BASE_URL is required when APP_ENV=prod")
-            if not (self.postmark_server_token or "").strip():
-                raise ValueError("POSTMARK_SERVER_TOKEN is required when APP_ENV=prod")
-            if not (self.email_from or "").strip():
-                raise ValueError("EMAIL_FROM is required when APP_ENV=prod")
         return self
 
     @model_validator(mode="after")

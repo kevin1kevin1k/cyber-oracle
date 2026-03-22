@@ -16,6 +16,7 @@
 - linked user 的 inbound ask flow
 - Messenger quick reply followup flow
 - Messenger persistent menu（查點數 / 購點 / 歷史）
+- Messenger WebView session bootstrap（`POST /api/v1/messenger/link`）
 - `noop` / `meta_graph` outbound client abstraction
 
 尚未完成：
@@ -25,8 +26,8 @@
 - webhook signature replay protection 與完整 hardening
 
 因此：
-- `local` 與 `pre-prod` 目前可完整驗證 webhook、ask、followup、linked/unlinked routing
-- 涉及 WebView linking / payment 的驗證，目前只能驗證前置條件與未來驗證入口，不能宣稱已完成閉環
+- `local` 與 `pre-prod` 目前可完整驗證 webhook、ask、followup、linked/unlinked routing、Messenger WebView session bootstrap
+- 涉及 WebView payment 的驗證，目前只能驗證前置條件與未來驗證入口，不能宣稱已完成閉環
 
 ## Repo 實際設定對照
 Backend endpoint：
@@ -67,7 +68,8 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
 - 若剩餘點數為 `0`，系統會再附上既有購點按鈕
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
-- `前往購點` / `查看歷史` 仍是 WebView / Web auth 入口，不做 per-user 動態 menu 切換
+- `前往購點` / `查看歷史` 仍是靜態 WebView 入口，不做 per-user 動態 menu 切換
+- 若使用者從 persistent menu 首次開啟 `/wallet` 或 `/history` 且尚未建立 WebView session，頁面會提示回 Messenger 重新點擊 linking button
 - Messenger 購點入口會打開 `/wallet?from=messenger-insufficient-credit`
 - `/wallet?from=messenger-insufficient-credit` 會顯示 Messenger 專用提示，並在購買成功後提示使用者回 Messenger 繼續提問
 
@@ -243,7 +245,7 @@ cd /Users/kevin1kevin1k/cyber-oracle && docker compose ps && cd ..
 cloudflared tunnel --url http://localhost:8000
 ```
 
-若你要測 Messenger WebView 按鈕（登入綁定 / 購點），還需要第二條 frontend tunnel：
+若你要測 Messenger WebView 按鈕（綁定 / 購點），還需要第二條 frontend tunnel：
 ```bash
 cloudflared tunnel --url http://localhost:3000
 ```
@@ -258,7 +260,7 @@ CORS_ORIGINS=http://localhost:3000,https://xxxxx.trycloudflare.com
 - backend webhook callback URL 與 frontend WebView URL 可以是兩條不同 tunnel
 - webhook 用的是 backend tunnel
 - web_url button 用的是 `MESSENGER_WEB_BASE_URL`
-- frontend tunnel 若不在 `CORS_ORIGINS` 內，Messenger WebView 中的瀏覽器 preflight (`OPTIONS`) 會被 backend 擋掉，常見症狀是註冊/登入頁出現 `Failed to fetch`
+- frontend tunnel 若不在 `CORS_ORIGINS` 內，Messenger WebView 中的瀏覽器 preflight (`OPTIONS`) 會被 backend 擋掉，常見症狀是綁定頁出現 `Failed to fetch`
 
 成功後，終端機通常會顯示一個像這樣的網址：
 ```text
@@ -306,7 +308,7 @@ curl "http://localhost:8000/api/v1/messenger/webhook?hub.mode=subscribe&hub.veri
 - `META_VERIFY_TOKEN` 與後台填入值不一致
 - callback URL 漏了 `/api/v1/messenger/webhook`
 
-#### 2. 為什麼 Messenger WebView 內註冊/登入顯示 `Failed to fetch`，backend log 是 `OPTIONS ... 400`？
+#### 2. 為什麼 Messenger WebView 內綁定頁顯示 `Failed to fetch`，backend log 是 `OPTIONS ... 400`？
 常見原因：
 - frontend tunnel URL 沒加進 `CORS_ORIGINS`
 - `docker-compose.yml` 或部署環境把 `CORS_ORIGINS` 硬編碼成只有 `http://localhost:3000`

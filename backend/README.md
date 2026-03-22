@@ -21,39 +21,33 @@ Docker Compose backend startup runs migrations automatically before uvicorn:
 uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*' --host 0.0.0.0 --port 8000
 ```
 
-Local Docker Compose isolates /app/.venv into a container-only volume so the container does not try to reuse the host `backend/.venv`. This avoids `uv sync` warnings about a virtual environment linked to a non-existent interpreter inside the container.
+Local Docker Compose isolates `/app/.venv` into a container-only volume so the container does not try to reuse the host `backend/.venv`. This avoids `uv sync` warnings about a virtual environment linked to a non-existent interpreter inside the container.
 
 Production container startup should not use `--reload`:
 ```bash
 uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Auth APIs (MVP progress)
-- `POST /api/v1/auth/register`
-  - creates user with hashed password
-  - returns `verification_token` only in `dev`/`test`; production returns `null`
-  - production sends a verification email using the configured provider
-- `POST /api/v1/auth/login`
-  - verifies email/password
-  - returns HS256 bearer token with `email_verified` + `jti` claims
-  - creates a `sessions` record for token revocation/expiration checks
-- `POST /api/v1/auth/verify-email`
-  - verifies token and flips `email_verified=true`
-- `POST /api/v1/auth/resend-verification`
-  - always returns `202` to avoid user enumeration
-  - for an existing unverified user, rotates the old verify token and sends a fresh verification email in production
+## Auth APIs (Messenger-primary MVP)
+- Email/password auth flows are disabled:
+  - `POST /api/v1/auth/register`
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/verify-email`
+  - `POST /api/v1/auth/resend-verification`
+  - `POST /api/v1/auth/forgot-password`
+  - `POST /api/v1/auth/reset-password`
+  - all return `410 AUTH_FLOW_DISABLED`
 - `POST /api/v1/auth/logout`
   - revokes current session by token `jti` and returns `204`
-- `POST /api/v1/auth/forgot-password`
-  - always returns `202` to avoid user enumeration
-  - returns `reset_token` only in `dev`/`test` app env; production returns `null`
-  - production sends a password reset email using the configured provider
-- `POST /api/v1/auth/reset-password`
-  - resets password by token, token is single-use with expiration
+- `POST /api/v1/messenger/link`
+  - validates a signed Messenger linking token
+  - creates a new internal user for an unlinked PSID/page pair, or restores session for an already linked identity
+  - returns HS256 bearer token with `sub` + `jti` claims
+  - creates a `sessions` record for token revocation/expiration checks
 
 ## Ask API (credit flow)
 - `POST /api/v1/ask`
-  - requires authenticated + verified email
+  - requires authenticated session
   - supports `Idempotency-Key` request header
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
@@ -70,7 +64,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
 
 ## Followup APIs
 - `POST /api/v1/followups/{id}/ask`
-  - requires authenticated + verified email
+  - requires authenticated session
   - asks the selected followup in the same topic and charges 1 credit
   - followup item is one-time use (`pending -> used`)
   - returns `FOLLOWUP_NOT_FOUND` / `FOLLOWUP_OWNER_MISMATCH` / `FOLLOWUP_ALREADY_USED` when invalid
@@ -123,16 +117,12 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
 
 Environment variables:
 - `APP_ENV`: runtime env (`dev` / `test` / `prod`, default `dev`)
-- `APP_WEB_BASE_URL`: public frontend base URL used in verification/reset email links
 - `CORS_ORIGINS`: comma-separated browser origins allowed to call backend APIs (must include public frontend/WebView origins such as Messenger frontend tunnel URLs)
 - `DATABASE_URL`: app runtime database
 - `TEST_DATABASE_URL`: test-only database (use `elin_test`)
 - `JWT_SECRET`: HS256 signing secret for access token
 - `JWT_ALGORITHM`: JWT algorithm (default `HS256`)
 - `JWT_EXP_MINUTES`: access token expiration in minutes (default `60`)
-- `EMAIL_PROVIDER`: `noop` or `postmark` (`postmark` is required in production)
-- `POSTMARK_SERVER_TOKEN`: required when `EMAIL_PROVIDER=postmark`
-- `EMAIL_FROM`: sender identity for transactional email
 - `PAYMENTS_ENABLED`: enables/disables order creation and launch purchase UI capability
 - `LAUNCH_CREDIT_GRANT_AMOUNT`: one-time credit amount granted after successful Messenger link
 - `MESSENGER_ENABLED`: enable Messenger webhook routes (`false` by default)
@@ -153,15 +143,12 @@ Production security baseline:
   - value equals development default (`dev-only-change-me-please-replace-32+`)
   - value length is shorter than 32 characters
 - when `APP_ENV=prod`, backend also validates:
-  - `EMAIL_PROVIDER=postmark`
-  - `APP_WEB_BASE_URL` is configured
-  - `POSTMARK_SERVER_TOKEN` and `EMAIL_FROM` are configured
   - `MESSENGER_VERIFY_SIGNATURE=true` if Messenger is enabled
   - `META_APP_SECRET` is configured if Messenger signature verification is enabled
 
 Launch-mode guidance:
 - for the current public beta launch shape, set `PAYMENTS_ENABLED=false`
-- new verified users who complete Messenger linking receive one-time launch credits via `LAUNCH_CREDIT_GRANT_AMOUNT`
+- new Messenger-linked users receive one-time launch credits via `LAUNCH_CREDIT_GRANT_AMOUNT`
 - if launch credits need to be backfilled manually, use:
 ```bash
 cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/grant_launch_credits.py --email target@example.com && cd ..
@@ -184,7 +171,7 @@ Endpoints:
   - maps ask followups into a single Messenger quick-replies message, and quick reply clicks now reuse the existing followup ask flow
   - followups are expected to be direct next-step questions, not questionnaire-style prompts that ask the user to choose or provide missing fields first
   - dispatches outgoing payloads through pluggable client abstraction (`noop` or `meta_graph`)
-  - `POST /api/v1/messenger/link` links a verified web user to an existing `messenger_identities` row using signed linking token and grants launch credits once
+  - `POST /api/v1/messenger/link` is the WebView session bootstrap endpoint; it links a new user or restores an existing linked identity and grants launch credits once
 
 Current channel capabilities:
 - `noop`: local/dev ingest-only mode, webhook can be tested without real Messenger reply
@@ -192,7 +179,7 @@ Current channel capabilities:
   - text messages
   - quick replies
   - button templates
-- linked/unlinked routing, Messenger WebView account linking MVP, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
+- linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
 - when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled
