@@ -58,6 +58,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_messenger_settings(self) -> "Settings":
+        app_env = self.app_env.strip().lower()
         if self.messenger_enabled and not (self.meta_verify_token or "").strip():
             raise ValueError("META_VERIFY_TOKEN is required when MESSENGER_ENABLED=true")
 
@@ -66,6 +67,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "META_PAGE_ACCESS_TOKEN is required when MESSENGER_OUTBOUND_MODE=meta_graph"
                 )
+        if self.messenger_verify_signature and not (self.meta_app_secret or "").strip():
+            raise ValueError("META_APP_SECRET is required when MESSENGER_VERIFY_SIGNATURE=true")
+        if app_env == "prod" and self.messenger_enabled and not self.messenger_verify_signature:
+            raise ValueError("MESSENGER_VERIFY_SIGNATURE must be true when APP_ENV=prod")
         return self
 
     @model_validator(mode="after")

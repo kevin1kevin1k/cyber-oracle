@@ -21,6 +21,11 @@ Docker Compose backend startup runs migrations automatically before uvicorn:
 uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*' --host 0.0.0.0 --port 8000
 ```
 
+Production container startup should not use `--reload`:
+```bash
+uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
 ## Auth APIs (MVP progress)
 - `POST /api/v1/auth/register`
   - creates user with hashed password
@@ -102,6 +107,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir
   - requires bearer token
   - creates pending order for package size `1|3|5` and mapped amount `168|358|518`
   - request requires `idempotency_key`; duplicate key for same user replays existing order
+  - when `PAYMENTS_ENABLED=false`, returns `403 PAYMENTS_DISABLED`
 - `POST /api/v1/orders/{id}/simulate-paid`
   - requires bearer token
   - marks pending order as paid, grants credits to wallet, and writes `purchase` credit transaction
@@ -122,6 +128,11 @@ Environment variables:
 - `JWT_SECRET`: HS256 signing secret for access token
 - `JWT_ALGORITHM`: JWT algorithm (default `HS256`)
 - `JWT_EXP_MINUTES`: access token expiration in minutes (default `60`)
+- `EMAIL_PROVIDER`: `noop` or `postmark` (`postmark` is required in production)
+- `POSTMARK_SERVER_TOKEN`: required when `EMAIL_PROVIDER=postmark`
+- `EMAIL_FROM`: sender identity for transactional email
+- `PAYMENTS_ENABLED`: enables/disables order creation and launch purchase UI capability
+- `LAUNCH_CREDIT_GRANT_AMOUNT`: one-time credit amount granted after successful Messenger link
 - `MESSENGER_ENABLED`: enable Messenger webhook routes (`false` by default)
 - `META_VERIFY_TOKEN`: webhook verify token (required when `MESSENGER_ENABLED=true`)
 - `META_PAGE_ACCESS_TOKEN`: required when `MESSENGER_OUTBOUND_MODE=meta_graph`
@@ -139,6 +150,20 @@ Production security baseline:
   - value is empty
   - value equals development default (`dev-only-change-me-please-replace-32+`)
   - value length is shorter than 32 characters
+- when `APP_ENV=prod`, backend also validates:
+  - `EMAIL_PROVIDER=postmark`
+  - `APP_WEB_BASE_URL` is configured
+  - `POSTMARK_SERVER_TOKEN` and `EMAIL_FROM` are configured
+  - `MESSENGER_VERIFY_SIGNATURE=true` if Messenger is enabled
+  - `META_APP_SECRET` is configured if Messenger signature verification is enabled
+
+Launch-mode guidance:
+- for the current public beta launch shape, set `PAYMENTS_ENABLED=false`
+- new verified users who complete Messenger linking receive one-time launch credits via `LAUNCH_CREDIT_GRANT_AMOUNT`
+- if launch credits need to be backfilled manually, use:
+```bash
+cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/grant_launch_credits.py --email target@example.com && cd ..
+```
 
 ## Messenger Integration (Skeleton)
 This repository now includes a non-invasive Messenger channel adapter skeleton under `app/messenger/`.
