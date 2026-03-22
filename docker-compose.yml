@@ -34,6 +34,7 @@ services:
       uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*'"
     volumes:
       - ./backend:/app
+      - backend_venv:/app/.venv
 
   frontend:
     build:
@@ -52,3 +53,4 @@ services:
 
 volumes:
   postgres_data:
+  backend_venv:

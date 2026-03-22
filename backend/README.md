@@ -21,6 +21,8 @@ Docker Compose backend startup runs migrations automatically before uvicorn:
 uv run alembic upgrade head && uv run uvicorn app.main:app --reload --reload-dir app --reload-exclude '.venv/*' --reload-exclude '.git/*' --reload-exclude '__pycache__/*' --host 0.0.0.0 --port 8000
 ```
 
+Local Docker Compose isolates /app/.venv into a container-only volume so the container does not try to reuse the host `backend/.venv`. This avoids `uv sync` warnings about a virtual environment linked to a non-existent interpreter inside the container.
+
 Production container startup should not use `--reload`:
 ```bash
 uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
