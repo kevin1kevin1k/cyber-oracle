@@ -13,6 +13,7 @@ Frontend app code lives in `frontend/app/`. Backend API code lives in `backend/a
 Primary workflow (recommended):
 - `docker compose up --build`: start frontend (`:3000`) and backend (`:8000`).
 - `docker compose down`: stop all services.
+- If you only changed one service container definition, prefer `docker compose build <service>` first so Dockerfile/build-context failures are isolated before full `up --build`.
 
 Frontend local run:
 - `cd frontend && npm install`
@@ -21,6 +22,20 @@ Frontend local run:
 Backend local run:
 - `cd backend && uv sync`
 - `uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+
+## Container Build Safety (Required)
+- Root cause to avoid: a Docker multi-stage `COPY --from=...` references a path that is not guaranteed to exist in the source stage (for example `/app/public`), causing `docker compose up --build` to fail during image build.
+- Any change touching `Dockerfile`, `.dockerignore`, `docker-compose.yml`, or app build-output paths (for example `.next`, `public`, dist artifacts) must verify that every `COPY` / `COPY --from` source path always exists at build time.
+- For Python services that bind-mount the project directory and use a project-local `.venv`, isolate the container's `.venv` path with a named volume (for example `/app/.venv`) so Docker does not reuse a host virtualenv built against a different interpreter or OS.
+- For optional or sometimes-empty directories, do not rely on the repository happening to contain the path. You must either:
+  - create the directory explicitly in the producing stage (for example `mkdir -p public`), or
+  - change the Dockerfile so it does not copy a path that may be absent.
+- Before reporting container-related work done, run:
+  - `cd /Users/kevin1kevin1k/cyber-oracle && docker compose config && cd ..`
+  - `cd /Users/kevin1kevin1k/cyber-oracle && docker compose build <affected-service> && cd ..`
+- If the change also affects compose wiring, startup commands, or multi-service boot behavior, also run:
+  - `cd /Users/kevin1kevin1k/cyber-oracle && docker compose up --build -d && docker compose ps && cd ..`
+- When reporting results, include the key confirmation that config expansion succeeded and the affected image build completed successfully.
 
 ## Database Migration Safety (Required)
 - Root cause to avoid: backend code/model is updated but DB schema is still on older Alembic revision (for example new column referenced by runtime code but DB does not have it yet).
@@ -45,6 +60,7 @@ Backend local run:
 - Frontend tests should live under `frontend/` (for example `app/**/*.test.tsx`) when added.
 - Any change touching `frontend/` must run the full frontend test scope before reporting done (at minimum `cd frontend && npm run lint && npm run test:e2e && npm run build && cd ..`).
 - Any change touching `backend/` must run the full backend test scope before reporting done (at minimum `cd backend && TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/elin_test uv run pytest -q && cd ..`, plus migration verification when DB runtime contract changes).
+- Any change touching container/build configuration must also run `cd /Users/kevin1kevin1k/cyber-oracle && docker compose config && cd ..` and `cd /Users/kevin1kevin1k/cyber-oracle && docker compose build <affected-service> && cd ..` before reporting done.
 - Minimum API coverage for new endpoints:
   - success path
   - validation failure (4xx)
