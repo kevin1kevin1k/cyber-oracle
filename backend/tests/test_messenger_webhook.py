@@ -425,12 +425,12 @@ def test_webhook_post_message_event_for_linked_user_runs_ask_flow(
     assert capture_count == 1
 
 
-def test_webhook_post_message_event_for_incomplete_profile_returns_settings_button(
+def test_webhook_post_message_event_for_incomplete_profile_returns_settings_and_replay_buttons(
     client: TestClient,
     db_session: Session,
     captured_outgoing: list[tuple[str, object]],
 ) -> None:
-    _create_linked_messenger_user(
+    user = _create_linked_messenger_user(
         db_session,
         psid="psid-linked-profile-missing",
         page_id="page-linked-profile-missing",
@@ -471,6 +471,21 @@ def test_webhook_post_message_event_for_incomplete_profile_returns_settings_butt
     )
     assert outgoing.buttons[0]["title"] == "前往設定"
     assert "next=%2Fsettings%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
+    pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(
+            MessengerPendingAsk.user_id == user.id,
+            MessengerPendingAsk.status == "pending",
+        )
+    )
+    assert pending_ask is not None
+    assert pending_ask.question_text == "請幫我分析今天運勢"
+    assert pending_ask.lang == "zh"
+    assert pending_ask.mode == "analysis"
+    assert outgoing.buttons[1] == {
+        "type": "postback",
+        "title": "設定完成，重新送出剛剛的問題",
+        "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+    }
 
 
 def test_webhook_post_message_event_with_same_mid_is_idempotent(
@@ -1627,6 +1642,157 @@ def test_webhook_post_postback_replay_pending_ask_without_credit_returns_topup_a
             "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
         },
     ]
+
+
+def test_webhook_post_postback_replay_pending_ask_without_profile_returns_settings_again(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-pending-ask-profile-missing",
+        page_id="page-pending-ask-profile-missing",
+        balance=3,
+        profile_complete=False,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-pending-ask-profile-missing",
+            MessengerIdentity.page_id == "page-pending-ask-profile-missing",
+        )
+    )
+    assert identity is not None
+    pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="請再幫我看一次",
+        lang="zh",
+        mode="analysis",
+        idempotency_key=f"msg:{uuid.uuid4().hex}",
+        status="pending",
+    )
+    db_session.add(pending_ask)
+    db_session.commit()
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-pending-ask-profile-missing",
+                "time": 1700002650,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-pending-ask-profile-missing"},
+                        "recipient": {"id": "page-pending-ask-profile-missing"},
+                        "timestamp": 1700002650,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+                            "title": "設定完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored_pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
+    )
+    assert stored_pending_ask is not None
+    assert stored_pending_ask.status == "pending"
+    assert stored_pending_ask.used_question_id is None
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.kind == "button_template"
+    assert (
+        outgoing.text
+        == "開始提問前，請先補上你的姓名與母親姓名。完成後就能直接在 Messenger 提問。"
+    )
+    assert outgoing.buttons[0]["title"] == "前往設定"
+    assert "next=%2Fsettings%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
+    assert outgoing.buttons[1] == {
+        "type": "postback",
+        "title": "設定完成，重新送出剛剛的問題",
+        "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+    }
+
+
+def test_webhook_post_postback_replays_pending_ask_after_profile_completed(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-pending-ask-profile-fixed",
+        page_id="page-pending-ask-profile-fixed",
+        balance=3,
+        profile_complete=False,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-pending-ask-profile-fixed",
+            MessengerIdentity.page_id == "page-pending-ask-profile-fixed",
+        )
+    )
+    assert identity is not None
+    pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="補完資料後重問",
+        lang="zh",
+        mode="analysis",
+        idempotency_key=f"msg:{uuid.uuid4().hex}",
+        status="pending",
+    )
+    db_session.add(pending_ask)
+    db_session.commit()
+
+    user.full_name = "王小明"
+    user.mother_name = "林淑芬"
+    db_session.add(user)
+    db_session.commit()
+
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-pending-ask-profile-fixed",
+                "time": 1700002651,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-pending-ask-profile-fixed"},
+                        "recipient": {"id": "page-pending-ask-profile-fixed"},
+                        "timestamp": 1700002651,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+                            "title": "設定完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored_pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
+    )
+    assert stored_pending_ask is not None
+    assert stored_pending_ask.status == "used"
+    assert stored_pending_ask.used_question_id is not None
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.kind == "quick_replies"
+    assert (
+        outgoing.text
+        == "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C"
+    )
 
 
 def test_webhook_post_postback_replay_pending_ask_unavailable_returns_fallback(

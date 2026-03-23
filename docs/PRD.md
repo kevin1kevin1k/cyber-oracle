@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.13（Messenger-primary Auth + Fixed Ask Profile）
+- 文件版本：v0.14（Messenger Profile Replay for Incomplete Fixed Ask Data）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -92,6 +92,7 @@ MVP 目標：
    - 未綁定：可進行有限互動（由產品策略決定），必要時被引導綁定。
    - 已綁定：可使用完整問答、購點、歷史與點數一致性能力。
    - 若已綁定但尚未完成固定問答參數設定，系統需先引導完成設定後才能提問。
+   - 若使用者在 Messenger 直接提問時被固定問答參數 gate 擋下，系統需保留該問題，讓使用者完成設定後可在 Messenger 一鍵重送。
 
 6. 常用功能入口
    - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。

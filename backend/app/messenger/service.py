@@ -22,6 +22,7 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
     DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
     DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
+    DEFAULT_MESSENGER_PROFILE_REPLAY_ASK_BUTTON_TITLE,
     DEFAULT_MESSENGER_PROFILE_REQUIRED_REPLY,
     DEFAULT_MESSENGER_REPLAY_ASK_BUTTON_TITLE,
     DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
@@ -98,7 +99,24 @@ class MessengerEventService:
         if user_id is None:
             return [self.build_linking_message(identity=identity)]
         if not self._has_complete_profile(user_id=user_id):
-            return [self.build_profile_required_message(identity=identity)]
+            question_text = (command.text or "").strip()
+            pending_ask_id = None
+            if question_text:
+                pending_ask = self._create_or_get_pending_ask(
+                    identity=identity,
+                    user_id=user_id,
+                    question_text=question_text,
+                    lang=ASK_DEFAULT_LANG,
+                    mode=ASK_DEFAULT_MODE,
+                    idempotency_key=self._build_event_idempotency_key(command=command),
+                )
+                pending_ask_id = pending_ask.id
+            return [
+                self.build_profile_required_message(
+                    identity=identity,
+                    pending_ask_id=pending_ask_id,
+                )
+            ]
 
         question_text = (command.text or "").strip()
         if not question_text:
@@ -307,20 +325,30 @@ class MessengerEventService:
         self,
         *,
         identity: MessengerIdentity,
+        pending_ask_id: UUID | None = None,
     ) -> MessengerOutgoingMessage:
+        buttons: list[dict[str, str]] = [
+            {
+                "type": "web_url",
+                "title": DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
+                "url": self._build_messenger_link_url(
+                    identity=identity,
+                    next_path="/settings?from=messenger-profile-required",
+                ),
+            }
+        ]
+        if pending_ask_id is not None:
+            buttons.append(
+                {
+                    "type": "postback",
+                    "title": DEFAULT_MESSENGER_PROFILE_REPLAY_ASK_BUTTON_TITLE,
+                    "payload": f"{REPLAY_PENDING_ASK_PAYLOAD_PREFIX}{pending_ask_id}",
+                }
+            )
         return MessengerOutgoingMessage(
             kind="button_template",
             text=DEFAULT_MESSENGER_PROFILE_REQUIRED_REPLY,
-            buttons=[
-                {
-                    "type": "web_url",
-                    "title": DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
-                    "url": self._build_messenger_link_url(
-                        identity=identity,
-                        next_path="/settings?from=messenger-profile-required",
-                    ),
-                }
-            ],
+            buttons=buttons,
         )
 
     def build_topup_message(
@@ -484,6 +512,13 @@ class MessengerEventService:
         except HTTPException as exc:
             if exc.status_code == 402:
                 return [self.build_topup_message(pending_ask_id=pending_ask.id)]
+            if isinstance(exc.detail, dict) and exc.detail.get("code") == PROFILE_INCOMPLETE_CODE:
+                return [
+                    self.build_profile_required_message(
+                        identity=identity,
+                        pending_ask_id=pending_ask.id,
+                    )
+                ]
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
 
         tracked_pending_ask = self._db.scalar(

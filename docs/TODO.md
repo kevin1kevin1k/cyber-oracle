@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.12` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.14` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -54,6 +54,7 @@
   - [x] Backend：新增 `GET/PUT /api/v1/me/profile`
   - [x] Backend：ask / followup runtime 自動拼接固定資料，但 `questions.question_text` 仍只保存原始問題
   - [x] Backend：Messenger linked user 若 profile 未完成，先引導 `/settings`
+  - [x] Backend：Messenger linked user 因 profile 未完成而被擋下時，保留原問題並提供「設定完成，重新送出剛剛的問題」按鈕
   - [x] Frontend：新增 `/settings` 頁並可修改固定資料
   - [x] Frontend：首頁在 profile 未完成時停用提問並導向設定
   - [x] 測試：profile API、ask augmentation、Messenger profile gating、frontend settings flow

@@ -193,6 +193,7 @@ Current channel capabilities:
   - button templates
 - linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
 - linked users who have not filled `full_name` / `mother_name` are guided to `/settings` before ask/followup execution
+- when a linked user sends a text question before completing `full_name` / `mother_name`, backend stores a pending Messenger ask and returns both `/settings` and replay buttons so the original question can be resent after profile completion
 - when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled
