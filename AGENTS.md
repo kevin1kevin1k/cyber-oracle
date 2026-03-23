@@ -97,6 +97,7 @@ Pull requests should include:
 - UI screenshots for frontend changes
 - changed files list in reviewer scan order (top-down): show high-level docs/config first, then backend, then frontend, then tests/helpers
 - one-line summary per changed file so reviewers can predict each diff before opening it (avoid surprise files in later sections)
+- whenever you list changed files, use the full repository-relative path (for example `frontend/e2e/auth.spec.ts`, not just `auth.spec.ts`)
 - after the changed files summary, include manual test steps for any behavior not fully covered by automation (or best validated by humans), with expected results for each step
 - for important backend changes (DB/schema/API/runtime behavior), update `backend/README.md` in the same change set
 - after each implementation batch, review `docs/TODO.md` and update checklist/progress notes when status has changed
@@ -114,7 +115,7 @@ Pull requests should include:
 - For `/review` slash command responses, always use Traditional Chinese (technical terms may remain in English).
 - For every implementation report response (but not commit-only replies such as `建立 commit` after an already-reported batch), always include these sections in order:
   1. `實作結果摘要` (clear summary + impacted area)
-  2. `修改檔案` (reviewer scan order: docs/config -> backend -> frontend -> tests/helpers; include one-line summary per file; always use ordered numbering `1. 2. 3.` instead of bullet points)
+  2. `修改檔案` (reviewer scan order: docs/config -> backend -> frontend -> tests/helpers; include one-line summary per file; always use ordered numbering `1. 2. 3.` instead of bullet points; every file label must be the full repository-relative path such as `frontend/e2e/auth.spec.ts`)
   3. `測試方式與結果` (fully executable commands with concrete values, plus key outputs)
   4. `人工驗證步驟` (only for behavior not fully covered by automation; include expected result per step)
 
