@@ -49,6 +49,17 @@ test("authenticated messenger session can ask and logout", async ({ page }) => {
       }),
     });
   });
+  await page.route("**/api/v1/me/profile", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        full_name: "王小明",
+        mother_name: "林淑芬",
+        is_complete: true,
+      }),
+    });
+  });
   await page.route("**/api/v1/ask", async (route) => {
     await route.fulfill({
       status: 200,

@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.12（Messenger-primary Auth MVP）
+- 文件版本：v0.13（Messenger-primary Auth + Fixed Ask Profile）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -29,9 +29,11 @@ MVP 目標：
   - 支援 Messenger 身份（PSID / external identity）建檔與對應。
   - 使用者可先以未綁定狀態互動，必要時透過 Messenger WebView 完成站內帳號建立/綁定。
   - MVP 以 Messenger 為唯一主身份來源；不要求 Email 驗證，也不提供獨立 Web 註冊/登入作為主流程。
+  - 已綁定使用者可在 WebView 維護固定問答參數（姓名、母親姓名），供後續提問自動帶入。
 - 問答系統：
   - 使用者可直接在 Messenger 發問並收到回覆。
   - 保留 RAG 為主、Router（rule/rag/openai）分流、structured output、followups。
+  - 系統需在 ask 前自動將使用者固定問答參數與本次問題組裝後再送入模型，但歷史紀錄只保留原始問題文字。
 - 回答輸出規則：
   - 前台（Messenger）顯示「結論 → 必要說明」。
   - 不顯示內部演算法名稱、規則編號、來源/request id/三層比例。
@@ -89,6 +91,7 @@ MVP 目標：
 5. 已綁定 vs 未綁定能力
    - 未綁定：可進行有限互動（由產品策略決定），必要時被引導綁定。
    - 已綁定：可使用完整問答、購點、歷史與點數一致性能力。
+   - 若已綁定但尚未完成固定問答參數設定，系統需先引導完成設定後才能提問。
 
 6. 常用功能入口
    - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。
@@ -166,13 +169,16 @@ sequenceDiagram
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
 - 帳號綁定與 WebView session 建立需可透過 Messenger WebView 完成。
+- 系統需提供已綁定使用者維護固定問答參數的 WebView 設定頁。
 
 ### 6.2 問答與知識檢索
 - 問題字數上限（建議 1,000 字）。
 - 問答流程需包含 Intake、Identity Resolve、Router、Retriever、Generator、Post-process、Persist。
+- ask runtime 需在 generator 前自動注入使用者固定資料（至少姓名、母親姓名）。
 - RAG 檢索後內部固定採用 Top-3 證據作答。
 - 回答需以 structured output 回傳，至少包含：回答內容、延伸問題選項。
 - 流程 metadata（來源標記、request id、檢索分數）作為後端觀測資料，不在 Messenger 前台顯示。
+- `questions` / 歷史頁僅保存本次原始提問，不直接保存拼接後含個資的完整 prompt。
 - 回答尾端需產生 0..3 個延伸問題選項，並可映射為 Messenger quick replies/buttons。
 - 延伸問題應直接代表「下一個值得追問的完整問題」，避免問卷式選項、資料蒐集式選項或半句片段。
 

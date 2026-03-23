@@ -109,12 +109,17 @@ main {
 }
 
 .account-action {
+  display: block;
   width: 100%;
   margin-top: 6px;
   background: #eef5ff;
   color: #0d3f85;
   border: 1px solid #d7e6fa;
   text-align: left;
+}
+
+.account-action-link {
+  text-decoration: none;
 }
 
 .account-action-danger {

@@ -106,6 +106,8 @@ def _create_verified_user_with_wallet(db_session: Session, balance: int) -> tupl
         email=f"{uuid.uuid4()}@example.com",
         password_hash="hash",
         email_verified=True,
+        full_name="王小明",
+        mother_name="林淑芬",
     )
     db_session.add(user)
     db_session.flush()

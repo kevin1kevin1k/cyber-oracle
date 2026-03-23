@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
@@ -96,12 +96,15 @@ def _make_token_with_session(
     db_session: Session,
     email_verified: bool,
     wallet_balance: int | None = None,
+    profile_complete: bool = True,
 ) -> str:
     user = User(
         id=uuid.uuid4(),
         email=f"{uuid.uuid4()}@example.com",
         password_hash="hash",
         email_verified=email_verified,
+        full_name="王小明" if profile_complete else None,
+        mother_name="林淑芬" if profile_complete else None,
     )
     db_session.add(user)
     db_session.flush()
@@ -205,3 +208,56 @@ def test_ask_authenticated_user_with_wallet_returns_200(
     assert response.status_code == 200
     payload = response.json()
     assert payload["source"] == "rag"
+
+
+def test_ask_requires_completed_profile_before_processing(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    token = _make_token_with_session(
+        db_session=db_session,
+        email_verified=True,
+        wallet_balance=1,
+        profile_complete=False,
+    )
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"question": "測試問題", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "PROFILE_INCOMPLETE"
+
+
+def test_ask_augments_generator_prompt_but_persists_raw_question(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = _make_token_with_session(db_session=db_session, email_verified=True, wallet_balance=1)
+    captured_questions: list[str] = []
+
+    def _capture(question: str) -> tuple[str, str, list[str]]:
+        captured_questions.append(question)
+        return ("測試回答（stub）", "rag", ["延伸 A", "延伸 B", "延伸 C"])
+
+    monkeypatch.setattr("app.main._generate_answer_from_openai_file_search", _capture)
+    response = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "profile-augmented"},
+        json={"question": "我最近適合轉職嗎？", "lang": "zh", "mode": "analysis"},
+    )
+
+    assert response.status_code == 200
+    assert captured_questions == [
+        "以下是提問者固定資料，請納入理解後再回答。\n"
+        "我的姓名：王小明\n"
+        "我母親的姓名：林淑芬\n\n"
+        "本次問題：我最近適合轉職嗎？"
+    ]
+    question = db_session.scalar(
+        select(Question).where(Question.idempotency_key == "profile-augmented")
+    )
+    assert question is not None
+    assert question.question_text == "我最近適合轉職嗎？"

@@ -49,6 +49,14 @@
   - [x] Frontend：處理 `402 INSUFFICIENT_CREDIT` 並導向購點流程
 
 ## P1（高價值 / MVP 完整）
+- [x] 使用者固定問答參數設定檔（姓名 / 母親姓名）
+  - [x] Backend：`users` 新增 `full_name`、`mother_name`
+  - [x] Backend：新增 `GET/PUT /api/v1/me/profile`
+  - [x] Backend：ask / followup runtime 自動拼接固定資料，但 `questions.question_text` 仍只保存原始問題
+  - [x] Backend：Messenger linked user 若 profile 未完成，先引導 `/settings`
+  - [x] Frontend：新增 `/settings` 頁並可修改固定資料
+  - [x] Frontend：首頁在 profile 未完成時停用提問並導向設定
+  - [x] 測試：profile API、ask augmentation、Messenger profile gating、frontend settings flow
 - [x] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）
   - [x] Backend：建立 OpenAI file search 向量庫建置腳本與共用查詢 library（`backend/cyber oracle`）
   - [x] Backend：建立 builder 寫入 rag_files + uploader 寫入 input_files 的 JSON manifest（path -> file_id）持久化
@@ -236,5 +244,6 @@
   - [x] 補充排障說明：若 postgres log 出現 `relation does not exist`、`cannot drop table ... because other objects depend on it`、跨表 FK violation，優先懷疑 test DB isolation 問題，而非產品 runtime regression
   - [x] 檢查 backend 測試命令與文件，避免讓開發中的 docker compose backend 誤用測試資料庫或與測試共用破壞性流程
 - [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL、付款開關）
+- [x] 文件收尾：同步固定問答參數設定流程（PRD / TODO / Messenger runbook / backend README）
 - [ ] 文件收尾：更新本文件完成勾選與子項
 - [ ] 文件收尾：補齊 production 切換命令、人工測試步驟與完成證據

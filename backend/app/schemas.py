@@ -200,6 +200,25 @@ class CreditBalanceResponse(BaseModel):
     payments_enabled: bool
 
 
+class UserProfileResponse(BaseModel):
+    full_name: str | None
+    mother_name: str | None
+    is_complete: bool
+
+
+class UpdateUserProfileRequest(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=100)
+    mother_name: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("full_name", "mother_name")
+    @classmethod
+    def normalize_profile_field(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("profile field must not be empty")
+        return normalized
+
+
 class CreditTransactionItem(BaseModel):
     id: str
     action: Literal["reserve", "capture", "refund", "grant", "purchase"]

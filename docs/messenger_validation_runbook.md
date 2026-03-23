@@ -14,6 +14,7 @@
 - `POST /api/v1/messenger/webhook` event ingest
 - linked / unlinked identity 分流
 - linked user 的 inbound ask flow
+- linked user 的固定問答參數 gating（姓名 / 母親姓名未完成時先引導 `/settings`）
 - Messenger quick reply followup flow
 - Messenger persistent menu（查點數 / 購點 / 歷史）
 - Messenger WebView session bootstrap（`POST /api/v1/messenger/link`）
@@ -27,6 +28,7 @@
 
 因此：
 - `local` 與 `pre-prod` 目前可完整驗證 webhook、ask、followup、linked/unlinked routing、Messenger WebView session bootstrap
+- `local` 與 `pre-prod` 目前也可驗證固定問答參數設定與 profile-required 引導
 - 涉及 WebView payment 的驗證，目前只能驗證前置條件與未來驗證入口，不能宣稱已完成閉環
 
 ## Repo 實際設定對照
@@ -72,6 +74,7 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 若使用者從 persistent menu 首次開啟 `/wallet` 或 `/history` 且尚未建立 WebView session，頁面會提示回 Messenger 重新點擊 linking button
 - Messenger 購點入口會打開 `/wallet?from=messenger-insufficient-credit`
 - `/wallet?from=messenger-insufficient-credit` 會顯示 Messenger 專用提示，並在購買成功後提示使用者回 Messenger 繼續提問
+- 若 linked user 尚未完成固定問答參數，Messenger 會回一個導向 `/settings?from=messenger-profile-required` 的 WebView 按鈕
 
 ## 通訊流程圖
 
@@ -559,6 +562,10 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
    - 預期結果：WebView 會開到 `/wallet?from=messenger-insufficient-credit`，頁面會顯示 Messenger 專用提示
 6. 在 `/wallet?from=messenger-insufficient-credit` 完成購買
    - 預期結果：success message 會明確提示回 Messenger 繼續提問；若剛才是延伸問題情境，會提示點擊「購買完成，重新顯示延伸問題」；若剛才是新問題點數不足，會提示點擊「購買完成，重新送出剛剛的問題」
+7. 對已綁定但未完成固定問答參數的使用者發送一般文字訊息
+   - 預期結果：Messenger 收到「前往設定」按鈕，而不是直接執行 ask
+8. 點擊 `前往設定` 後完成姓名與母親姓名設定
+   - 預期結果：WebView 會先 bootstrap session，再導到 `/settings?from=messenger-profile-required`；儲存後回首頁或回 Messenger 再提問即可正常回答
 
 補充：
 - 現在 `meta_graph` 模式已可在 local + `cloudflared` 下做真正的 Messenger 端到端回覆驗證
@@ -593,14 +600,15 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
    - 預期結果：Messenger 實際收到回答與 followups
 3. 已綁定使用者 quick reply followup
    - 預期結果：可持續追問，扣點規則與 web domain 一致
-4. 未綁定使用者問答
+4. 已綁定但未完成固定問答參數的使用者問答
+   - 預期結果：收到 `/settings` 引導，不會直接消耗點數
+5. 未綁定使用者問答
    - 預期結果：收到正確引導，不誤進完整帳務流程
-5. Outbound 失敗模擬
+6. Outbound 失敗模擬
    - 預期結果：可從 log / monitoring 看出失敗，不是靜默消失
 
 ### Pre-prod 暫時無法完成的閉環
 目前 codebase 尚未完成以下能力，因此 pre-prod 只能驗證缺口，不可假裝已驗過：
-- Messenger WebView 帳號綁定完整流程
 - Messenger WebView Stripe Checkout 完整流程
 - payment webhook -> 點數入帳 -> Messenger 成功通知閉環
 - 完整 signature replay protection

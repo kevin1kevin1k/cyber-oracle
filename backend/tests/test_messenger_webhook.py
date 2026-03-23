@@ -129,12 +129,15 @@ def _create_linked_messenger_user(
     psid: str,
     page_id: str,
     balance: int,
+    profile_complete: bool = True,
 ) -> User:
     user = User(
         id=uuid.uuid4(),
         email=f"{uuid.uuid4()}@example.com",
         password_hash="hash",
         email_verified=True,
+        full_name="王小明" if profile_complete else None,
+        mother_name="林淑芬" if profile_complete else None,
     )
     db_session.add(user)
     db_session.flush()
@@ -420,6 +423,54 @@ def test_webhook_post_message_event_for_linked_user_runs_ask_flow(
         CreditTransaction.action == "capture",
     ).count()
     assert capture_count == 1
+
+
+def test_webhook_post_message_event_for_incomplete_profile_returns_settings_button(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-linked-profile-missing",
+        page_id="page-linked-profile-missing",
+        balance=2,
+        profile_complete=False,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-linked-profile-missing",
+                "time": 1700000101,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-linked-profile-missing"},
+                        "recipient": {"id": "page-linked-profile-missing"},
+                        "timestamp": 1700000101,
+                        "message": {
+                            "mid": "m_linked_profile_missing",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    psid, outgoing = captured_outgoing[0]
+    assert psid == "psid-linked-profile-missing"
+    assert outgoing.kind == "button_template"
+    assert (
+        outgoing.text
+        == "開始提問前，請先補上你的姓名與母親姓名。完成後就能直接在 Messenger 提問。"
+    )
+    assert outgoing.buttons[0]["title"] == "前往設定"
+    assert "next=%2Fsettings%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
 
 
 def test_webhook_post_message_event_with_same_mid_is_idempotent(

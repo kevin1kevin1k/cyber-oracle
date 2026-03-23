@@ -98,6 +98,8 @@ def _make_verified_token_with_wallet(db_session: Session, balance: int) -> tuple
         email=f"{uuid.uuid4()}@example.com",
         password_hash="hash",
         email_verified=True,
+        full_name="王小明",
+        mother_name="林淑芬",
     )
     db_session.add(user)
     db_session.flush()

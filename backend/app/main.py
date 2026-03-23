@@ -22,6 +22,7 @@ from app.models.followup import Followup
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
+from app.models.user import User
 from app.rate_limit import rate_limiter
 from app.schemas import (
     ApiErrorDetail,
@@ -51,9 +52,12 @@ from app.schemas import (
     ResetPasswordRequest,
     ResetPasswordResponse,
     SimulatePaidResponse,
+    UpdateUserProfileRequest,
+    UserProfileResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
 )
+from app.user_profile import is_profile_complete, normalize_profile_value
 from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
 app = FastAPI(title="ELIN Backend", version="0.1.0")
@@ -210,6 +214,24 @@ def _build_answer_preview(answer_text: str) -> str:
     if len(answer_text) <= ASK_HISTORY_PREVIEW_MAX_LENGTH:
         return answer_text
     return f"{answer_text[:ASK_HISTORY_PREVIEW_MAX_LENGTH]}..."
+
+
+def _load_user_profile(*, db: Session, user_id: UUID) -> User:
+    user = db.scalar(select(User).where(User.id == user_id))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "USER_NOT_FOUND", "message": "User not found"},
+        )
+    return user
+
+
+def _to_user_profile_response(*, user: User) -> UserProfileResponse:
+    return UserProfileResponse(
+        full_name=normalize_profile_value(user.full_name),
+        mother_name=normalize_profile_value(user.mother_name),
+        is_complete=is_profile_complete(user),
+    )
 
 
 def _resolve_root_question_id(
@@ -661,6 +683,38 @@ def resend_verification(
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> VerifyEmailResponse:
     _ = (payload, db)
     _raise_disabled_auth_flow()
+
+
+@app.get(
+    "/api/v1/me/profile",
+    response_model=UserProfileResponse,
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_my_profile(
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> UserProfileResponse:
+    user = _load_user_profile(db=db, user_id=auth_context.user_id)
+    return _to_user_profile_response(user=user)
+
+
+@app.put(
+    "/api/v1/me/profile",
+    response_model=UserProfileResponse,
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def update_my_profile(
+    payload: UpdateUserProfileRequest,
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> UserProfileResponse:
+    user = _load_user_profile(db=db, user_id=auth_context.user_id)
+    user.full_name = payload.full_name
+    user.mother_name = payload.mother_name
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return _to_user_profile_response(user=user)
 
 
 @app.get(

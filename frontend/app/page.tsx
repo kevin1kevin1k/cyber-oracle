@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api";
 import { askFollowup, askQuestion, type AskResponse } from "@/lib/ask";
 import { getAuthSession } from "@/lib/auth";
 import { getCreditsBalance } from "@/lib/billing";
+import { getMyProfile } from "@/lib/profile";
 import AppTopNav from "@/components/AppTopNav";
 
 export default function HomePage() {
@@ -19,14 +20,20 @@ export default function HomePage() {
   const [pendingAskKey, setPendingAskKey] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [paymentsEnabled, setPaymentsEnabled] = useState(true);
+  const [profileComplete, setProfileComplete] = useState<boolean | null>(null);
   const [creditDelta, setCreditDelta] = useState<number | null>(null);
   const [activeFollowupId, setActiveFollowupId] = useState<string | null>(null);
   const creditDeltaTimerRef = useRef<number | null>(null);
 
   const isLoggedIn = !!authSession?.accessToken;
   const canSubmit = useMemo(
-    () => authLoaded && question.trim().length > 0 && !loading && isLoggedIn,
-    [authLoaded, question, loading, isLoggedIn]
+    () =>
+      authLoaded &&
+      profileComplete === true &&
+      question.trim().length > 0 &&
+      !loading &&
+      isLoggedIn,
+    [authLoaded, profileComplete, question, loading, isLoggedIn]
   );
 
   useEffect(() => {
@@ -49,19 +56,37 @@ export default function HomePage() {
     }
   }, [authLoaded, isLoggedIn]);
 
+  const refreshProfile = useCallback(async () => {
+    if (!authLoaded || !isLoggedIn) {
+      setProfileComplete(null);
+      return;
+    }
+    try {
+      const payload = await getMyProfile();
+      setProfileComplete(payload.is_complete);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setAuthSession(null);
+        setProfileComplete(null);
+        return;
+      }
+      setProfileComplete(false);
+    }
+  }, [authLoaded, isLoggedIn]);
+
   useEffect(() => {
     let active = true;
     async function loadBalance() {
       if (!active) {
         return;
       }
-      await refreshBalance();
+      await Promise.all([refreshBalance(), refreshProfile()]);
     }
     void loadBalance();
     return () => {
       active = false;
     };
-  }, [refreshBalance]);
+  }, [refreshBalance, refreshProfile]);
 
   useEffect(() => {
     return () => {
@@ -88,6 +113,11 @@ export default function HomePage() {
       if (err.status === 401 || err.code === "UNAUTHORIZED") {
         setAuthSession(null);
         setError("登入狀態已失效，請回 Messenger 重新進入。");
+        return;
+      }
+      if (err.code === "PROFILE_INCOMPLETE") {
+        setProfileComplete(false);
+        setError("請先完成個人設定，再開始提問。");
         return;
       }
       if (err.code === "INSUFFICIENT_CREDIT") {
@@ -138,6 +168,10 @@ export default function HomePage() {
       setError("請先輸入問題。");
       return;
     }
+    if (profileComplete !== true) {
+      setError("請先完成個人設定，再開始提問。");
+      return;
+    }
 
     setLoading(true);
     const askKey = pendingAskKey ?? crypto.randomUUID();
@@ -183,7 +217,11 @@ export default function HomePage() {
           {!authLoaded ? (
             <p>登入狀態載入中...</p>
           ) : isLoggedIn ? (
-            <p>目前已連結 Messenger，可直接提問。</p>
+            <p>
+              {profileComplete === false
+                ? "目前已連結 Messenger，但還沒完成個人設定。"
+                : "目前已連結 Messenger，可直接提問。"}
+            </p>
           ) : (
             <p>
               這個頁面僅支援從 Messenger WebView 進入。請回 Messenger 點擊綁定或功能按鈕。
@@ -197,6 +235,15 @@ export default function HomePage() {
           )}
         </div>
 
+        {isLoggedIn && profileComplete === false && (
+          <div className="answer">
+            <p>這套問答會固定使用你的姓名與母親姓名作為背景資料。</p>
+            <p className="helper-links">
+              <Link href="/settings">先完成個人設定</Link>
+            </p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <label htmlFor="question">問題內容</label>
           <textarea
@@ -209,7 +256,7 @@ export default function HomePage() {
               setQuestion(e.target.value);
             }}
             placeholder="請輸入你想詢問的問題"
-            disabled={!authLoaded || !isLoggedIn}
+            disabled={!authLoaded || !isLoggedIn || profileComplete !== true}
           />
           <button type="submit" disabled={!canSubmit}>
             {loading ? "送出中..." : "送出問題"}
@@ -223,6 +270,12 @@ export default function HomePage() {
               <>
                 {" "}
                 <Link href="/wallet?from=ask-402">立即前往購點</Link>
+              </>
+            )}
+            {error.includes("個人設定") && (
+              <>
+                {" "}
+                <Link href="/settings">前往設定</Link>
               </>
             )}
           </p>

@@ -21,6 +21,8 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
     DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
+    DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
+    DEFAULT_MESSENGER_PROFILE_REQUIRED_REPLY,
     DEFAULT_MESSENGER_REPLAY_ASK_BUTTON_TITLE,
     DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
@@ -51,6 +53,8 @@ from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
 from app.models.messenger_pending_ask import MessengerPendingAsk
+from app.models.user import User
+from app.user_profile import PROFILE_INCOMPLETE_CODE, is_profile_complete
 
 ASK_DEFAULT_LANG = "zh"
 ASK_DEFAULT_MODE = "analysis"
@@ -93,6 +97,8 @@ class MessengerEventService:
         user_id = self.maybe_resolve_internal_user(identity=identity)
         if user_id is None:
             return [self.build_linking_message(identity=identity)]
+        if not self._has_complete_profile(user_id=user_id):
+            return [self.build_profile_required_message(identity=identity)]
 
         question_text = (command.text or "").strip()
         if not question_text:
@@ -121,6 +127,8 @@ class MessengerEventService:
                     idempotency_key=idempotency_key,
                 )
                 return [self.build_topup_message(pending_ask_id=pending_ask.id)]
+            if isinstance(exc.detail, dict) and exc.detail.get("code") == PROFILE_INCOMPLETE_CODE:
+                return [self.build_profile_required_message(identity=identity)]
             return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
 
         if ask_result.replayed and command.message_mid:
@@ -140,6 +148,8 @@ class MessengerEventService:
         user_id = self.maybe_resolve_internal_user(identity=identity)
         if user_id is None:
             return [self.build_linking_message(identity=identity)]
+        if not self._has_complete_profile(user_id=user_id):
+            return [self.build_profile_required_message(identity=identity)]
 
         followup_id = self._parse_followup_payload(command.quick_reply_payload)
         if followup_id is None:
@@ -161,6 +171,8 @@ class MessengerEventService:
                 if not settings.payments_enabled:
                     return [self.build_topup_message()]
                 return [self.build_topup_message(followup_id=followup_id)]
+            if isinstance(exc.detail, dict) and exc.detail.get("code") == PROFILE_INCOMPLETE_CODE:
+                return [self.build_profile_required_message(identity=identity)]
             if exc.status_code in {403, 404, 409}:
                 return [
                     MessengerOutgoingMessage(
@@ -279,14 +291,6 @@ class MessengerEventService:
         return [f"{index + 1}. {option.content}" for index, option in enumerate(followup_options)]
 
     def build_linking_message(self, *, identity: MessengerIdentity) -> MessengerOutgoingMessage:
-        link_token = create_messenger_link_token(
-            psid=identity.psid,
-            page_id=identity.page_id,
-            secret_key=settings.jwt_secret,
-            algorithm=settings.jwt_algorithm,
-        )
-        query = urlencode({"token": link_token})
-        link_url = f"{self._base_web_url()}/messenger/link?{query}"
         return MessengerOutgoingMessage(
             kind="button_template",
             text=DEFAULT_UNLINKED_REPLY,
@@ -294,7 +298,27 @@ class MessengerEventService:
                 {
                     "type": "web_url",
                     "title": DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
-                    "url": link_url,
+                    "url": self._build_messenger_link_url(identity=identity),
+                }
+            ],
+        )
+
+    def build_profile_required_message(
+        self,
+        *,
+        identity: MessengerIdentity,
+    ) -> MessengerOutgoingMessage:
+        return MessengerOutgoingMessage(
+            kind="button_template",
+            text=DEFAULT_MESSENGER_PROFILE_REQUIRED_REPLY,
+            buttons=[
+                {
+                    "type": "web_url",
+                    "title": DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
+                    "url": self._build_messenger_link_url(
+                        identity=identity,
+                        next_path="/settings?from=messenger-profile-required",
+                    ),
                 }
             ],
         )
@@ -479,6 +503,27 @@ class MessengerEventService:
 
     def _base_web_url(self) -> str:
         return settings.messenger_web_base_url.rstrip("/")
+
+    def _build_messenger_link_url(
+        self,
+        *,
+        identity: MessengerIdentity,
+        next_path: str | None = None,
+    ) -> str:
+        link_token = create_messenger_link_token(
+            psid=identity.psid,
+            page_id=identity.page_id,
+            secret_key=settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+        query_params = {"token": link_token}
+        if next_path:
+            query_params["next"] = next_path
+        return f"{self._base_web_url()}/messenger/link?{urlencode(query_params)}"
+
+    def _has_complete_profile(self, *, user_id: UUID) -> bool:
+        user = self._db.scalar(select(User).where(User.id == user_id))
+        return is_profile_complete(user)
 
     def resolve_or_create_identity(self, *, psid: str, page_id: str | None) -> MessengerIdentity:
         normalized_page_id = (page_id or "").strip()

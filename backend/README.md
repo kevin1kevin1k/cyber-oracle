@@ -45,14 +45,25 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - returns HS256 bearer token with `sub` + `jti` claims
   - creates a `sessions` record for token revocation/expiration checks
 
+## User Profile APIs
+- `GET /api/v1/me/profile`
+  - requires authenticated session
+  - returns `full_name`, `mother_name`, and `is_complete`
+- `PUT /api/v1/me/profile`
+  - requires authenticated session
+  - updates the fixed ask-profile fields used for question augmentation
+  - both `full_name` and `mother_name` are required and trimmed server-side
+
 ## Ask API (credit flow)
 - `POST /api/v1/ask`
   - requires authenticated session
+  - also requires completed user profile (`full_name` + `mother_name`)
   - supports `Idempotency-Key` request header
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
   - response now includes `followup_options` (0..3 model-generated followup options)
+  - backend augments the model input with per-user fixed fields (`full_name`, `mother_name`), but persisted `questions.question_text` remains the raw user-entered question
   - credit flow:
     - success: `reserve -> persist question/answer -> capture`
     - processing failure: `reserve -> refund`
@@ -60,6 +71,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
     - `500 OPENAI_NOT_CONFIGURED`: missing/invalid OpenAI settings or manifest
     - `502 OPENAI_ASK_FAILED`: upstream OpenAI request failed or returned empty output
   - returns `402` with `INSUFFICIENT_CREDIT` when balance is not enough
+  - returns `409 PROFILE_INCOMPLETE` when fixed ask-profile fields are missing
   - duplicate retries with same `Idempotency-Key` replay previous successful response and do not double-charge
 
 ## Followup APIs
@@ -180,6 +192,7 @@ Current channel capabilities:
   - quick replies
   - button templates
 - linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
+- linked users who have not filled `full_name` / `mother_name` are guided to `/settings` before ask/followup execution
 - when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled

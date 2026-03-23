@@ -15,7 +15,9 @@ from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.question import Question
+from app.models.user import User
 from app.schemas import AskResponse, FollowupOption, LayerPercentage
+from app.user_profile import build_augmented_question, ensure_profile_complete
 from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
 
@@ -278,6 +280,13 @@ def execute_ask_for_user(
         return replayed
 
     request_id = str(uuid4())
+    user = db.scalar(select(User).where(User.id == user_id))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "USER_NOT_FOUND", "message": "User not found"},
+        )
+    ensure_profile_complete(user)
 
     wallet = db.scalar(
         select(CreditWallet)
@@ -327,7 +336,8 @@ def execute_ask_for_user(
         ) from exc
 
     try:
-        answer_text, source, followup_contents = generator(question_text)
+        generator_question = build_augmented_question(user=user, question_text=question_text)
+        answer_text, source, followup_contents = generator(generator_question)
         answer_text = _strip_followup_section_from_answer(answer_text, followup_contents)
         question = Question(
             user_id=user_id,

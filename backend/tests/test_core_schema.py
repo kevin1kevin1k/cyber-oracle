@@ -89,7 +89,8 @@ def _create_user(db_session: Session) -> User:
 
 
 def test_core_tables_exist(engine) -> None:
-    table_names = set(inspect(engine).get_table_names())
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
     assert "sessions" in table_names
     assert "questions" in table_names
     assert "answers" in table_names
@@ -97,6 +98,9 @@ def test_core_tables_exist(engine) -> None:
     assert "credit_transactions" in table_names
     assert "orders" in table_names
     assert "followups" in table_names
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    assert "full_name" in user_columns
+    assert "mother_name" in user_columns
 
 
 def test_credit_wallet_balance_must_be_non_negative(db_session: Session) -> None:

@@ -90,9 +90,14 @@ export default function AppTopNav() {
                   <button type="button" className="account-action" role="menuitem" disabled>
                     個人檔案（即將推出）
                   </button>
-                  <button type="button" className="account-action" role="menuitem" disabled>
-                    設定（即將推出）
-                  </button>
+                  <Link
+                    href="/settings"
+                    className="account-action account-action-link"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    設定
+                  </Link>
                   <button
                     type="button"
                     className="account-action account-action-danger"

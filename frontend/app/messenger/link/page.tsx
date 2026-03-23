@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
 import { saveAuthSession } from "@/lib/auth";
 import { linkMessengerIdentity } from "@/lib/messenger";
 
 export default function MessengerLinkPage() {
+  const router = useRouter();
   const [token, setToken] = useState("");
+  const [nextPath, setNextPath] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "linking" | "linked">("idle");
   const [error, setError] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<"linked_new" | "session_restored" | null>(null);
@@ -19,6 +22,8 @@ export default function MessengerLinkPage() {
     }
     const params = new URLSearchParams(window.location.search);
     setToken(params.get("token") ?? "");
+    const requestedNext = params.get("next");
+    setNextPath(requestedNext && requestedNext.startsWith("/") ? requestedNext : null);
   }, []);
 
   useEffect(() => {
@@ -41,6 +46,10 @@ export default function MessengerLinkPage() {
           userId: payload.user_id,
           userLabel: "Messenger 已連結",
         });
+        if (nextPath) {
+          router.replace(nextPath);
+          return;
+        }
         setLinkStatus(payload.link_status);
         setStatus("linked");
       } catch (err) {
@@ -69,7 +78,7 @@ export default function MessengerLinkPage() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [nextPath, router, token]);
 
   return (
     <main>

@@ -35,6 +35,8 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    full_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    mother_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
     channel_user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
