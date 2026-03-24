@@ -166,6 +166,19 @@ Launch-mode guidance:
 cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/grant_launch_credits.py --email target@example.com && cd ..
 ```
 
+Production deployment baseline:
+- Render is the default production target for this repo
+- recommended domains:
+  - frontend / WebView: `https://app.<your-domain>`
+  - backend API: `https://api.<your-domain>`
+- minimum production env contract:
+  - backend: `APP_ENV=prod`, `DATABASE_URL`, `JWT_SECRET`, `OPENAI_API_KEY`, `VECTOR_STORE_ID`, `CORS_ORIGINS=https://app.<your-domain>`, `PAYMENTS_ENABLED=false`, `MESSENGER_ENABLED=true`, `META_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN`, `META_APP_SECRET`, `MESSENGER_VERIFY_SIGNATURE=true`, `MESSENGER_OUTBOUND_MODE=meta_graph`, `MESSENGER_WEB_BASE_URL=https://app.<your-domain>`
+  - frontend: `NEXT_PUBLIC_API_BASE_URL=https://api.<your-domain>`
+- repo blueprint:
+  - `render.yaml` defines the baseline `frontend + backend + postgres` Render topology
+- production launch / smoke test / rollback steps:
+  - see `docs/production_launch_runbook.md`
+
 ## Messenger Integration (Skeleton)
 This repository now includes a non-invasive Messenger channel adapter skeleton under `app/messenger/`.
 

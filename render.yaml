@@ -1,0 +1,57 @@
+databases:
+  - name: elin-postgres
+    databaseName: elin
+
+services:
+  - type: web
+    name: elin-backend
+    runtime: python
+    plan: starter
+    rootDir: backend
+    healthCheckPath: /api/v1/health
+    buildCommand: pip install --no-cache-dir uv && uv sync --no-dev
+    startCommand: uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: DATABASE_URL
+        fromDatabase:
+          name: elin-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: VECTOR_STORE_ID
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PAYMENTS_ENABLED
+        value: "false"
+      - key: LAUNCH_CREDIT_GRANT_AMOUNT
+        value: "50"
+      - key: MESSENGER_ENABLED
+        value: "true"
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: MESSENGER_VERIFY_SIGNATURE
+        value: "true"
+      - key: MESSENGER_OUTBOUND_MODE
+        value: meta_graph
+      - key: MESSENGER_WEB_BASE_URL
+        sync: false
+
+  - type: web
+    name: elin-frontend
+    runtime: node
+    plan: starter
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false

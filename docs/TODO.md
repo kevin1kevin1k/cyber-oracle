@@ -225,6 +225,7 @@
 
 ### 正式切換前仍待完成
 - [ ] Deploy：建立 Render production 服務（frontend / backend / postgres）與固定網域
+  - [x] 新增 `render.yaml` Blueprint，固定 backend / frontend / postgres 基本拓樸
   - [ ] frontend 固定 `APP` 網域（例如 `https://app.<domain>`）
   - [ ] backend 固定 `API` 網域（例如 `https://api.<domain>`）
   - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
@@ -236,7 +237,11 @@
 - [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制
 - [ ] Billing：正式串接真實 Stripe callback、簽章驗證與 Messenger 回饋閉環
 - [ ] Observability：補 auth / billing / messenger / launch grant 的 request-level 審計與告警
-- [ ] Runbook：補「發生 UndefinedColumn / 版本不一致」與 production rollback 標準排障步驟
+- [ ] Runbook：production launch / rollback / smoke test 正式切換
+  - [x] 新增 `docs/production_launch_runbook.md`
+  - [x] 補「發生 UndefinedColumn / 版本不一致」排障步驟
+  - [x] 補 production rollback 標準排障步驟
+  - [ ] 補首次正式切換的實際完成證據（截圖 / 連線結果 / Meta 後台設定完成）
 
 ### 驗證與文件收尾
 - [x] 測試基礎設施：隔離 backend test DB，避免一般測試、destructive tests 與手動開發流程互踩
@@ -244,7 +249,9 @@
   - [x] 文件化規則：不得並行執行多個指向同一個 `TEST_DATABASE_URL` 的 `pytest` 命令，避免 `drop/create/delete` 與一般測試互相污染
   - [x] 補充排障說明：若 postgres log 出現 `relation does not exist`、`cannot drop table ... because other objects depend on it`、跨表 FK violation，優先懷疑 test DB isolation 問題，而非產品 runtime regression
   - [x] 檢查 backend 測試命令與文件，避免讓開發中的 docker compose backend 誤用測試資料庫或與測試共用破壞性流程
-- [ ] Frontend：補齊 production 環境變數文件（API base URL、站點 URL、付款開關）
+- [x] Frontend：補齊 production 環境變數文件（API base URL、站點 URL、付款開關）
 - [x] 文件收尾：同步固定問答參數設定流程（PRD / TODO / Messenger runbook / backend README）
 - [ ] 文件收尾：更新本文件完成勾選與子項
 - [ ] 文件收尾：補齊 production 切換命令、人工測試步驟與完成證據
+  - [x] 補齊 production 切換命令與人工測試步驟
+  - [ ] 補齊實際完成證據
