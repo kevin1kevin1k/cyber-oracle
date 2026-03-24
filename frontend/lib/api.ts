@@ -2,10 +2,14 @@ import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 const DEFAULT_LOCAL_API_BASE = "http://localhost:8000";
 
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
 function resolveApiBase(): string {
   const configuredBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configuredBase) {
-    return configuredBase;
+    return normalizeBaseUrl(configuredBase);
   }
 
   if (typeof window !== "undefined") {
@@ -13,7 +17,7 @@ function resolveApiBase(): string {
     const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
 
     if (!isLocalHost && protocol === "https:") {
-      return origin;
+      return normalizeBaseUrl(origin);
     }
   }
 
@@ -36,6 +40,7 @@ export async function apiRequest<T>(
   options: RequestInit & { auth?: boolean } = {}
 ): Promise<T> {
   const apiBase = resolveApiBase();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const { auth = false, headers, ...rest } = options;
   const mergedHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -49,7 +54,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetch(`${apiBase}${normalizedPath}`, {
     ...rest,
     headers: mergedHeaders,
   });
