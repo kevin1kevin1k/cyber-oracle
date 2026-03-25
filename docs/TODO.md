@@ -231,6 +231,11 @@
   - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
 - [ ] DB：production 部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
 - [ ] Messenger：Meta 後台切換正式 webhook callback URL、Page 訂閱與 persistent menu sync
+- [ ] Messenger：將 `META_PAGE_ACCESS_TOKEN` 收斂為 production 可持續使用的正式 token 管理流程
+  - [ ] 不再直接使用 Graph API Explorer 臨時 token 作為 production backend token
+  - [ ] 用 Meta Access Token Debugger 驗證 token 是否仍有效、權限是否包含 `pages_messaging`
+  - [ ] 文件化 token 更新後必須同步 Render env 並重新 deploy backend
+  - [ ] 文件化 token 外洩或 `OAuthException code 190 / subcode 463` 時的 rotation 步驟
 - [ ] Messenger：驗證 persistent menu 靜態 `/wallet`、`/history` 在 session 遺失時會正確提示回聊天室重新進入
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略

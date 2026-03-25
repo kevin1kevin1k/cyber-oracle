@@ -86,6 +86,10 @@ curl -I https://app.<your-domain>
 2. 重新確認 Page subscription 至少包含：
    - `messages`
    - `messaging_postbacks`
+3. 取得 production 用 `META_PAGE_ACCESS_TOKEN` 時，避免直接把 Graph API Explorer 臨時 token 當成長期 production token。
+   - 先用 Access Token Debugger 驗證 token 是否有效、是否仍帶有 `pages_messaging`
+   - token 更新後，必須同步更新 Render backend `META_PAGE_ACCESS_TOKEN`，並重新 deploy backend
+   - 若 token 曾在聊天、截圖、螢幕分享或其他非 secrets 管道外露，視同外洩，應立即重發並替換
 3. 用 production env 執行 persistent menu sync：
 ```bash
 cd /Users/kevin1kevin1k/cyber-oracle/backend && \
@@ -156,6 +160,21 @@ cd /opt/render/project/src/backend && uv run alembic upgrade head && uv run alem
    - `GET /api/v1/health`
    - Messenger linking
    - `SHOW_BALANCE`
+
+### 5. Messenger 有收 webhook，但完全回不出訊息
+若 Render backend log 出現：
+- `OAuthException`
+- `code 190`
+- `error_subcode 463`
+
+代表目前 `META_PAGE_ACCESS_TOKEN` 已失效或已過期。優先處置：
+1. 在 Meta 重新取得新的 Page Access Token。
+2. 用 Access Token Debugger 檢查 token 是否有效、權限是否正確。
+3. 更新 Render backend `META_PAGE_ACCESS_TOKEN`。
+4. 重新 deploy backend。
+5. 重新測：
+   - `查看剩餘點數`
+   - 直接提問
 
 ## 完成定義
 完成這份 runbook 的正式切換，才代表目前最小公開體驗版具備：
