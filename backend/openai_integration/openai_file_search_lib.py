@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -146,12 +147,18 @@ class OpenAIFileSearchClient:
     ) -> None:
         candidate_env = env_file or DEFAULT_ENV_FILE
 
-        resolved_api_key = api_key or _read_dotenv_value(candidate_env, "OPENAI_API_KEY")
+        resolved_api_key = (
+            api_key
+            or os.getenv("OPENAI_API_KEY", "").strip()
+            or _read_dotenv_value(candidate_env, "OPENAI_API_KEY")
+        )
         if not resolved_api_key:
             raise ValueError("OPENAI_API_KEY is required")
 
-        resolved_vector_store_id = vector_store_id or _read_dotenv_value(
-            candidate_env, "VECTOR_STORE_ID"
+        resolved_vector_store_id = (
+            vector_store_id
+            or os.getenv("VECTOR_STORE_ID", "").strip()
+            or _read_dotenv_value(candidate_env, "VECTOR_STORE_ID")
         )
         if not resolved_vector_store_id:
             raise ValueError("VECTOR_STORE_ID is required")

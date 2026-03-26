@@ -31,6 +31,30 @@ def test_init_requires_vector_store_id(tmp_path: Path) -> None:
         OpenAIFileSearchClient(env_file=env_file)
 
 
+def test_init_reads_process_env_before_dotenv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "env-key"
+            self.responses = SimpleNamespace()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+    monkeypatch.setenv("OPENAI_API_KEY", "env-key")
+    monkeypatch.setenv("VECTOR_STORE_ID", "vs_env")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=dotenv-key\nVECTOR_STORE_ID=vs_dotenv\n",
+        encoding="utf-8",
+    )
+
+    client = OpenAIFileSearchClient(env_file=env_file)
+
+    assert client._vector_store_id == "vs_env"
+
+
 def test_load_manifest_requires_existing_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

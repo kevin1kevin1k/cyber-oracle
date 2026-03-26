@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-change-me-please-replace-32+"
     jwt_algorithm: str = "HS256"
     jwt_exp_minutes: int = 60
+    openai_api_key: str | None = None
+    vector_store_id: str | None = None
     openai_manifest_path: str = "openai_integration/input_files_manifest.json"
     openai_ask_model: str = "gpt-5.2-2025-12-11"
     openai_ask_pipeline: Literal["one_stage", "two_stage"] = "one_stage"

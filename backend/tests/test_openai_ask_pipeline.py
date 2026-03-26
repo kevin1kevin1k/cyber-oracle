@@ -7,8 +7,16 @@ def test_generate_answer_uses_one_stage_pipeline(monkeypatch) -> None:
     called: dict[str, object] = {}
 
     class FakeClient:
-        def __init__(self, *, model: str) -> None:
+        def __init__(
+            self,
+            *,
+            api_key: str | None = None,
+            model: str,
+            vector_store_id: str | None = None,
+        ) -> None:
             called["init_model"] = model
+            called["init_api_key"] = api_key
+            called["init_vector_store_id"] = vector_store_id
 
         def run_one_stage_response(self, **kwargs):  # noqa: ANN003
             called["pipeline"] = "one_stage"
@@ -32,6 +40,8 @@ def test_generate_answer_uses_one_stage_pipeline(monkeypatch) -> None:
     monkeypatch.setattr(main_module.settings, "openai_ask_model", "gpt-5.2-2025-12-11")
     monkeypatch.setattr(main_module.settings, "openai_ask_top_k", 3)
     monkeypatch.setattr(main_module.settings, "openai_ask_system_prompt", "sys")
+    monkeypatch.setattr(main_module.settings, "openai_api_key", "render-key")
+    monkeypatch.setattr(main_module.settings, "vector_store_id", "vs_render")
 
     answer, source, followups = main_module._generate_answer_from_openai_file_search("問題")
 
@@ -39,6 +49,8 @@ def test_generate_answer_uses_one_stage_pipeline(monkeypatch) -> None:
     assert source == "openai"
     assert followups == ["延伸 A", "延伸 B"]
     assert called["pipeline"] == "one_stage"
+    assert called["init_api_key"] == "render-key"
+    assert called["init_vector_store_id"] == "vs_render"
     kwargs = called["kwargs"]
     assert kwargs["question"] == "問題"
     assert kwargs["top_k"] == 3
@@ -50,8 +62,16 @@ def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
     called: dict[str, object] = {}
 
     class FakeClient:
-        def __init__(self, *, model: str) -> None:
+        def __init__(
+            self,
+            *,
+            api_key: str | None = None,
+            model: str,
+            vector_store_id: str | None = None,
+        ) -> None:
             called["init_model"] = model
+            called["init_api_key"] = api_key
+            called["init_vector_store_id"] = vector_store_id
 
         def run_one_stage_response(self, **kwargs):  # noqa: ANN003
             raise AssertionError("run_one_stage_response should not be called in two_stage mode")
@@ -75,6 +95,8 @@ def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
     monkeypatch.setattr(main_module.settings, "openai_ask_model", "gpt-5.2-2025-12-11")
     monkeypatch.setattr(main_module.settings, "openai_ask_top_k", 3)
     monkeypatch.setattr(main_module.settings, "openai_ask_system_prompt", "sys")
+    monkeypatch.setattr(main_module.settings, "openai_api_key", "render-key")
+    monkeypatch.setattr(main_module.settings, "vector_store_id", "vs_render")
 
     answer, source, followups = main_module._generate_answer_from_openai_file_search("問題")
 
@@ -82,6 +104,8 @@ def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
     assert source == "rag"
     assert followups == ["延伸 X"]
     assert called["pipeline"] == "two_stage"
+    assert called["init_api_key"] == "render-key"
+    assert called["init_vector_store_id"] == "vs_render"
     kwargs = called["kwargs"]
     assert kwargs["question"] == "問題"
     assert kwargs["top_k"] == 3

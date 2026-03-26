@@ -56,7 +56,11 @@ class FollowupExecutionResult:
 def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
     manifest_path = Path(settings.openai_manifest_path).resolve()
     try:
-        client = OpenAIFileSearchClient(model=settings.openai_ask_model)
+        client = OpenAIFileSearchClient(
+            api_key=settings.openai_api_key,
+            model=settings.openai_ask_model,
+            vector_store_id=settings.vector_store_id,
+        )
         if settings.openai_ask_pipeline == "two_stage":
             result = client.run_two_stage_response(
                 question=question,

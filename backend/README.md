@@ -321,6 +321,7 @@ sequenceDiagram
 Environment variables:
 - `OPENAI_API_KEY`: OpenAI API key in `backend/.env`
 - `VECTOR_STORE_ID`: vector store id used by file search (auto-written by vector store builder)
+- production / Render runtime reads `OPENAI_API_KEY` and `VECTOR_STORE_ID` from process environment first, then falls back to local `backend/.env`
 - `OPENAI_ASK_PIPELINE`: ask pipeline mode (`one_stage` default, optional `two_stage`)
 
 Build or refresh vector store from local files:
