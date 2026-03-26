@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.15（Messenger Menu Bridge and Actionable Error Replies）
+- 文件版本：v0.16（Public Beta Readiness and Meta Release Gates）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -65,6 +65,7 @@ MVP 目標：
 - MVP 先以單一 Facebook Page / 單一 Messenger 通路為主。
 - WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 的 `購點/歷史` 入口採 postback bridge，再回一顆帶 signed token 的 WebView 按鈕。
 - Stripe Checkout 成功/失敗回傳以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
+- 對外公開試用的 release gate 不只包含 deploy 成功，也包含 Meta app 已完成對應 review / advanced access 與公開化設定，讓非 app role 的一般使用者可實際與 bot 互動。
 
 ## 5. 核心使用流程
 ### 5.1 主要 User Journeys
@@ -168,6 +169,7 @@ sequenceDiagram
 - 系統需支援 webhook event handling（message/postback/quick reply）。
 - 系統需支援 Messenger persistent menu / postback 常用入口（如查點數）。
 - 對需要站內 session 的 persistent menu 入口（例如購點、歷史），系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
+- 系統正式公開前，需完成 Meta app 對應的 review / advanced access / publish 流程，避免功能只對 `Administrators / Developers / Testers` 可用。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
 - 帳號綁定與 WebView session 建立需可透過 Messenger WebView 完成。
@@ -253,5 +255,6 @@ sequenceDiagram
 - 依賴 OpenAI API 可用性與成本波動。
 - 依賴 Stripe 與支付回調穩定性與正確性。
 - 依賴 Meta Messenger 平台可用性、政策與 API 變更。
+- 若 Meta app 仍停留在 role-only 測試模式，或 `pages_messaging` 等必要能力尚未完成 review / advanced access，非 app role 使用者將無法實際試用 bot。
 - RAG 文件品質直接影響回答準確度。
 - 規則模組與 RAG 結果衝突時，需明確定義優先級。

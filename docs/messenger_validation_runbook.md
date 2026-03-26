@@ -175,6 +175,7 @@ sequenceDiagram
 - 正式 outbound message delivery 正常
 - signature verify、監控告警、重試與營運排障入口齊備
 - 正式用戶行為與綁定/購點策略一致
+- 非 app role 的一般 Facebook 使用者也能完成同樣的主流程驗證
 
 ## Webhook 綁定步驟
 1. 啟動 backend，並確認 `MESSENGER_ENABLED=true`
@@ -194,6 +195,25 @@ sequenceDiagram
 補充：
 - quick reply 事件會跟著 message event 進來，不需要另一條專用 webhook route
 - 若 App 還在 development mode，通常只有 app 的 admin / developer / tester 能實際測 bot
+- 若目標是讓所有人都可試用，需另外完成 Messenger 對應的 review / advanced access 與公開化設定；不能把 app roles 當成公開上線方案
+
+## 對外公開試用前的 Meta 檢查
+在 `prod` 之前，先把這些項目當成 release gate：
+
+1. Meta app 已完成公開化前置資料
+   - `Settings > Basic` 的 App Icon、Privacy Policy URL、聯絡資訊已補齊
+   - 若 dashboard 要求資料刪除說明 / Terms URL，也一併補齊
+2. Meta app 已完成 Messenger 對應 review / advanced access
+   - 至少確認 `pages_messaging`
+   - 並檢查 dashboard 是否同時要求 `pages_show_list`、`pages_manage_metadata`
+3. 已確認 app 目前的公開切換方式
+   - 傳統 app 常見是 `Development -> Live`
+   - Business app 可能改以 access levels 表示
+   - 不論 UI 名稱，目標都一樣：非 role 使用者可實際與 bot 互動
+4. Facebook Page 本身可被公開互動
+   - 已發布
+   - Messenger 已開啟
+   - 沒有年齡 / 國家限制把試用者擋掉
 
 ## Cloudflared（Local 測試必備）
 對目前這個 repo 來說，local Messenger webhook 測試最簡單的做法，就是使用 `cloudflared` 開一條 quick tunnel，把本機 `http://localhost:8000` 暴露成公開 HTTPS URL。
@@ -623,6 +643,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 3. Page subscription 與 App 權限狀態正確
 4. outbound mode 為 `meta_graph`
 5. 監控、告警、log 查詢入口可用
+6. 已確認 Meta app 不再只是 role-only 測試狀態，非 app role 使用者可被允許互動
 
 ### Prod 驗證案例
 1. 正式 webhook verify / event ingest
@@ -635,6 +656,8 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
    - 預期結果：outbound failure、upstream ask failure 能在監控中被發現
 5. incident runbook 驗證
    - 預期結果：營運能快速確認是 webhook 問題、Graph API 問題、還是 ask domain 問題
+6. 非 role 一般使用者公開 smoke test
+   - 預期結果：沒有任何 app role 的 Facebook 帳號也能完成第一句訊息、linking、`/settings`、Web ask、Messenger ask、`查看剩餘點數`、`前往購點` / `查看歷史` bridge
 
 ### Prod 必要風險控管
 正式環境不應只停留在目前 skeleton：
@@ -654,6 +677,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 - [ ] outbound send failure 可被觀測
 - [ ] tunnel / staging / prod callback URL 設定有文件化
 - [ ] App development mode 下的測試角色限制已確認
+- [ ] 非 app role 的一般 Facebook 帳號已完成公開 smoke test
 
 ## 常見問題與排錯
 
@@ -669,6 +693,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 - 沒設定 `META_PAGE_ACCESS_TOKEN`
 - `meta_graph` mode 有設定，但 token 無效或權限不足
 - webhook request 內同步執行 OpenAI ask / followup 太久，Meta 端先 timeout
+- app 仍停留在只有 admin / developer / tester 可互動的測試狀態
 
 若 Messenger 有回分類錯誤訊息：
 - `目前系統設定尚未完成，請稍後再試。`：優先檢查 `OPENAI_API_KEY`、`VECTOR_STORE_ID` 等 backend production env

@@ -80,17 +80,29 @@ curl -I https://app.<your-domain>
 - status `200` 或 `307/308` 後最終可成功打開首頁
 
 ## Meta 後台切換
+0. 先確認這次目標是「app role 內測」還是「對外公開試用」。
+   - 若只是 role 內測，`Administrators / Developers / Testers` 即可。
+   - 若要讓一般使用者可試用，必須另外完成 Meta app review / advanced access / publish 流程；只部署 Render 與設定 webhook 不足以公開。
 1. 到 Meta Developers 後台更新 Messenger webhook：
    - Callback URL：`https://api.<your-domain>/api/v1/messenger/webhook`
    - Verify Token：必須與 backend `META_VERIFY_TOKEN` 完全一致
 2. 重新確認 Page subscription 至少包含：
    - `messages`
    - `messaging_postbacks`
-3. 取得 production 用 `META_PAGE_ACCESS_TOKEN` 時，避免直接把 Graph API Explorer 臨時 token 當成長期 production token。
+3. 檢查 Meta app 的公開化前置條件：
+   - `Settings > Basic` 已補齊公開前置資料（例如 App Icon、Privacy Policy URL、聯絡資訊）
+   - app type / dashboard access mode 已確認，知道這個 app 應在哪裡切到公開可用
+   - Messenger 相關 review / advanced access 已通過，至少涵蓋 `pages_messaging`
+   - 若 dashboard 顯示 Messenger / Page 綁定還需要 `pages_show_list`、`pages_manage_metadata` 等 access，一併完成
+4. 檢查對外使用的 Facebook Page：
+   - Page 已發布
+   - Messenger 已開啟
+   - 沒有年齡 / 國家限制把目標試用者擋掉
+5. 取得 production 用 `META_PAGE_ACCESS_TOKEN` 時，避免直接把 Graph API Explorer 臨時 token 當成長期 production token。
    - 先用 Access Token Debugger 驗證 token 是否有效、是否仍帶有 `pages_messaging`
    - token 更新後，必須同步更新 Render backend `META_PAGE_ACCESS_TOKEN`，並重新 deploy backend
    - 若 token 曾在聊天、截圖、螢幕分享或其他非 secrets 管道外露，視同外洩，應立即重發並替換
-3. 用 production env 執行 persistent menu sync：
+6. 用 production env 執行 persistent menu sync：
 ```bash
 cd /Users/kevin1kevin1k/cyber-oracle/backend && \
 META_PAGE_ACCESS_TOKEN='<prod-page-token>' \
@@ -121,7 +133,7 @@ cd ..
    - 預期可看到剛剛問題
 
 ### Messenger
-1. 直接在 Messenger 提問
+1. 用 app role 帳號直接在 Messenger 提問
    - 預期收到回答與 followups
 2. 點 `查看剩餘點數`
    - 預期收到正確餘額
@@ -131,6 +143,16 @@ cd ..
    - 預期只收到體驗版提示，不應導向真實購點
 5. 清掉 WebView session 後，從 persistent menu 點 `前往購點` 或 `查看歷史`
    - 預期 bot 會先回 bridge 按鈕；點擊後仍可成功開啟目標頁，不會卡在 static menu dead end
+
+### 對外公開試用額外 Smoke Test
+1. 用一個沒有任何 app role 的 Facebook 帳號打開同一個 Page 對話。
+   - 預期可以正常開始聊天；若完全沒有回覆，優先懷疑 app 仍停留在 role-only 測試模式。
+2. 非 role 帳號直接傳第一句訊息。
+   - 預期 bot 會回覆，而不是只對 admin / developer / tester 有反應。
+3. 非 role 帳號完成 linking、settings、Web ask、Messenger ask。
+   - 預期整條主流程都可用。
+4. 非 role 帳號測 `查看剩餘點數`、`前往購點`、`查看歷史`。
+   - 預期 menu bridge 與 WebView 入口都正常。
 
 ## 排障與回滾
 ### 1. `UndefinedColumn` / `UndefinedTable`
@@ -176,10 +198,18 @@ cd /opt/render/project/src/backend && uv run alembic upgrade head && uv run alem
    - `查看剩餘點數`
    - 直接提問
 
+### 6. 只有 app role 帳號可用，其他人完全收不到 bot 回覆
+優先檢查：
+1. Meta app 是否仍停留在 role-only 測試狀態。
+2. `pages_messaging` 與相關必要 access 是否已完成 review / advanced access。
+3. 對外試用的 Facebook 帳號是否真的不在 app roles 內。
+4. Page 是否已發布且可被公開互動。
+
 ## 完成定義
 完成這份 runbook 的正式切換，才代表目前最小公開體驗版具備：
 - 固定 production domain
 - production DB migration baseline
 - Meta webhook / persistent menu 正式綁定
 - Messenger -> WebView -> ask/history/wallet 主流程可用
+- 非 role 一般使用者也能實際與 bot 互動
 - launch mode (`PAYMENTS_ENABLED=false`) 的正式行為與文件一致

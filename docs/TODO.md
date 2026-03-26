@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.15` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.16` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -250,6 +250,10 @@
   - [ ] 文件化 token 外洩或 `OAuthException code 190 / subcode 463` 時的 rotation 步驟
 - [x] Messenger：將 persistent menu 的 `/wallet`、`/history` 靜態入口改為 postback bridge，避免首次進入卡死
 - [ ] Messenger：驗證 production persistent menu bridge（`前往購點` / `查看歷史`）能成功回帶 signed WebView 按鈕並開啟目標頁
+- [ ] Messenger：以「沒有任何 app role 的 Facebook 帳號」完成公開 smoke test
+  - [ ] 一般帳號可從 Messenger 對 Page 發第一句訊息並收到 bot 回覆
+  - [ ] 一般帳號可完成 linking、settings、Web ask、Messenger ask
+  - [ ] 一般帳號可使用 `查看剩餘點數`、`前往購點`、`查看歷史` bridge
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
 - [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制
