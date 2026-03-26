@@ -101,8 +101,8 @@ cd ..
 ```
 預期結果：
 - Meta Page 的 `Get Started` 與 `persistent_menu` 都被成功更新
-- `前往購點` 指向 `https://app.<your-domain>/wallet`
-- `查看歷史` 指向 `https://app.<your-domain>/history`
+- `前往購點` 為 `OPEN_WALLET` postback，會再回帶 signed token 的 WebView 按鈕
+- `查看歷史` 為 `OPEN_HISTORY` postback，會再回帶 signed token 的 WebView 按鈕
 
 ## 正式上線 Smoke Test
 ### API / Web
@@ -129,8 +129,8 @@ cd ..
    - 預期收到 `前往設定` + `設定完成，重新送出剛剛的問題`
 4. 若 launch credits 用完再提問
    - 預期只收到體驗版提示，不應導向真實購點
-5. 清掉 WebView session 後從 persistent menu 直接打開 `/wallet` 或 `/history`
-   - 預期頁面提示回 Messenger 重新進入
+5. 清掉 WebView session 後，從 persistent menu 點 `前往購點` 或 `查看歷史`
+   - 預期 bot 會先回 bridge 按鈕；點擊後仍可成功開啟目標頁，不會卡在 static menu dead end
 
 ## 排障與回滾
 ### 1. `UndefinedColumn` / `UndefinedTable`

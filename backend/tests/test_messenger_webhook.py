@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import jwt
 import pytest
+from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
@@ -793,18 +794,17 @@ def test_webhook_post_message_event_with_insufficient_credit_returns_topup_butto
     assert pending_ask.question_text == "我還可以問嗎"
     assert pending_ask.lang == "zh"
     assert pending_ask.mode == "analysis"
-    assert outgoing.buttons == [
-        {
-            "type": "web_url",
-            "title": "前往購點",
-            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
-        },
-        {
-            "type": "postback",
-            "title": "購買完成，重新送出剛剛的問題",
-            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
-        },
-    ]
+    assert outgoing.buttons[0]["type"] == "web_url"
+    assert outgoing.buttons[0]["title"] == "前往購點"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert "next=%2Fwallet%3Ffrom%3Dmessenger-insufficient-credit" in outgoing.buttons[0]["url"]
+    assert outgoing.buttons[1] == {
+        "type": "postback",
+        "title": "購買完成，重新送出剛剛的問題",
+        "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+    }
 
 
 def test_webhook_post_message_event_with_insufficient_credit_reuses_existing_pending_ask(
@@ -1005,8 +1005,8 @@ def test_webhook_post_postback_get_started_for_unlinked_user_returns_linking(
     assert response.status_code == 200
     assert outgoing_messages[-1] == (
         "psid-get-started-unlinked",
-        "button_template",
-        "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。",
+        "text",
+        "已開啟 Messenger 助手。你可以直接提問，或使用選單查看點數、購點與歷史。",
     )
 
 
@@ -1048,13 +1048,15 @@ def test_webhook_post_postback_show_balance_for_zero_balance_returns_topup(
     assert balance_outgoing.kind == "text"
     assert balance_outgoing.text == "目前剩餘 0 點。"
     assert topup_outgoing.kind == "button_template"
-    assert topup_outgoing.buttons == [
-        {
-            "type": "web_url",
-            "title": "前往購點",
-            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
-        }
-    ]
+    assert topup_outgoing.buttons[0]["type"] == "web_url"
+    assert topup_outgoing.buttons[0]["title"] == "前往購點"
+    assert topup_outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert (
+        "next=%2Fwallet%3Ffrom%3Dmessenger-insufficient-credit"
+        in topup_outgoing.buttons[0]["url"]
+    )
 
 
 def test_webhook_post_postback_show_balance_for_unlinked_user_returns_linking(
@@ -1087,6 +1089,86 @@ def test_webhook_post_postback_show_balance_for_unlinked_user_returns_linking(
         "button_template",
         "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。",
     )
+
+
+def test_webhook_post_postback_open_wallet_returns_bridge_button(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-open-wallet",
+        page_id="page-open-wallet",
+        balance=3,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-open-wallet",
+                "time": 1700001006,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-open-wallet"},
+                        "recipient": {"id": "page-open-wallet"},
+                        "timestamp": 1700001006,
+                        "postback": {"payload": "OPEN_WALLET"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    _, outgoing = captured_outgoing[0]
+    assert outgoing.kind == "button_template"
+    assert outgoing.text == "請點擊下方按鈕開啟點數錢包。"
+    assert outgoing.buttons[0]["type"] == "web_url"
+    assert outgoing.buttons[0]["title"] == "開啟點數錢包"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert "next=%2Fwallet" in outgoing.buttons[0]["url"]
+
+
+def test_webhook_post_postback_open_history_for_unlinked_user_returns_bridge_button(
+    client: TestClient,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-open-history",
+                "time": 1700001007,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-open-history"},
+                        "recipient": {"id": "page-open-history"},
+                        "timestamp": 1700001007,
+                        "postback": {"payload": "OPEN_HISTORY"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    _, outgoing = captured_outgoing[0]
+    assert outgoing.kind == "button_template"
+    assert outgoing.text == "請點擊下方按鈕開啟歷史問答。"
+    assert outgoing.buttons[0]["title"] == "開啟歷史問答"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert "next=%2Fhistory" in outgoing.buttons[0]["url"]
 
 
 def test_webhook_post_quick_reply_event(client: TestClient) -> None:
@@ -1364,18 +1446,17 @@ def test_webhook_post_quick_reply_with_insufficient_credit_restores_followup(
     assert psid == "psid-followup-3"
     assert outgoing.kind == "button_template"
     assert outgoing.text == "目前點數不足，請先購點後再提問。"
-    assert outgoing.buttons == [
-        {
-            "type": "web_url",
-            "title": "前往購點",
-            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
-        },
-        {
-            "type": "postback",
-            "title": "購買完成，重新顯示延伸問題",
-            "payload": f"RESHOW_FOLLOWUPS:{followup.id}",
-        },
-    ]
+    assert outgoing.buttons[0]["type"] == "web_url"
+    assert outgoing.buttons[0]["title"] == "前往購點"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert "next=%2Fwallet%3Ffrom%3Dmessenger-insufficient-credit" in outgoing.buttons[0]["url"]
+    assert outgoing.buttons[1] == {
+        "type": "postback",
+        "title": "購買完成，重新顯示延伸問題",
+        "payload": f"RESHOW_FOLLOWUPS:{followup.id}",
+    }
 
 
 def test_webhook_post_postback_reshows_pending_followups_after_topup(
@@ -1630,18 +1711,17 @@ def test_webhook_post_postback_replay_pending_ask_without_credit_returns_topup_a
     assert stored_pending_ask.status == "pending"
     _, outgoing = captured_outgoing[-1]
     assert outgoing.kind == "button_template"
-    assert outgoing.buttons == [
-        {
-            "type": "web_url",
-            "title": "前往購點",
-            "url": "https://frontend.example.com/wallet?from=messenger-insufficient-credit",
-        },
-        {
-            "type": "postback",
-            "title": "購買完成，重新送出剛剛的問題",
-            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
-        },
-    ]
+    assert outgoing.buttons[0]["type"] == "web_url"
+    assert outgoing.buttons[0]["title"] == "前往購點"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert "next=%2Fwallet%3Ffrom%3Dmessenger-insufficient-credit" in outgoing.buttons[0]["url"]
+    assert outgoing.buttons[1] == {
+        "type": "postback",
+        "title": "購買完成，重新送出剛剛的問題",
+        "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+    }
 
 
 def test_webhook_post_postback_replay_pending_ask_without_profile_returns_settings_again(
@@ -1793,6 +1873,180 @@ def test_webhook_post_postback_replays_pending_ask_after_profile_completed(
         outgoing.text
         == "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C"
     )
+
+
+def test_webhook_post_message_event_returns_configured_ask_failure_message(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-ask-config",
+        page_id="page-ask-config",
+        balance=3,
+    )
+
+    def _raise_config_error(**kwargs):  # noqa: ANN003, ANN001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "OPENAI_NOT_CONFIGURED", "message": "OPENAI_API_KEY is required"},
+        )
+
+    monkeypatch.setattr("app.messenger.service.execute_ask_for_user", _raise_config_error)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-ask-config",
+                "time": 1700002697,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-ask-config"},
+                        "recipient": {"id": "page-ask-config"},
+                        "timestamp": 1700002697,
+                        "message": {"mid": "m_ask_config", "text": "請幫我看看"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.kind == "text"
+    assert outgoing.text == "目前系統設定尚未完成，請稍後再試。"
+
+
+def test_webhook_post_quick_reply_returns_upstream_followup_failure_message(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-followup-upstream",
+        page_id="page-followup-upstream",
+        balance=3,
+    )
+    followup = _create_pending_followup(
+        db_session,
+        user_id=user.id,
+        content="延伸追問",
+    )
+
+    def _raise_upstream_error(**kwargs):  # noqa: ANN003, ANN001
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "OPENAI_ASK_FAILED", "message": "OpenAI ask request failed"},
+        )
+
+    monkeypatch.setattr("app.messenger.service.execute_followup_for_user", _raise_upstream_error)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-followup-upstream",
+                "time": 1700002698,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-followup-upstream"},
+                        "recipient": {"id": "page-followup-upstream"},
+                        "timestamp": 1700002698,
+                        "message": {
+                            "mid": "m_followup_upstream",
+                            "text": "追問",
+                            "quick_reply": {"payload": f"FOLLOWUP:{followup.id}"},
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.kind == "text"
+    assert outgoing.text == "目前延伸問題服務暫時異常，請稍後再試。"
+
+
+def test_webhook_post_postback_replay_pending_ask_returns_configured_ask_failure_message(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-replay-config",
+        page_id="page-replay-config",
+        balance=3,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-replay-config",
+            MessengerIdentity.page_id == "page-replay-config",
+        )
+    )
+    assert identity is not None
+    pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="重送這題",
+        lang="zh",
+        mode="analysis",
+        idempotency_key=f"msg:{uuid.uuid4().hex}",
+        status="pending",
+    )
+    db_session.add(pending_ask)
+    db_session.commit()
+
+    def _raise_config_error(**kwargs):  # noqa: ANN003, ANN001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "OPENAI_NOT_CONFIGURED", "message": "OPENAI_API_KEY is required"},
+        )
+
+    monkeypatch.setattr("app.messenger.service.execute_ask_for_user", _raise_config_error)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-replay-config",
+                "time": 1700002699,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-replay-config"},
+                        "recipient": {"id": "page-replay-config"},
+                        "timestamp": 1700002699,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+                            "title": "購買完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored_pending_ask = db_session.scalar(
+        select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
+    )
+    assert stored_pending_ask is not None
+    assert stored_pending_ask.status == "pending"
+    _, outgoing = captured_outgoing[-1]
+    assert outgoing.kind == "text"
+    assert outgoing.text == "目前系統設定尚未完成，請稍後再試。"
 
 
 def test_webhook_post_postback_replay_pending_ask_unavailable_returns_fallback(
@@ -2123,12 +2377,12 @@ def test_persistent_menu_uses_wallet_title_when_payments_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "payments_enabled", False)
-    monkeypatch.setattr(settings, "messenger_web_base_url", "https://frontend.example.com")
 
     menu = build_default_persistent_menu()
 
     assert menu[1]["title"] == "點數錢包"
-    assert menu[1]["url"] == "https://frontend.example.com/wallet"
+    assert menu[1]["payload"] == "OPEN_WALLET"
+    assert menu[2]["payload"] == "OPEN_HISTORY"
 
 
 def test_webhook_outbound_failure_returns_accepted_instead_of_500(

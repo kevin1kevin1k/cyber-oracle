@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.14（Messenger Profile Replay for Incomplete Fixed Ask Data）
+- 文件版本：v0.15（Messenger Menu Bridge and Actionable Error Replies）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -63,7 +63,7 @@ MVP 目標：
 
 ### 4.3 MVP 假設與待確認
 - MVP 先以單一 Facebook Page / 單一 Messenger 通路為主。
-- WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 的靜態 WebView 入口先依賴既有 session。
+- WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 的 `購點/歷史` 入口採 postback bridge，再回一顆帶 signed token 的 WebView 按鈕。
 - Stripe Checkout 成功/失敗回傳以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
 
 ## 5. 核心使用流程
@@ -96,8 +96,8 @@ MVP 目標：
 
 6. 常用功能入口
    - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。
-   - 使用者可透過 Messenger persistent menu 開啟購點頁與歷史頁。
-   - 若尚未綁定帳號或 WebView session 已失效，點擊需要站內身份的入口時，系統需回覆綁定引導或要求回聊天室重新進入。
+   - 使用者可透過 Messenger persistent menu 觸發購點頁與歷史頁 bridge，再開啟對應 WebView。
+   - 若尚未綁定帳號或 WebView session 已失效，系統需回覆一顆可重新建立 session 並導到目標頁的按鈕，而不是讓頁面停在無法前進的 `session required` 狀態。
 
 ### 5.2 Messenger-first 問答流程
 1. Intake：接收 Messenger 訊息事件（text/postback/quick reply）與 channel context。
@@ -167,6 +167,7 @@ sequenceDiagram
 - 系統需支援 Messenger webhook verification（challenge 驗證）。
 - 系統需支援 webhook event handling（message/postback/quick reply）。
 - 系統需支援 Messenger persistent menu / postback 常用入口（如查點數）。
+- 對需要站內 session 的 persistent menu 入口（例如購點、歷史），系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
 - 帳號綁定與 WebView session 建立需可透過 Messenger WebView 完成。

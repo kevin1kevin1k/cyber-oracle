@@ -165,7 +165,7 @@ export default function WalletPage() {
     return (
       <MessengerSessionRequired
         title="點數錢包"
-        detail="如果你是從 Messenger 選單第一次打開這個頁面，請先回聊天室點擊綁定按鈕建立 WebView session。"
+        detail="如果你是從 Messenger 選單第一次打開這個頁面，請回聊天室點擊「前往購點」；系統會再發一顆可直接開啟點數錢包的按鈕。"
       />
     );
   }

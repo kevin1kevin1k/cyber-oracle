@@ -13,6 +13,9 @@ test("history shows messenger session required when unauthenticated", async ({ p
 
   await expect(page.getByRole("heading", { name: "歷史問答" })).toBeVisible();
   await expect(page.getByText("目前這個頁面只支援從 Messenger WebView 進入。")).toBeVisible();
+  await expect(
+    page.getByText("請回聊天室點擊「查看歷史」；系統會再發一顆可直接開啟歷史問答的按鈕。")
+  ).toBeVisible();
 });
 
 test("history loads list and detail with existing messenger session", async ({ page }) => {

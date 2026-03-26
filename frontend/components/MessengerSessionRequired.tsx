@@ -7,7 +7,7 @@ type MessengerSessionRequiredProps = {
 
 export default function MessengerSessionRequired({
   title,
-  detail = "請回 Messenger 對話，重新點擊綁定或功能按鈕進入這個頁面。",
+  detail = "請回 Messenger 對話，重新點擊對應功能入口；系統會再發一顆可直接開啟這個頁面的按鈕。",
 }: MessengerSessionRequiredProps) {
   return (
     <main>

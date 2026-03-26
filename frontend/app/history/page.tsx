@@ -112,7 +112,7 @@ export default function HistoryPage() {
     return (
       <MessengerSessionRequired
         title="歷史問答"
-        detail="這個頁面需要既有 Messenger WebView session。若目前沒有登入態，請回聊天室重新點擊綁定或歷史入口。"
+        detail="這個頁面需要既有 Messenger WebView session。若目前沒有登入態，請回聊天室點擊「查看歷史」；系統會再發一顆可直接開啟歷史問答的按鈕。"
       />
     );
   }

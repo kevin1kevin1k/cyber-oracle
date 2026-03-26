@@ -56,8 +56,8 @@ Backend endpoint：
 目前 repo 已支援一套最小可用的 Messenger persistent menu：
 
 - `查看剩餘點數`：postback `SHOW_BALANCE`
-- `前往購點`：開啟 `/wallet`
-- `查看歷史`：開啟 `/history`
+- `前往購點`：postback `OPEN_WALLET`
+- `查看歷史`：postback `OPEN_HISTORY`
 
 同步方式：
 ```bash
@@ -70,9 +70,9 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
 - 若剩餘點數為 `0`，系統會再附上既有購點按鈕
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
-- `前往購點` / `查看歷史` 仍是靜態 WebView 入口，不做 per-user 動態 menu 切換
-- 若使用者從 persistent menu 首次開啟 `/wallet` 或 `/history` 且尚未建立 WebView session，頁面會提示回 Messenger 重新點擊 linking button
-- Messenger 購點入口會打開 `/wallet?from=messenger-insufficient-credit`
+- `前往購點` / `查看歷史` 會先走 postback bridge，再回一顆帶 signed token 的 WebView 按鈕
+- 因此即使使用者尚未建立 WebView session，也能從 persistent menu 自救，不必先手動找回原本的 linking button
+- Messenger 購點入口會先回一顆 bridge 按鈕，最終導到 `/wallet?from=messenger-insufficient-credit`
 - `/wallet?from=messenger-insufficient-credit` 會顯示 Messenger 專用提示，並在購買成功後提示使用者回 Messenger 繼續提問
 - 若 linked user 尚未完成固定問答參數，Messenger 會回一個導向 `/settings?from=messenger-profile-required` 的 WebView 按鈕，並保留原問題供使用者完成設定後一鍵重送
 
@@ -669,6 +669,11 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 - 沒設定 `META_PAGE_ACCESS_TOKEN`
 - `meta_graph` mode 有設定，但 token 無效或權限不足
 - webhook request 內同步執行 OpenAI ask / followup 太久，Meta 端先 timeout
+
+若 Messenger 有回分類錯誤訊息：
+- `目前系統設定尚未完成，請稍後再試。`：優先檢查 `OPENAI_API_KEY`、`VECTOR_STORE_ID` 等 backend production env
+- `目前問答服務暫時異常，請稍後再試。`：優先檢查 OpenAI/RAG 上游失敗與 backend runtime log
+- `目前延伸問題服務暫時異常，請稍後再試。`：優先檢查 followup ask runtime 與 OpenAI 上游
 
 若 `cloudflared` 或 backend log 出現：
 ```text

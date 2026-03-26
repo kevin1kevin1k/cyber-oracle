@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.14` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.15` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -154,6 +154,7 @@
   - [x] Backend：新增 `SHOW_BALANCE` postback，回覆目前剩餘點數
   - [x] Backend：`SHOW_BALANCE` 在 0 點時附帶既有購點導流按鈕
   - [x] Backend：未綁定使用者點擊需要帳號的 menu 入口時回覆 linking 引導
+  - [x] Backend：`前往購點` / `查看歷史` 改為 postback bridge，再回 signed WebView 按鈕避免首次進入卡在 session required
   - [x] 文件：PRD / README / Messenger 驗證 runbook 補上 persistent menu 與同步方式
   - [x] 測試：覆蓋 persistent menu payload 與 `SHOW_BALANCE` postback
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
@@ -236,7 +237,8 @@
   - [ ] 用 Meta Access Token Debugger 驗證 token 是否仍有效、權限是否包含 `pages_messaging`
   - [ ] 文件化 token 更新後必須同步 Render env 並重新 deploy backend
   - [ ] 文件化 token 外洩或 `OAuthException code 190 / subcode 463` 時的 rotation 步驟
-- [ ] Messenger：驗證 persistent menu 靜態 `/wallet`、`/history` 在 session 遺失時會正確提示回聊天室重新進入
+- [x] Messenger：將 persistent menu 的 `/wallet`、`/history` 靜態入口改為 postback bridge，避免首次進入卡死
+- [ ] Messenger：驗證 production persistent menu bridge（`前往購點` / `查看歷史`）能成功回帶 signed WebView 按鈕並開啟目標頁
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
 - [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制

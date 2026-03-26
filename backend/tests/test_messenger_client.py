@@ -195,14 +195,14 @@ def test_build_default_persistent_menu_uses_current_web_base_url(
             "payload": "SHOW_BALANCE",
         },
         {
-            "type": "web_url",
+            "type": "postback",
             "title": "前往購點",
-            "url": "https://messenger.example.com/wallet",
+            "payload": "OPEN_WALLET",
         },
         {
-            "type": "web_url",
+            "type": "postback",
             "title": "查看歷史",
-            "url": "https://messenger.example.com/history",
+            "payload": "OPEN_HISTORY",
         },
     ]
 

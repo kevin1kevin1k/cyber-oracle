@@ -11,15 +11,23 @@ from app.ask_service import execute_ask_for_user, execute_followup_for_user
 from app.config import settings
 from app.messenger.constants import (
     DEFAULT_FOLLOWUP_PROMPT_TEXT,
+    DEFAULT_MESSENGER_ASK_CONFIG_REPLY,
     DEFAULT_MESSENGER_ASK_FAILED_REPLY,
+    DEFAULT_MESSENGER_ASK_UPSTREAM_REPLY,
     DEFAULT_MESSENGER_BALANCE_BUTTON_TITLE,
     DEFAULT_MESSENGER_BALANCE_REPLY,
+    DEFAULT_MESSENGER_FOLLOWUP_CONFIG_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
+    DEFAULT_MESSENGER_FOLLOWUP_UPSTREAM_REPLY,
     DEFAULT_MESSENGER_GET_STARTED_REPLY,
     DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_OPEN_HISTORY_BUTTON_TITLE,
+    DEFAULT_MESSENGER_OPEN_HISTORY_REPLY,
+    DEFAULT_MESSENGER_OPEN_WALLET_BUTTON_TITLE,
+    DEFAULT_MESSENGER_OPEN_WALLET_REPLY,
     DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
     DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
     DEFAULT_MESSENGER_PROFILE_REPLAY_ASK_BUTTON_TITLE,
@@ -41,6 +49,8 @@ from app.messenger.constants import (
     IDENTITY_STATUS_LINKED,
     IDENTITY_STATUS_UNLINKED,
     MESSENGER_PLATFORM,
+    OPEN_HISTORY_PAYLOAD,
+    OPEN_WALLET_PAYLOAD,
     SHOW_BALANCE_PAYLOAD,
 )
 from app.messenger.schemas import (
@@ -144,10 +154,10 @@ class MessengerEventService:
                     mode=ASK_DEFAULT_MODE,
                     idempotency_key=idempotency_key,
                 )
-                return [self.build_topup_message(pending_ask_id=pending_ask.id)]
+                return [self.build_topup_message(identity=identity, pending_ask_id=pending_ask.id)]
             if isinstance(exc.detail, dict) and exc.detail.get("code") == PROFILE_INCOMPLETE_CODE:
                 return [self.build_profile_required_message(identity=identity)]
-            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
+            return [self._build_ask_failure_message(exc=exc)]
 
         if ask_result.replayed and command.message_mid:
             return []
@@ -188,7 +198,7 @@ class MessengerEventService:
             if exc.status_code == 402:
                 if not settings.payments_enabled:
                     return [self.build_topup_message()]
-                return [self.build_topup_message(followup_id=followup_id)]
+                return [self.build_topup_message(identity=identity, followup_id=followup_id)]
             if isinstance(exc.detail, dict) and exc.detail.get("code") == PROFILE_INCOMPLETE_CODE:
                 return [self.build_profile_required_message(identity=identity)]
             if exc.status_code in {403, 404, 409}:
@@ -199,10 +209,7 @@ class MessengerEventService:
                     )
                 ]
             return [
-                MessengerOutgoingMessage(
-                    kind="text",
-                    text=DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
-                )
+                self._build_followup_failure_message(exc=exc)
             ]
 
         return self._build_answer_outgoing_messages(
@@ -216,8 +223,6 @@ class MessengerEventService:
         command: MessengerIncomingCommand,
         identity: MessengerIdentity,
     ) -> list[MessengerOutgoingMessage]:
-        if self.maybe_resolve_internal_user(identity=identity) is None:
-            return [self.build_linking_message(identity=identity)]
         payload = command.postback_payload or ""
         if payload == GET_STARTED_PAYLOAD:
             return [
@@ -226,8 +231,14 @@ class MessengerEventService:
                     text=DEFAULT_MESSENGER_GET_STARTED_REPLY,
                 )
             ]
+        if payload == OPEN_WALLET_PAYLOAD:
+            return [self.build_wallet_entry_message(identity=identity)]
+        if payload == OPEN_HISTORY_PAYLOAD:
+            return [self.build_history_entry_message(identity=identity)]
+        if self.maybe_resolve_internal_user(identity=identity) is None:
+            return [self.build_linking_message(identity=identity)]
         if payload == SHOW_BALANCE_PAYLOAD:
-            return self._build_balance_messages(user_id=identity.user_id)
+            return self._build_balance_messages(identity=identity, user_id=identity.user_id)
         reshow_followup_id = self._parse_reshow_followups_payload(payload)
         if reshow_followup_id is not None:
             return self._reshow_followup_messages(
@@ -321,6 +332,30 @@ class MessengerEventService:
             ],
         )
 
+    def build_wallet_entry_message(
+        self,
+        *,
+        identity: MessengerIdentity,
+    ) -> MessengerOutgoingMessage:
+        return self._build_menu_bridge_message(
+            identity=identity,
+            next_path="/wallet",
+            text=DEFAULT_MESSENGER_OPEN_WALLET_REPLY,
+            button_title=DEFAULT_MESSENGER_OPEN_WALLET_BUTTON_TITLE,
+        )
+
+    def build_history_entry_message(
+        self,
+        *,
+        identity: MessengerIdentity,
+    ) -> MessengerOutgoingMessage:
+        return self._build_menu_bridge_message(
+            identity=identity,
+            next_path="/history",
+            text=DEFAULT_MESSENGER_OPEN_HISTORY_REPLY,
+            button_title=DEFAULT_MESSENGER_OPEN_HISTORY_BUTTON_TITLE,
+        )
+
     def build_profile_required_message(
         self,
         *,
@@ -354,6 +389,7 @@ class MessengerEventService:
     def build_topup_message(
         self,
         *,
+        identity: MessengerIdentity | None = None,
         followup_id: UUID | None = None,
         pending_ask_id: UUID | None = None,
     ) -> MessengerOutgoingMessage:
@@ -363,6 +399,11 @@ class MessengerEventService:
                 text=DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
             )
         topup_url = f"{self._base_web_url()}/wallet?from=messenger-insufficient-credit"
+        if identity is not None:
+            topup_url = self._build_messenger_link_url(
+                identity=identity,
+                next_path="/wallet?from=messenger-insufficient-credit",
+            )
         buttons: list[dict[str, str]] = [
             {
                 "type": "web_url",
@@ -392,7 +433,32 @@ class MessengerEventService:
             buttons=buttons,
         )
 
-    def _build_balance_messages(self, *, user_id) -> list[MessengerOutgoingMessage]:
+    def _build_menu_bridge_message(
+        self,
+        *,
+        identity: MessengerIdentity,
+        next_path: str,
+        text: str,
+        button_title: str,
+    ) -> MessengerOutgoingMessage:
+        return MessengerOutgoingMessage(
+            kind="button_template",
+            text=text,
+            buttons=[
+                {
+                    "type": "web_url",
+                    "title": button_title,
+                    "url": self._build_messenger_link_url(identity=identity, next_path=next_path),
+                }
+            ],
+        )
+
+    def _build_balance_messages(
+        self,
+        *,
+        identity: MessengerIdentity,
+        user_id,
+    ) -> list[MessengerOutgoingMessage]:
         wallet = self._db.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
         balance = wallet.balance if wallet is not None else 0
         if balance <= 0:
@@ -401,7 +467,7 @@ class MessengerEventService:
                     kind="text",
                     text=DEFAULT_MESSENGER_BALANCE_REPLY.format(balance=balance),
                 ),
-                self.build_topup_message(),
+                self.build_topup_message(identity=identity),
             ]
         return [
             MessengerOutgoingMessage(
@@ -511,7 +577,7 @@ class MessengerEventService:
             )
         except HTTPException as exc:
             if exc.status_code == 402:
-                return [self.build_topup_message(pending_ask_id=pending_ask.id)]
+                return [self.build_topup_message(identity=identity, pending_ask_id=pending_ask.id)]
             if isinstance(exc.detail, dict) and exc.detail.get("code") == PROFILE_INCOMPLETE_CODE:
                 return [
                     self.build_profile_required_message(
@@ -519,7 +585,7 @@ class MessengerEventService:
                         pending_ask_id=pending_ask.id,
                     )
                 ]
-            return [MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)]
+            return [self._build_ask_failure_message(exc=exc)]
 
         tracked_pending_ask = self._db.scalar(
             select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask.id)
@@ -678,9 +744,32 @@ class MessengerEventService:
         except ValueError:
             return None
 
+    def _build_ask_failure_message(self, *, exc: HTTPException) -> MessengerOutgoingMessage:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        code = detail.get("code")
+        if code == "OPENAI_NOT_CONFIGURED":
+            return MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_CONFIG_REPLY)
+        if code == "OPENAI_ASK_FAILED":
+            return MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_UPSTREAM_REPLY)
+        return MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_ASK_FAILED_REPLY)
+
+    def _build_followup_failure_message(self, *, exc: HTTPException) -> MessengerOutgoingMessage:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        code = detail.get("code")
+        if code == "OPENAI_NOT_CONFIGURED":
+            return MessengerOutgoingMessage(
+                kind="text",
+                text=DEFAULT_MESSENGER_FOLLOWUP_CONFIG_REPLY,
+            )
+        if code == "OPENAI_ASK_FAILED":
+            return MessengerOutgoingMessage(
+                kind="text",
+                text=DEFAULT_MESSENGER_FOLLOWUP_UPSTREAM_REPLY,
+            )
+        return MessengerOutgoingMessage(kind="text", text=DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY)
+
 
 def build_default_persistent_menu() -> list[dict[str, str]]:
-    base_url = settings.messenger_web_base_url.rstrip("/")
     wallet_title = (
         DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE
         if settings.payments_enabled
@@ -693,14 +782,14 @@ def build_default_persistent_menu() -> list[dict[str, str]]:
             "payload": SHOW_BALANCE_PAYLOAD,
         },
         {
-            "type": "web_url",
+            "type": "postback",
             "title": wallet_title,
-            "url": f"{base_url}/wallet",
+            "payload": OPEN_WALLET_PAYLOAD,
         },
         {
-            "type": "web_url",
+            "type": "postback",
             "title": DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
-            "url": f"{base_url}/history",
+            "payload": OPEN_HISTORY_PAYLOAD,
         },
     ]
 

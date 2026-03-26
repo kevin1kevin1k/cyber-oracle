@@ -13,6 +13,9 @@ test("wallet shows messenger session required when unauthenticated", async ({ pa
 
   await expect(page.getByRole("heading", { name: "點數錢包" })).toBeVisible();
   await expect(page.getByText("目前這個頁面只支援從 Messenger WebView 進入。")).toBeVisible();
+  await expect(
+    page.getByText("請回聊天室點擊「前往購點」；系統會再發一顆可直接開啟點數錢包的按鈕。")
+  ).toBeVisible();
 });
 
 test("wallet shows readonly launch mode when payments are disabled", async ({ page }) => {
