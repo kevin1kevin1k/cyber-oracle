@@ -261,6 +261,49 @@ button:disabled {
   margin-top: 12px;
 }
 
+.legal-page {
+  display: grid;
+  gap: 18px;
+  line-height: 1.7;
+}
+
+.legal-page h1,
+.legal-page h2,
+.legal-page p {
+  margin: 0;
+}
+
+.legal-page h2 {
+  margin-top: 8px;
+}
+
+.legal-eyebrow {
+  color: #0d3f85;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.legal-updated {
+  color: #4f5d70;
+}
+
+.legal-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.legal-links a {
+  color: #0d3f85;
+  font-weight: 700;
+}
+
 .token-box {
   word-break: break-all;
   border: 1px dashed #7b8ba3;

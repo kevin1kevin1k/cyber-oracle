@@ -225,6 +225,17 @@
 - [x] Docker：backend Dockerfile 改為 production 啟動模式；`docker-compose.yml` 明確保留 local-dev override
 
 ### 正式切換前仍待完成
+- [ ] Meta：完成對外公開試用所需的 app review / access level / publish 流程
+  - [ ] 確認目前 app type / dashboard 模式是 `Development/Live` 還是 `Business app access levels`，並記錄實際公開切換入口
+  - [ ] 補齊 Meta `Settings > Basic` 的公開前置資料（App Icon、Privacy Policy URL、聯絡資訊、必要時的資料刪除說明）
+    - [x] frontend 已提供公開 `/privacy` 與 `/data-deletion` 頁面
+    - [ ] 將正式網址填回 Meta `Settings > Basic`
+  - [ ] 送出 Messenger 相關 review / advanced access（至少涵蓋 `pages_messaging`，並檢查是否同時要求 `pages_show_list`、`pages_manage_metadata`）
+  - [ ] 準備 reviewer 可用的 Page、測試步驟與 screencast（message -> linking -> settings -> ask -> menu bridge）
+  - [ ] 將 app 切到非 role 使用者可用的公開狀態
+- [ ] Meta：確認對外使用的 Facebook Page 已可公開互動
+  - [ ] Page 已發布且 Messenger 已開啟
+  - [ ] 沒有年齡 / 國家限制把預期試用者擋掉
 - [ ] Deploy：建立 Render production 服務（frontend / backend / postgres）與固定網域
   - [x] 新增 `render.yaml` Blueprint，固定 backend / frontend / postgres 基本拓樸
   - [ ] frontend 固定 `APP` 網域（例如 `https://app.<domain>`）
