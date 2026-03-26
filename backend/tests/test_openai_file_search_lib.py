@@ -74,6 +74,137 @@ def test_load_manifest_requires_existing_file(
         client.load_uploaded_files_manifest(tmp_path / "missing.json")
 
 
+def test_one_stage_response_falls_back_when_manifest_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                id="resp_1",
+                output=[
+                    {
+                        "type": "file_search_call",
+                        "results": [
+                            {
+                                "file_id": "vs_file_1",
+                                "filename": "doc-a.md",
+                                "score": 0.88,
+                            }
+                        ],
+                    }
+                ],
+                output_text=_structured_output_text("fallback answer", ["延伸 A"]),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+    client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11", env_file=env_file)
+
+    result = client.run_one_stage_response(
+        question="問題",
+        manifest_path=tmp_path / "missing.json",
+        top_k=3,
+        system_prompt="你是文件助手",
+        debug=True,
+    )
+
+    assert result.response_text == "fallback answer"
+    assert result.followup_options == ["延伸 A"]
+    assert result.input_files == []
+    assert len(result.top_matches) == 1
+    fake_client = client._client
+    request = fake_client.responses.calls[0]
+    assert request["tools"][0]["vector_store_ids"] == ["vs_abc"]
+    user_content = request["input"][1]["content"]
+    assert user_content == [{"type": "input_text", "text": "問題"}]
+    assert any("optional_runtime_fallback" in line for line in result.debug_steps)
+
+
+def test_two_stage_response_falls_back_to_vector_file_ids_when_manifest_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    id="resp_1",
+                    output=[
+                        {
+                            "type": "file_search_call",
+                            "results": [
+                                {
+                                    "file_id": "vs_file_1",
+                                    "filename": "doc-a.md",
+                                    "score": 0.91,
+                                },
+                                {
+                                    "file_id": "vs_file_2",
+                                    "filename": "doc-b.md",
+                                    "score": 0.84,
+                                },
+                            ],
+                        }
+                    ],
+                    output_text="stage_1",
+                )
+            return SimpleNamespace(
+                id="resp_2",
+                output=[],
+                output_text=_structured_output_text("two stage fallback", ["延伸 B"]),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+    client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11", env_file=env_file)
+
+    result = client.run_two_stage_response(
+        question="問題",
+        manifest_path=tmp_path / "missing.json",
+        top_k=3,
+        system_prompt="你是文件助手",
+        debug=True,
+    )
+
+    assert result.response_text == "two stage fallback"
+    assert result.followup_options == ["延伸 B"]
+    assert result.input_files == []
+    assert len(result.top_matches) == 2
+    assert result.unmatched_top_matches == []
+    fake_client = client._client
+    second_request = fake_client.responses.calls[1]
+    second_file_ids = [
+        item["file_id"]
+        for item in second_request["input"][0]["content"]
+        if item["type"] == "input_file"
+    ]
+    assert second_file_ids == ["vs_file_1", "vs_file_2"]
+    assert any("direct_vector_file_ids" in line for line in result.debug_steps)
+
+
 def test_load_manifest_requires_rag_files_mapping(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -322,6 +322,7 @@ Environment variables:
 - `OPENAI_API_KEY`: OpenAI API key in `backend/.env`
 - `VECTOR_STORE_ID`: vector store id used by file search (auto-written by vector store builder)
 - production / Render runtime reads `OPENAI_API_KEY` and `VECTOR_STORE_ID` from process environment first, then falls back to local `backend/.env`
+- production / Render runtime treats `openai_integration/input_files_manifest.json` as optional; if the manifest is missing, ask flow still runs against `VECTOR_STORE_ID` and skips reusable `input_files` attachment
 - `OPENAI_ASK_PIPELINE`: ask pipeline mode (`one_stage` default, optional `two_stage`)
 
 Build or refresh vector store from local files:
@@ -369,3 +370,4 @@ cd backend && uv run python -m openai_integration.openai_vector_store_builder --
 ```bash
 cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
+- If Render / production has no local `input_files_manifest.json`, this is no longer a blocker. The runtime will fall back to vector-store-only search; only local workflows that depend on reusable `input_files` need the uploader/manifest.

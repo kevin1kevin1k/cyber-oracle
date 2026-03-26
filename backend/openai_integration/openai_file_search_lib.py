@@ -167,6 +167,24 @@ class OpenAIFileSearchClient:
         self._model = model
         self._vector_store_id = resolved_vector_store_id
 
+    def _load_manifest_for_runtime(
+        self,
+        manifest_path: Path,
+        *,
+        debug_logs: list[str] | None = None,
+    ) -> ManifestFiles | None:
+        try:
+            return self.load_uploaded_files_manifest(manifest_path)
+        except ValueError as exc:
+            if not self._is_manifest_runtime_optional_error(exc):
+                raise
+            if debug_logs is not None:
+                debug_logs.append(
+                    "1.load_manifest: optional_runtime_fallback "
+                    f"reason={str(exc)}"
+                )
+            return None
+
     def run_two_stage_response(
         self,
         *,
@@ -191,9 +209,12 @@ class OpenAIFileSearchClient:
 
         manifest = run_step(
             "1.load_manifest",
-            lambda: self.load_uploaded_files_manifest(manifest_path),
+            lambda: self._load_manifest_for_runtime(
+                manifest_path,
+                debug_logs=debug_steps if debug else None,
+            ),
         )
-        input_file_ids = [item.file_id for item in manifest.input_files]
+        input_file_ids = [item.file_id for item in manifest.input_files] if manifest else []
 
         first_response = run_step(
             "2.first_stage_file_search",
@@ -214,15 +235,25 @@ class OpenAIFileSearchClient:
             ),
         )
 
-        matched_top_file_ids, unmatched_top_matches = run_step(
-            "4.map_vs_to_input_files",
-            lambda: self._map_top_matches_to_uploaded_files(
-                top_matches=top_matches,
-                manifest=manifest,
-                top_k=top_k,
-                debug_logs=debug_steps if debug else None,
-            ),
-        )
+        if manifest is not None:
+            matched_top_file_ids, unmatched_top_matches = run_step(
+                "4.map_vs_to_input_files",
+                lambda: self._map_top_matches_to_uploaded_files(
+                    top_matches=top_matches,
+                    manifest=manifest,
+                    top_k=top_k,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+        else:
+            matched_top_file_ids, unmatched_top_matches = run_step(
+                "4.map_vs_to_input_files",
+                lambda: self._use_top_match_file_ids_directly(
+                    top_matches=top_matches,
+                    top_k=top_k,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
 
         second_file_ids = self._dedupe_preserve_order(input_file_ids + matched_top_file_ids)
         second_response = run_step(
@@ -248,7 +279,7 @@ class OpenAIFileSearchClient:
             followup_options=structured_output.followup_options,
             first_response_id=first_response_id,
             second_response_id=second_response_id,
-            input_files=manifest.input_files,
+            input_files=manifest.input_files if manifest else [],
             top_matches=top_matches,
             unmatched_top_matches=unmatched_top_matches,
             debug_steps=debug_steps,
@@ -278,9 +309,12 @@ class OpenAIFileSearchClient:
 
         manifest = run_step(
             "1.load_manifest",
-            lambda: self.load_uploaded_files_manifest(manifest_path),
+            lambda: self._load_manifest_for_runtime(
+                manifest_path,
+                debug_logs=debug_steps if debug else None,
+            ),
         )
-        input_file_ids = [item.file_id for item in manifest.input_files]
+        input_file_ids = [item.file_id for item in manifest.input_files] if manifest else []
 
         response = run_step(
             "2.one_stage_generate_with_file_search",
@@ -312,7 +346,7 @@ class OpenAIFileSearchClient:
             response_text=structured_output.answer_without_followup,
             followup_options=structured_output.followup_options,
             response_id=response_id,
-            input_files=manifest.input_files,
+            input_files=manifest.input_files if manifest else [],
             top_matches=top_matches,
             debug_steps=debug_steps,
         )
@@ -650,6 +684,39 @@ class OpenAIFileSearchClient:
             matched_ids.append(mapped_id)
 
         return matched_ids, unmatched
+
+    @staticmethod
+    def _is_manifest_runtime_optional_error(exc: ValueError) -> bool:
+        message = str(exc)
+        return (
+            message.startswith("Input files manifest not found.")
+            or message.startswith("Manifest input_files is empty.")
+            or message.startswith("Manifest rag_files is empty.")
+        )
+
+    @staticmethod
+    def _use_top_match_file_ids_directly(
+        *,
+        top_matches: list[TopMatch],
+        top_k: int,
+        debug_logs: list[str] | None = None,
+    ) -> tuple[list[str], list[TopMatch]]:
+        matched_ids: list[str] = []
+        seen: set[str] = set()
+        for match in top_matches:
+            if len(matched_ids) >= max(1, top_k):
+                break
+            if not match.vector_file_id or match.vector_file_id in seen:
+                continue
+            seen.add(match.vector_file_id)
+            match.matched_input_file_id = match.vector_file_id
+            matched_ids.append(match.vector_file_id)
+        if debug_logs is not None:
+            debug_logs.append(
+                "4.map_vs_to_input_files: direct_vector_file_ids="
+                f"{json.dumps(matched_ids, ensure_ascii=False)}"
+            )
+        return matched_ids, []
 
     @staticmethod
     def _dedupe_preserve_order(values: list[str]) -> list[str]:
