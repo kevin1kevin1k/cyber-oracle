@@ -1,6 +1,28 @@
 import { expect, test } from "@playwright/test";
 
 test("messenger link page bootstraps a new session", async ({ page }) => {
+  await page.route("**/api/v1/me/profile", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        full_name: null,
+        mother_name: null,
+        is_complete: false,
+      }),
+    });
+  });
+  await page.route("**/api/v1/credits/balance", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        balance: 50,
+        updated_at: "2026-03-22T10:00:00Z",
+        payments_enabled: false,
+      }),
+    });
+  });
   await page.route("**/api/v1/messenger/link", async (route) => {
     await route.fulfill({
       status: 200,
@@ -19,7 +41,7 @@ test("messenger link page bootstraps a new session", async ({ page }) => {
 
   await page.goto("/messenger/link?token=link-token-123");
 
-  await expect(page).toHaveURL(/\/settings\?from=messenger-first-link$/);
+  await expect(page).toHaveURL(/\/\?from=messenger-first-link$/);
   const accessToken = await page.evaluate(() => window.localStorage.getItem("elin_access_token"));
   expect(accessToken).toBe("token-1");
 });

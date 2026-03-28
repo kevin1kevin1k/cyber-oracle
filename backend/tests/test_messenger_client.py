@@ -203,13 +203,8 @@ def test_build_default_persistent_menu_uses_current_web_base_url(
         },
         {
             "type": "postback",
-            "title": "前往購點",
-            "payload": "OPEN_WALLET",
-        },
-        {
-            "type": "postback",
-            "title": "查看歷史",
-            "payload": "OPEN_HISTORY",
+            "title": "前往設定",
+            "payload": "OPEN_SETTINGS",
         },
     ]
 

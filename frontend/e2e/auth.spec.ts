@@ -15,7 +15,7 @@ test("home shows messenger-only entry message when unauthenticated", async ({ pa
   await page.goto("/");
 
   await expect(page.getByText("這個頁面僅支援從 Messenger WebView 進入。")).toBeVisible();
-  await expect(page.getByText("這裡是 Messenger WebView 的配套首頁")).toBeVisible();
+  await expect(page.getByText("目前版本的 WebView 只提供目前點數、固定資料設定與刪除帳號。")).toBeVisible();
 });
 
 test("legacy auth pages show disabled messenger-only notice", async ({ page }) => {
@@ -35,9 +35,8 @@ test("legacy auth pages show disabled messenger-only notice", async ({ page }) =
   await expect(page.getByRole("heading", { name: "密碼重設已停用" })).toBeVisible();
 });
 
-test("authenticated messenger session sees home hub and can logout", async ({ page }) => {
+test("authenticated messenger session sees single-page settings center", async ({ page }) => {
   await seedMessengerSession(page);
-  let logoutCalls = 0;
   await page.route("**/api/v1/credits/balance", async (route) => {
     await route.fulfill({
       status: 200,
@@ -60,22 +59,15 @@ test("authenticated messenger session sees home hub and can logout", async ({ pa
       }),
     });
   });
-  await page.route("**/api/v1/auth/logout", async (route) => {
-    logoutCalls += 1;
-    await route.fulfill({ status: 204, body: "" });
-  });
 
   await page.goto("/");
 
   await expect(page.getByText("目前已連結 Messenger，可回 Messenger 直接提問。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "設定" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "點數錢包" }).nth(1)).toBeVisible();
-  await expect(page.getByRole("link", { name: "歷史問答" }).nth(1)).toBeVisible();
-
-  await page.getByTestId("account-menu-trigger").click();
-  await expect(page.getByTestId("account-menu")).toContainText("Messenger 已連結");
-  await page.getByRole("menuitem", { name: "登出" }).click();
-
-  await expect(page).toHaveURL(/\/$/);
-  expect(logoutCalls).toBe(1);
+  await expect(page.getByRole("heading", { name: "Messenger 設定中心" })).toBeVisible();
+  await expect(page.getByText("目前點數：")).toBeVisible();
+  await expect(page.getByLabel("我的姓名")).toBeVisible();
+  await expect(page.getByLabel("我母親的姓名")).toBeVisible();
+  await expect(page.getByRole("button", { name: "刪除帳號" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "點數錢包" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "歷史問答" })).toHaveCount(0);
 });

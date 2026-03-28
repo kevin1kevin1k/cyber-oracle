@@ -8,19 +8,23 @@ async function seedMessengerSession(page: import("@playwright/test").Page) {
   });
 }
 
-test("home highlights settings when profile is incomplete", async ({ page }) => {
-  await seedMessengerSession(page);
+async function mockBalance(page: import("@playwright/test").Page, balance = 50) {
   await page.route("**/api/v1/credits/balance", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        balance: 50,
+        balance,
         updated_at: "2026-03-22T10:00:00Z",
         payments_enabled: false,
       }),
     });
   });
+}
+
+test("home highlights settings when profile is incomplete", async ({ page }) => {
+  await seedMessengerSession(page);
+  await mockBalance(page);
   await page.route("**/api/v1/me/profile", async (route) => {
     await route.fulfill({
       status: 200,
@@ -36,11 +40,13 @@ test("home highlights settings when profile is incomplete", async ({ page }) => 
   await page.goto("/");
 
   await expect(page.getByText("目前已連結 Messenger，但還沒完成個人設定。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "先完成個人設定" })).toBeVisible();
+  await expect(page.getByLabel("我的姓名")).toBeVisible();
+  await expect(page.getByText("目前點數：")).toBeVisible();
 });
 
-test("settings page loads and saves fixed ask profile fields", async ({ page }) => {
+test("home page loads and saves fixed ask profile fields", async ({ page }) => {
   await seedMessengerSession(page);
+  await mockBalance(page);
   await page.route("**/api/v1/me/profile", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
@@ -66,20 +72,20 @@ test("settings page loads and saves fixed ask profile fields", async ({ page }) 
     });
   });
 
-  await page.goto("/settings?from=messenger-profile-required");
+  await page.goto("/?from=messenger-profile-required");
 
-  await expect(page.getByRole("heading", { name: "固定問答設定" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Messenger 設定中心" })).toBeVisible();
   await expect(page.getByText("Messenger 提問前設定")).toBeVisible();
   await page.getByLabel("我的姓名").fill("陳大文");
   await page.getByLabel("我母親的姓名").fill("黃美玉");
   await page.getByRole("button", { name: "儲存設定" }).click();
 
   await expect(page.getByText("個人設定已儲存，之後 Messenger 提問會自動帶入這兩個固定資料。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "返回首頁" })).toBeVisible();
 });
 
-test("settings page shows first-link onboarding hint and messenger success copy", async ({ page }) => {
+test("home page shows first-link onboarding hint and messenger success copy", async ({ page }) => {
   await seedMessengerSession(page);
+  await mockBalance(page);
   await page.route("**/api/v1/me/profile", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
@@ -105,7 +111,7 @@ test("settings page shows first-link onboarding hint and messenger success copy"
     });
   });
 
-  await page.goto("/settings?from=messenger-first-link");
+  await page.goto("/?from=messenger-first-link");
 
   await expect(page.getByText("綁定完成，請先補資料")).toBeVisible();
   await expect(
@@ -117,11 +123,11 @@ test("settings page shows first-link onboarding hint and messenger success copy"
   await page.getByRole("button", { name: "儲存設定" }).click();
 
   await expect(page.getByText("個人設定已儲存，現在可以回 Messenger 直接提問。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "返回首頁" })).toBeVisible();
 });
 
-test("settings page shows get-started onboarding hint and messenger success copy", async ({ page }) => {
+test("home page shows get-started onboarding hint and messenger success copy", async ({ page }) => {
   await seedMessengerSession(page);
+  await mockBalance(page);
   await page.route("**/api/v1/me/profile", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
@@ -147,7 +153,7 @@ test("settings page shows get-started onboarding hint and messenger success copy
     });
   });
 
-  await page.goto("/settings?from=messenger-get-started");
+  await page.goto("/?from=messenger-get-started");
 
   await expect(page.getByText("開始使用前，請先補資料")).toBeVisible();
   await expect(
@@ -159,11 +165,11 @@ test("settings page shows get-started onboarding hint and messenger success copy
   await page.getByRole("button", { name: "儲存設定" }).click();
 
   await expect(page.getByText("個人設定已儲存，現在可以回 Messenger 直接提問。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "返回首頁" })).toBeVisible();
 });
 
-test("settings page can delete account and clear local session", async ({ page }) => {
+test("home page can delete account and clear local session", async ({ page }) => {
   await seedMessengerSession(page);
+  await mockBalance(page);
   await page.route("**/api/v1/me/profile", async (route) => {
     await route.fulfill({
       status: 200,
@@ -182,7 +188,7 @@ test("settings page can delete account and clear local session", async ({ page }
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/");
 
   await page.getByRole("button", { name: "刪除帳號" }).click();
   await expect(page.getByText("這個操作無法復原。確認後會直接刪除帳號與所有相關資料。")).toBeVisible();
@@ -193,7 +199,14 @@ test("settings page can delete account and clear local session", async ({ page }
   expect(accessToken).toBeNull();
 });
 
+test("settings route redirects to single-page settings center", async ({ page }) => {
+  await page.goto("/settings?from=messenger-profile-required");
+
+  await expect(page).toHaveURL(/\/\?from=messenger-profile-required$/);
+});
+
 test("messenger link page redirects to requested next path after bootstrap", async ({ page }) => {
+  await mockBalance(page);
   await page.route("**/api/v1/messenger/link", async (route) => {
     await route.fulfill({
       status: 200,
@@ -223,7 +236,7 @@ test("messenger link page redirects to requested next path after bootstrap", asy
 
   await page.goto("/messenger/link?token=link-token-789&next=%2Fsettings%3Ffrom%3Dmessenger-profile-required");
 
-  await expect(page).toHaveURL(/\/settings\?from=messenger-profile-required$/);
+  await expect(page).toHaveURL(/\/\?from=messenger-profile-required$/);
   const accessToken = await page.evaluate(() => window.localStorage.getItem("elin_access_token"));
   expect(accessToken).toBe("token-3");
 });

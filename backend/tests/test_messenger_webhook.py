@@ -471,7 +471,7 @@ def test_webhook_post_message_event_for_incomplete_profile_returns_settings_and_
         == "開始提問前，請先補上你的姓名與母親姓名。完成後就能直接在 Messenger 提問。"
     )
     assert outgoing.buttons[0]["title"] == "前往設定"
-    assert "next=%2Fsettings%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
+    assert "next=%2F%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
     pending_ask = db_session.scalar(
         select(MessengerPendingAsk).where(
             MessengerPendingAsk.user_id == user.id,
@@ -974,7 +974,7 @@ def test_webhook_post_postback_get_started_for_linked_user(
     assert outgoing.kind == "text"
     assert (
         outgoing.text
-        == "已開啟 Messenger 助手。你可以直接提問，或使用選單查看點數、購點與歷史。"
+        == "已開啟 Messenger 助手。你可以直接提問，或使用選單查看點數與設定。"
     )
 
 
@@ -1013,7 +1013,7 @@ def test_webhook_post_postback_get_started_for_unlinked_user_returns_onboarding_
     assert outgoing.buttons[0]["url"].startswith(
         "https://frontend.example.com/messenger/link?token="
     )
-    assert "next=%2Fsettings%3Ffrom%3Dmessenger-get-started" in outgoing.buttons[0]["url"]
+    assert "next=%2F%3Ffrom%3Dmessenger-get-started" in outgoing.buttons[0]["url"]
 
 
 def test_webhook_post_postback_get_started_for_linked_user_without_profile(
@@ -1059,7 +1059,7 @@ def test_webhook_post_postback_get_started_for_linked_user_without_profile(
     assert outgoing.buttons[0]["url"].startswith(
         "https://frontend.example.com/messenger/link?token="
     )
-    assert "next=%2Fsettings%3Ffrom%3Dmessenger-get-started" in outgoing.buttons[0]["url"]
+    assert "next=%2F%3Ffrom%3Dmessenger-get-started" in outgoing.buttons[0]["url"]
 
 
 def test_webhook_post_postback_show_balance_for_zero_balance_returns_topup(
@@ -1143,29 +1143,29 @@ def test_webhook_post_postback_show_balance_for_unlinked_user_returns_linking(
     )
 
 
-def test_webhook_post_postback_open_wallet_returns_bridge_button(
+def test_webhook_post_postback_open_settings_returns_bridge_button(
     client: TestClient,
     db_session: Session,
     captured_outgoing: list[tuple[str, object]],
 ) -> None:
     _create_linked_messenger_user(
         db_session,
-        psid="psid-open-wallet",
-        page_id="page-open-wallet",
+        psid="psid-open-settings",
+        page_id="page-open-settings",
         balance=3,
     )
     payload = {
         "object": "page",
         "entry": [
             {
-                "id": "page-open-wallet",
+                "id": "page-open-settings",
                 "time": 1700001006,
                 "messaging": [
                     {
-                        "sender": {"id": "psid-open-wallet"},
-                        "recipient": {"id": "page-open-wallet"},
+                        "sender": {"id": "psid-open-settings"},
+                        "recipient": {"id": "page-open-settings"},
                         "timestamp": 1700001006,
-                        "postback": {"payload": "OPEN_WALLET"},
+                        "postback": {"payload": "OPEN_SETTINGS"},
                     }
                 ],
             }
@@ -1178,16 +1178,16 @@ def test_webhook_post_postback_open_wallet_returns_bridge_button(
     assert len(captured_outgoing) == 1
     _, outgoing = captured_outgoing[0]
     assert outgoing.kind == "button_template"
-    assert outgoing.text == "請點擊下方按鈕開啟點數錢包。"
+    assert outgoing.text == "請點擊下方按鈕開啟設定中心。"
     assert outgoing.buttons[0]["type"] == "web_url"
-    assert outgoing.buttons[0]["title"] == "開啟點數錢包"
+    assert outgoing.buttons[0]["title"] == "開啟設定中心"
     assert outgoing.buttons[0]["url"].startswith(
         "https://frontend.example.com/messenger/link?token="
     )
-    assert "next=%2Fwallet" in outgoing.buttons[0]["url"]
+    assert "next=%2F" in outgoing.buttons[0]["url"]
 
 
-def test_webhook_post_postback_open_history_for_unlinked_user_returns_bridge_button(
+def test_webhook_post_postback_legacy_open_history_returns_settings_bridge_button(
     client: TestClient,
     captured_outgoing: list[tuple[str, object]],
 ) -> None:
@@ -1215,12 +1215,12 @@ def test_webhook_post_postback_open_history_for_unlinked_user_returns_bridge_but
     assert len(captured_outgoing) == 1
     _, outgoing = captured_outgoing[0]
     assert outgoing.kind == "button_template"
-    assert outgoing.text == "請點擊下方按鈕開啟歷史問答。"
-    assert outgoing.buttons[0]["title"] == "開啟歷史問答"
+    assert outgoing.text == "請點擊下方按鈕開啟設定中心。"
+    assert outgoing.buttons[0]["title"] == "開啟設定中心"
     assert outgoing.buttons[0]["url"].startswith(
         "https://frontend.example.com/messenger/link?token="
     )
-    assert "next=%2Fhistory" in outgoing.buttons[0]["url"]
+    assert "next=" not in outgoing.buttons[0]["url"]
 
 
 def test_webhook_post_quick_reply_event(client: TestClient) -> None:
@@ -1844,7 +1844,7 @@ def test_webhook_post_postback_replay_pending_ask_without_profile_returns_settin
         == "開始提問前，請先補上你的姓名與母親姓名。完成後就能直接在 Messenger 提問。"
     )
     assert outgoing.buttons[0]["title"] == "前往設定"
-    assert "next=%2Fsettings%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
+    assert "next=%2F%3Ffrom%3Dmessenger-profile-required" in outgoing.buttons[0]["url"]
     assert outgoing.buttons[1] == {
         "type": "postback",
         "title": "設定完成，重新送出剛剛的問題",
@@ -2425,16 +2425,13 @@ def test_webhook_insufficient_credit_returns_text_only_when_payments_disabled(
     assert outgoing.text == "體驗點數已用完，目前暫未開放購點。"
 
 
-def test_persistent_menu_uses_wallet_title_when_payments_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "payments_enabled", False)
-
+def test_persistent_menu_uses_balance_and_settings_entries() -> None:
     menu = build_default_persistent_menu()
 
-    assert menu[1]["title"] == "點數錢包"
-    assert menu[1]["payload"] == "OPEN_WALLET"
-    assert menu[2]["payload"] == "OPEN_HISTORY"
+    assert menu[0]["title"] == "查看剩餘點數"
+    assert menu[0]["payload"] == "SHOW_BALANCE"
+    assert menu[1]["title"] == "前往設定"
+    assert menu[1]["payload"] == "OPEN_SETTINGS"
 
 
 def test_webhook_outbound_failure_returns_accepted_instead_of_500(

@@ -55,13 +55,8 @@ def test_sync_messenger_profile_pushes_get_started_and_menu(
         },
         {
             "type": "postback",
-            "title": "前往購點",
-            "payload": "OPEN_WALLET",
-        },
-        {
-            "type": "postback",
-            "title": "查看歷史",
-            "payload": "OPEN_HISTORY",
+            "title": "前往設定",
+            "payload": "OPEN_SETTINGS",
         },
     ]
 

@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.17` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.19` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -60,6 +60,12 @@
   - [x] Frontend：`/settings` 提供危險操作區，可自助刪除帳號並清掉 WebView session
   - [x] Frontend：首頁在 profile 未完成時強調先完成設定，再回 Messenger 提問
   - [x] 測試：profile API、ask augmentation、Messenger profile gating、frontend settings flow
+- [x] 收斂 WebView 為單頁設定中心
+  - [x] Frontend：首頁改為唯一主頁，只保留目前點數、姓名/母親姓名設定、刪除帳號
+  - [x] Frontend：`/settings` 改為相容轉址到首頁，保留 `from=` onboarding query
+  - [x] Frontend：`/wallet`、`/history`、`/history/[questionId]` 退役為首頁 redirect
+  - [x] Backend：Messenger persistent menu 收斂為 `查看剩餘點數` / `前往設定`
+  - [x] 文件：PRD / README / runbook 同步移除 Web wallet/history 作為目前 MVP 能力
 - [x] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）
   - [x] Backend：建立 OpenAI file search 向量庫建置腳本與共用查詢 library（`backend/cyber oracle`）
   - [x] Backend：建立 builder 寫入 rag_files + uploader 寫入 input_files 的 JSON manifest（path -> file_id）持久化
@@ -71,7 +77,7 @@
   - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
   - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
-- [x] 前端導覽一致化：首頁/錢包/歷史頁共用頂部 nav bar
+- [x] 前端導覽一致化（已於單頁設定中心版本退役）
   - [x] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
   - [x] Frontend：在 `/`、`/wallet`、`/history` 三頁套用同一導覽區塊與一致文案順序
   - [x] Frontend：移除三頁內文區分散的 `helper-links`（避免重複導覽）
@@ -151,13 +157,13 @@
   - [x] 測試：backend linking token / endpoint / unlinked button 覆蓋
   - [x] 測試：frontend e2e 覆蓋 Messenger session bootstrap flow
 - [x] 完成 Messenger persistent menu MVP（常用入口）
-  - [x] Backend：新增 persistent menu payload builder（查看剩餘點數 / 前往購點 / 查看歷史）
+  - [x] Backend：新增 persistent menu payload builder（查看剩餘點數 / 前往設定）
   - [x] Backend：新增 Messenger profile sync script，將 persistent menu 寫入 Meta Graph API
   - [x] Backend：新增 greeting / Get Started welcome onboarding，首次打開對話視窗即可看到新手引導
   - [x] Backend：新增 `SHOW_BALANCE` postback，回覆目前剩餘點數
-  - [x] Backend：`SHOW_BALANCE` 在 0 點時附帶既有購點導流按鈕
+  - [x] Backend：`SHOW_BALANCE` 在 0 點時回覆目前體驗點數不足的對應提示
   - [x] Backend：未綁定使用者點擊需要帳號的 menu 入口時回覆 linking 引導
-  - [x] Backend：`前往購點` / `查看歷史` 改為 postback bridge，再回 signed WebView 按鈕避免首次進入卡在 session required
+  - [x] Backend：`前往設定` 改為 postback bridge，再回 signed WebView 按鈕避免首次進入卡在 session required
   - [x] 文件：PRD / README / Messenger 驗證 runbook 補上 persistent menu 與同步方式
   - [x] 測試：覆蓋 persistent menu payload 與 `SHOW_BALANCE` postback
 - [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
@@ -181,8 +187,7 @@
 - [x] `ask` 回傳需符合 structured output schema（欄位完整且型別正確）
 - [x] 前台不顯示內部演算法名稱/規則編號/來源/request id/三層比例
 - [x] 回答尾端 0..3 個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
-- [x] 三個主頁（`/`、`/wallet`、`/history`）需共用頂部導覽列，並可互相跳轉且正確高亮目前頁面
-- [x] 導覽列帳號選單需顯示 Messenger session 標籤，並可由三個主頁執行登出
+- [x] 單頁設定中心需顯示 Messenger session 狀態、目前點數與固定資料設定
 - [x] 未登入時需顯示「請從 Messenger 重新進入」提示，而非登入/註冊入口
 - [x] 購點成功後餘額更新正確（含重試冪等）
 - [x] 歷史紀錄可查完整問答與交易流水
@@ -252,12 +257,12 @@
   - [ ] 用 Meta Access Token Debugger 驗證 token 是否仍有效、權限是否包含 `pages_messaging`
   - [ ] 文件化 token 更新後必須同步 Render env 並重新 deploy backend
   - [ ] 文件化 token 外洩或 `OAuthException code 190 / subcode 463` 時的 rotation 步驟
-- [x] Messenger：將 persistent menu 的 `/wallet`、`/history` 靜態入口改為 postback bridge，避免首次進入卡死
-- [ ] Messenger：驗證 production persistent menu bridge（`前往購點` / `查看歷史`）能成功回帶 signed WebView 按鈕並開啟目標頁
+- [x] Messenger：將 persistent menu 收斂為 `查看剩餘點數` / `前往設定`，避免 WebView 出現已退役的 wallet/history 入口
+- [ ] Messenger：驗證 production persistent menu bridge（`前往設定`）能成功回帶 signed WebView 按鈕並開啟首頁設定中心
 - [ ] Messenger：以「沒有任何 app role 的 Facebook 帳號」完成公開 smoke test
   - [ ] 一般帳號可從 Messenger 對 Page 發第一句訊息並收到 bot 回覆
   - [ ] 一般帳號可完成 linking、settings、Messenger ask
-  - [ ] 一般帳號可使用 `查看剩餘點數`、`前往購點`、`查看歷史` bridge
+  - [ ] 一般帳號可使用 `查看剩餘點數`、`前往設定` bridge
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
 - [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制

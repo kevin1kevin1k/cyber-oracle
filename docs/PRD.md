@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.18（Messenger Welcome Onboarding）
+- 文件版本：v0.19（Single-Page WebView Settings Center）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -25,7 +25,7 @@ MVP 目標：
   - 支援 Messenger webhook verification 與 webhook event handling。
   - 支援 Messenger outbound message delivery（文字、quick replies/buttons）。
   - 支援 Messenger greeting / Get Started welcome onboarding。
-  - 支援 Messenger persistent menu，提供常用入口（如點數、購點、歷史）。
+  - 支援 Messenger persistent menu，提供常用入口（如點數、設定）。
 - 身份與綁定：
   - 支援 Messenger 身份（PSID / external identity）建檔與對應。
   - 使用者可先以未綁定狀態互動，必要時透過 Messenger WebView 完成站內帳號建立/綁定。
@@ -40,12 +40,11 @@ MVP 目標：
   - 不顯示內部演算法名稱、規則編號、來源/request id/三層比例。
 - 點數系統：
   - 每次提問固定扣 1 點（不採動態計費）。
-  - 餘額不足時，在 Messenger 內引導購點（開啟 WebView）。
+  - 目前公開版本僅提供體驗點數與餘額查詢，不在 WebView 開放購點。
   - 問答失敗（系統錯誤/超時）自動回補點數。
 - 金流與購點：
-  - 固定點數包（1 題 168、3 題 358、5 題 518）。
-  - 主要透過 Messenger WebView 開啟 Stripe Checkout。
-  - 付款結果需同步更新訂單/點數，並回饋至 Messenger 對話。
+  - 固定點數包與訂單模型可保留於 backend，但不屬於目前公開版本的 WebView 能力。
+  - 真實 WebView 購點與付款回流 Messenger 閉環後續再開放。
 - 延伸問題（Followups）：
   - 每次回答尾端提供 0 至 3 個延伸問題選項（Messenger quick replies/buttons）。
   - 延伸問題必須是可直接點擊送出的完整追問，不可要求使用者先做選擇或補資料。
@@ -54,6 +53,7 @@ MVP 目標：
 - 輔助 Web 與後台：
   - Web 獨立站僅保留為 Messenger 配套入口與 WebView 容器。
   - Web 不提供獨立提問頁作為主流程；真正提問入口維持在 Messenger 對話內。
+  - 目前 WebView 採單頁設定中心，只提供目前點數、固定資料設定與刪除帳號。
   - 後台保留使用者、文件庫、訂單/點數流水與流程觀測。
 
 ### 4.2 Out of Scope（MVP 不含）
@@ -65,7 +65,7 @@ MVP 目標：
 
 ### 4.3 MVP 假設與待確認
 - MVP 先以單一 Facebook Page / 單一 Messenger 通路為主。
-- WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 的 `購點/歷史` 入口採 postback bridge，再回一顆帶 signed token 的 WebView 按鈕。
+- WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 目前只保留 `查看剩餘點數` 與 `前往設定` 兩個入口。
 - Stripe Checkout 成功/失敗回傳以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
 - 對外公開試用的 release gate 不只包含 deploy 成功，也包含 Meta app 已完成對應 review / advanced access 與公開化設定，讓非 app role 的一般使用者可實際與 bot 互動。
 
@@ -73,16 +73,14 @@ MVP 目標：
 ### 5.1 主要 User Journeys
 1. 新使用者首次提問（未綁定）
    - 使用者第一次打開 Messenger 對話視窗時，可先看到 welcome greeting 與 `Get Started`。
-   - 點下 `Get Started` 後，系統需回一顆 signed WebView 按鈕，直接導到設定頁完成綁定與固定問答資料。
+   - 點下 `Get Started` 後，系統需回一顆 signed WebView 按鈕，直接導到單頁設定中心完成綁定與固定問答資料。
    - 使用者在 Messenger 傳送問題。
    - 系統透過 webhook 接收事件，建立/更新 Messenger identity。
    - 若策略允許，先提供最小回覆；若需完整服務（如歷史保存/購點）則引導 WebView 綁定。
 
-2. 點數不足導購
+2. 體驗點數不足
    - 使用者在 Messenger 提問時餘額不足。
-   - 系統回覆點數不足訊息與購點按鈕。
-   - 若是直接提問遇到點數不足，系統需保留該問題，讓使用者購點後可在 Messenger 一鍵重送。
-   - 點擊後開啟 Messenger WebView，導向 Stripe Checkout。
+   - 系統回覆體驗版提示，不在目前版本導向 WebView 購點。
 
 3. WebView 付款後返回 Messenger
    - 使用者在 WebView 完成付款。
@@ -101,8 +99,8 @@ MVP 目標：
 
 6. 常用功能入口
    - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。
-   - 使用者可透過 Messenger persistent menu 觸發購點頁與歷史頁 bridge，再開啟對應 WebView。
-   - 若尚未綁定帳號或 WebView session 已失效，系統需回覆一顆可重新建立 session 並導到目標頁的按鈕，而不是讓頁面停在無法前進的 `session required` 狀態。
+   - 使用者可透過 Messenger persistent menu 觸發 `前往設定`，打開單頁設定中心。
+   - 若尚未綁定帳號或 WebView session 已失效，系統需回覆一顆可重新建立 session 並導到設定中心的按鈕，而不是讓頁面停在無法前進的 `session required` 狀態。
 
 ### 5.2 Messenger-first 問答流程
 1. Intake：接收 Messenger 訊息事件（text/postback/quick reply）與 channel context。
@@ -172,8 +170,8 @@ sequenceDiagram
 - 系統需支援 Messenger webhook verification（challenge 驗證）。
 - 系統需支援 webhook event handling（message/postback/quick reply）。
 - 系統需支援 Messenger greeting 與 `Get Started`，作為首次進入對話視窗的新手引導入口。
-- 系統需支援 Messenger persistent menu / postback 常用入口（如查點數）。
-- 對需要站內 session 的 persistent menu 入口（例如購點、歷史），系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
+- 系統需支援 Messenger persistent menu / postback 常用入口（查點數、前往設定）。
+- 對需要站內 session 的 `前往設定` 入口，系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
 - 系統正式公開前，需完成 Meta app 對應的 review / advanced access / publish 流程，避免功能只對 `Administrators / Developers / Testers` 可用。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
@@ -199,12 +197,10 @@ sequenceDiagram
 - 延伸問題點擊視為一次新提問，套用同一扣點與回補規則（每次 1 點）。
 - 已綁定使用者需可從 Messenger 常駐入口主動查詢剩餘點數。
 
-### 6.4 購點與金流（Messenger WebView）
+### 6.4 購點與金流（後續版本）
 - 點數包售價：1 題 168、3 題 358、5 題 518。
-- 購點主要入口在 Messenger 對話中觸發，付款在 Messenger WebView 內完成 Stripe Checkout。
-- 使用者需可從 Messenger persistent menu 主動開啟購點 WebView。
-- 付款完成後需更新訂單狀態與點數餘額，並回 Messenger 告知結果。
-- 付款失敗/逾時需回 Messenger 告知重試路徑。
+- backend 可保留訂單與入帳能力，但目前公開版本不在 WebView 暴露購點頁。
+- 真實 Stripe Checkout 與付款回流 Messenger 閉環屬後續版本。
 
 ### 6.5 管理後台（最小可用）
 - 使用者列表與基本查詢（含 external identity 綁定狀態）。

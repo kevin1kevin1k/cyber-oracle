@@ -57,8 +57,7 @@ Backend endpoint：
 目前 repo 已支援一套最小可用的 Messenger persistent menu：
 
 - `查看剩餘點數`：postback `SHOW_BALANCE`
-- `前往購點`：postback `OPEN_WALLET`
-- `查看歷史`：postback `OPEN_HISTORY`
+- `前往設定`：postback `OPEN_SETTINGS`
 
 同步方式：
 ```bash
@@ -72,10 +71,8 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
 - 若剩餘點數為 `0`，系統會再附上既有購點按鈕
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
-- `前往購點` / `查看歷史` 會先走 postback bridge，再回一顆帶 signed token 的 WebView 按鈕
+- `前往設定` 會先走 postback bridge，再回一顆帶 signed token 的 WebView 按鈕
 - 因此即使使用者尚未建立 WebView session，也能從 persistent menu 自救，不必先手動找回原本的 linking button
-- Messenger 購點入口會先回一顆 bridge 按鈕，最終導到 `/wallet?from=messenger-insufficient-credit`
-- `/wallet?from=messenger-insufficient-credit` 會顯示 Messenger 專用提示，並在購買成功後提示使用者回 Messenger 繼續提問
 - 若 linked user 尚未完成固定問答參數，Messenger 會回一個導向 `/settings?from=messenger-profile-required` 的 WebView 按鈕，並保留原問題供使用者完成設定後一鍵重送
 
 ## 通訊流程圖
@@ -584,14 +581,10 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
    - 預期結果：點擊 quick reply 後收到新回答與新一輪 followups
 4. 對未綁定使用者驗證 ask
    - 預期結果：收到 linking / capability boundary 引導，而不是直接走完整已綁定流程
-5. 對已綁定且點數不足的使用者，從 Messenger 點 `前往購點`
-   - 預期結果：WebView 會開到 `/wallet?from=messenger-insufficient-credit`，頁面會顯示 Messenger 專用提示
-6. 在 `/wallet?from=messenger-insufficient-credit` 完成購買
-   - 預期結果：success message 會明確提示回 Messenger 繼續提問；若剛才是延伸問題情境，會提示點擊「購買完成，重新顯示延伸問題」；若剛才是新問題點數不足，會提示點擊「購買完成，重新送出剛剛的問題」
-7. 對已綁定但未完成固定問答參數的使用者發送一般文字訊息
+5. 對已綁定但未完成固定問答參數的使用者發送一般文字訊息
    - 預期結果：Messenger 收到「前往設定」按鈕，以及「設定完成，重新送出剛剛的問題」按鈕，而不是直接執行 ask
-8. 點擊 `前往設定` 後完成姓名與母親姓名設定
-   - 預期結果：WebView 會先 bootstrap session，再導到 `/settings?from=messenger-profile-required`
+6. 點擊 `前往設定` 後完成姓名與母親姓名設定
+   - 預期結果：WebView 會先 bootstrap session，再導到首頁單頁設定中心（帶 onboarding query）
    - 預期結果：完成儲存後回 Messenger 點擊「設定完成，重新送出剛剛的問題」，可直接重送原問題並收到回答
 
 補充：
@@ -663,7 +656,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 5. incident runbook 驗證
    - 預期結果：營運能快速確認是 webhook 問題、Graph API 問題、還是 ask domain 問題
 6. 非 role 一般使用者公開 smoke test
-   - 預期結果：沒有任何 app role 的 Facebook 帳號也能完成第一句訊息、linking、`/settings`、Messenger ask、`查看剩餘點數`、`前往購點` / `查看歷史` bridge，且 WebView 首頁只作為設定/錢包/歷史入口
+   - 預期結果：沒有任何 app role 的 Facebook 帳號也能完成第一句訊息、linking、首頁單頁設定中心、Messenger ask、`查看剩餘點數`、`前往設定` bridge
 
 ### Prod 必要風險控管
 正式環境不應只停留在目前 skeleton：

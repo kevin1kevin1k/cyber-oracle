@@ -24,13 +24,10 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_GET_STARTED_ONBOARDING_REPLY,
     DEFAULT_MESSENGER_GET_STARTED_REPLY,
     DEFAULT_MESSENGER_GREETING_TEXT,
-    DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
-    DEFAULT_MESSENGER_OPEN_HISTORY_BUTTON_TITLE,
-    DEFAULT_MESSENGER_OPEN_HISTORY_REPLY,
-    DEFAULT_MESSENGER_OPEN_WALLET_BUTTON_TITLE,
-    DEFAULT_MESSENGER_OPEN_WALLET_REPLY,
+    DEFAULT_MESSENGER_OPEN_SETTINGS_BUTTON_TITLE,
+    DEFAULT_MESSENGER_OPEN_SETTINGS_REPLY,
     DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
     DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
     DEFAULT_MESSENGER_PROFILE_REPLAY_ASK_BUTTON_TITLE,
@@ -39,9 +36,9 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
+    DEFAULT_MESSENGER_SETTINGS_BUTTON_TITLE,
     DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE,
     DEFAULT_MESSENGER_TOPUP_REPLY,
-    DEFAULT_MESSENGER_WALLET_BUTTON_TITLE,
     DEFAULT_UNLINKED_REPLY,
     DEFAULT_UNSUPPORTED_EVENT_REPLY,
     EVENT_TYPE_MESSAGE,
@@ -53,6 +50,7 @@ from app.messenger.constants import (
     IDENTITY_STATUS_UNLINKED,
     MESSENGER_PLATFORM,
     OPEN_HISTORY_PAYLOAD,
+    OPEN_SETTINGS_PAYLOAD,
     OPEN_WALLET_PAYLOAD,
     SHOW_BALANCE_PAYLOAD,
 )
@@ -240,7 +238,7 @@ class MessengerEventService:
                                 "title": DEFAULT_MESSENGER_GET_STARTED_BUTTON_TITLE,
                                 "url": self._build_messenger_link_url(
                                     identity=identity,
-                                    next_path="/settings?from=messenger-get-started",
+                                    next_path="/?from=messenger-get-started",
                                 ),
                             }
                         ],
@@ -252,10 +250,12 @@ class MessengerEventService:
                     text=DEFAULT_MESSENGER_GET_STARTED_REPLY,
                 )
             ]
+        if payload == OPEN_SETTINGS_PAYLOAD:
+            return [self.build_settings_entry_message(identity=identity)]
         if payload == OPEN_WALLET_PAYLOAD:
-            return [self.build_wallet_entry_message(identity=identity)]
+            return [self.build_settings_entry_message(identity=identity)]
         if payload == OPEN_HISTORY_PAYLOAD:
-            return [self.build_history_entry_message(identity=identity)]
+            return [self.build_settings_entry_message(identity=identity)]
         if self.maybe_resolve_internal_user(identity=identity) is None:
             return [self.build_linking_message(identity=identity)]
         if payload == SHOW_BALANCE_PAYLOAD:
@@ -353,28 +353,22 @@ class MessengerEventService:
             ],
         )
 
-    def build_wallet_entry_message(
+    def build_settings_entry_message(
         self,
         *,
         identity: MessengerIdentity,
     ) -> MessengerOutgoingMessage:
+        user_id = self.maybe_resolve_internal_user(identity=identity)
+        next_path: str | None = "/"
+        if user_id is None:
+            next_path = None
+        elif not self._has_complete_profile(user_id=user_id):
+            next_path = "/?from=messenger-profile-required"
         return self._build_menu_bridge_message(
             identity=identity,
-            next_path="/wallet",
-            text=DEFAULT_MESSENGER_OPEN_WALLET_REPLY,
-            button_title=DEFAULT_MESSENGER_OPEN_WALLET_BUTTON_TITLE,
-        )
-
-    def build_history_entry_message(
-        self,
-        *,
-        identity: MessengerIdentity,
-    ) -> MessengerOutgoingMessage:
-        return self._build_menu_bridge_message(
-            identity=identity,
-            next_path="/history",
-            text=DEFAULT_MESSENGER_OPEN_HISTORY_REPLY,
-            button_title=DEFAULT_MESSENGER_OPEN_HISTORY_BUTTON_TITLE,
+            next_path=next_path,
+            text=DEFAULT_MESSENGER_OPEN_SETTINGS_REPLY,
+            button_title=DEFAULT_MESSENGER_OPEN_SETTINGS_BUTTON_TITLE,
         )
 
     def build_profile_required_message(
@@ -385,14 +379,14 @@ class MessengerEventService:
     ) -> MessengerOutgoingMessage:
         buttons: list[dict[str, str]] = [
             {
-                "type": "web_url",
-                "title": DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
-                "url": self._build_messenger_link_url(
-                    identity=identity,
-                    next_path="/settings?from=messenger-profile-required",
-                ),
-            }
-        ]
+                    "type": "web_url",
+                    "title": DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
+                    "url": self._build_messenger_link_url(
+                        identity=identity,
+                        next_path="/?from=messenger-profile-required",
+                    ),
+                }
+            ]
         if pending_ask_id is not None:
             buttons.append(
                 {
@@ -458,7 +452,7 @@ class MessengerEventService:
         self,
         *,
         identity: MessengerIdentity,
-        next_path: str,
+        next_path: str | None,
         text: str,
         button_title: str,
     ) -> MessengerOutgoingMessage:
@@ -791,11 +785,6 @@ class MessengerEventService:
 
 
 def build_default_persistent_menu() -> list[dict[str, str]]:
-    wallet_title = (
-        DEFAULT_MESSENGER_TOPUP_BUTTON_TITLE
-        if settings.payments_enabled
-        else DEFAULT_MESSENGER_WALLET_BUTTON_TITLE
-    )
     return [
         {
             "type": "postback",
@@ -804,13 +793,8 @@ def build_default_persistent_menu() -> list[dict[str, str]]:
         },
         {
             "type": "postback",
-            "title": wallet_title,
-            "payload": OPEN_WALLET_PAYLOAD,
-        },
-        {
-            "type": "postback",
-            "title": DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
-            "payload": OPEN_HISTORY_PAYLOAD,
+            "title": DEFAULT_MESSENGER_SETTINGS_BUTTON_TITLE,
+            "payload": OPEN_SETTINGS_PAYLOAD,
         },
     ]
 

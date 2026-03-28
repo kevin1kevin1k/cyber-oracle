@@ -55,7 +55,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - both `full_name` and `mother_name` are required and trimmed server-side
 - `DELETE /api/v1/me`
   - requires authenticated session
-  - hard deletes current user account data (`wallet`, `history`, `sessions`, profile fields)
+  - hard deletes current user account data (`wallet balance`, `question history`, `sessions`, profile fields)
   - resets linked Messenger identities back to `unlinked`, so the same Messenger account can re-run onboarding as a fresh user
 
 ## Ask API (credit flow)
@@ -210,15 +210,14 @@ Current channel capabilities:
   - text messages
   - quick replies
   - button templates
-- linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往購點` / `查看歷史`)
-- `前往購點` / `查看歷史` persistent menu entries now use postback bridge flow: Messenger first receives a signed WebView button, then opens `/wallet` or `/history` with session bootstrap
+- linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往設定`)
+- `前往設定` persistent menu entry now uses postback bridge flow: Messenger first receives a signed WebView button, then opens the single-page WebView settings center with session bootstrap
 - linked users who have not filled `full_name` / `mother_name` are guided to `/settings` before ask/followup execution
 - when a linked user sends a text question before completing `full_name` / `mother_name`, backend stores a pending Messenger ask and returns both `/settings` and replay buttons so the original question can be resent after profile completion
 - when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
-- insufficient-credit entry buttons now also use signed WebView bridge flow, so `/wallet` can still be opened after WebView session loss
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets `greeting`, `get_started`, and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled and greeting improves first-open onboarding
-- `GET_STARTED` now acts as a real onboarding entry: unlinked users or linked users with incomplete profile receive a signed WebView button that opens `/settings?from=messenger-get-started`
+- `GET_STARTED` now acts as a real onboarding entry: unlinked users or linked users with incomplete profile receive a signed WebView button that opens `/?from=messenger-get-started`
 - backend startup can auto-sync Messenger profile when `MESSENGER_PROFILE_SYNC_ON_STARTUP=true`; keep `backend/scripts/sync_messenger_profile.py` as manual fallback after token rotation or emergency menu refresh
 - failure handling:
   - ask / replay / followup failures are classified into config / upstream / generic user-facing Messenger replies instead of a single fallback for every case

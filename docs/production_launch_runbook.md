@@ -44,7 +44,7 @@
 補充：
 - backend 會自動把 Render 常見的 `postgresql://...` 連線字串正規化為 `postgresql+psycopg://...`，因此直接使用 Render 注入的 Postgres connection string 也能正常啟動
 - frontend 如果未設定 `NEXT_PUBLIC_API_BASE_URL`，在 HTTPS 非 localhost 情境會走 same-origin；但正式部署仍建議明確填入 `https://api.<your-domain>`，避免 WebView / custom domain 切換時判斷混淆。
-- `PAYMENTS_ENABLED=false` 是目前公開體驗版的正式策略；wallet 保留餘額與流水查詢，但不開放真實購點。
+- `PAYMENTS_ENABLED=false` 是目前公開體驗版的正式策略；WebView 只保留單頁設定中心，不開放真實購點或歷史查詢。
 
 ## Render 建立步驟
 1. 在 Render 建立 Blueprint，直接指向 repo root 的 [render.yaml](/Users/kevin1kevin1k/cyber-oracle/render.yaml)。
@@ -116,8 +116,8 @@ cd ..
 ```
 預期結果：
 - Meta Page 的 `Get Started` 與 `persistent_menu` 都被成功更新
-- `前往購點` 為 `OPEN_WALLET` postback，會再回帶 signed token 的 WebView 按鈕
-- `查看歷史` 為 `OPEN_HISTORY` postback，會再回帶 signed token 的 WebView 按鈕
+- `查看剩餘點數` 為 `SHOW_BALANCE` postback
+- `前往設定` 為 `OPEN_SETTINGS` postback，會再回帶 signed token 的 WebView 按鈕
 
 ## 正式上線 Smoke Test
 ### API / Web
@@ -125,15 +125,10 @@ cd ..
    - 預期 `200`
 2. 用一個新 Messenger 使用者完成 linking
    - 預期 `/messenger/link` 可建立 session
-3. 進入 `/settings` 填入 `姓名` 與 `母親姓名`
+3. 進入首頁單頁設定中心，填入 `姓名` 與 `母親姓名`
    - 預期儲存成功
-4. 回首頁確認 WebView 中控頁
-   - 預期可看到帳號狀態、點數與 `設定 / 點數錢包 / 歷史問答` 入口
-5. 打開 `/wallet`
-   - 預期可看到餘額與交易流水
-   - 不應出現購買按鈕
-6. 回 Messenger 送出一個問題後，再打開 `/history`
-   - 預期可看到剛剛的 Messenger 問答紀錄
+4. 確認首頁單頁設定中心
+   - 預期可看到帳號狀態、目前點數、固定資料設定與刪除帳號
 
 ### Messenger
 1. 用 app role 帳號直接在 Messenger 提問
@@ -144,8 +139,8 @@ cd ..
    - 預期收到 `前往設定` + `設定完成，重新送出剛剛的問題`
 4. 若 launch credits 用完再提問
    - 預期只收到體驗版提示，不應導向真實購點
-5. 清掉 WebView session 後，從 persistent menu 點 `前往購點` 或 `查看歷史`
-   - 預期 bot 會先回 bridge 按鈕；點擊後仍可成功開啟目標頁，不會卡在 static menu dead end
+5. 清掉 WebView session 後，從 persistent menu 點 `前往設定`
+   - 預期 bot 會先回 bridge 按鈕；點擊後仍可成功開啟單頁設定中心，不會卡在 static menu dead end
 
 ### 對外公開試用額外 Smoke Test
 1. 用一個沒有任何 app role 的 Facebook 帳號打開同一個 Page 對話。
@@ -153,8 +148,8 @@ cd ..
 2. 非 role 帳號直接傳第一句訊息。
    - 預期 bot 會回覆，而不是只對 admin / developer / tester 有反應。
 3. 非 role 帳號完成 linking、settings、Messenger ask。
-   - 預期整條主流程都可用，WebView 端則可正常進入首頁/錢包/歷史。
-4. 非 role 帳號測 `查看剩餘點數`、`前往購點`、`查看歷史`。
+   - 預期整條主流程都可用，WebView 端則可正常進入首頁單頁設定中心。
+4. 非 role 帳號測 `查看剩餘點數`、`前往設定`。
    - 預期 menu bridge 與 WebView 入口都正常。
 
 ## 排障與回滾
@@ -213,6 +208,6 @@ cd /opt/render/project/src/backend && uv run alembic upgrade head && uv run alem
 - 固定 production domain
 - production DB migration baseline
 - Meta webhook / persistent menu 正式綁定
-- Messenger -> WebView -> ask/history/wallet 主流程可用
+- Messenger -> WebView -> settings center 主流程可用
 - 非 role 一般使用者也能實際與 bot 互動
 - launch mode (`PAYMENTS_ENABLED=false`) 的正式行為與文件一致

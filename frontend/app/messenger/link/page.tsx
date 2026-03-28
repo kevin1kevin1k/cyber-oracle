@@ -51,7 +51,7 @@ export default function MessengerLinkPage() {
           return;
         }
         if (payload.link_status === "linked_new") {
-          router.replace("/settings?from=messenger-first-link");
+          router.replace("/?from=messenger-first-link");
           return;
         }
         setLinkStatus(payload.link_status);
@@ -97,8 +97,6 @@ export default function MessengerLinkPage() {
             </p>
             <p className="helper-links">
               <Link href="/">返回首頁</Link>
-              <span> · </span>
-              <Link href="/wallet">前往錢包</Link>
             </p>
           </div>
         ) : status === "linking" ? (
