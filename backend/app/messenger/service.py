@@ -81,17 +81,32 @@ class MessengerEventService:
     def __init__(self, *, db: Session) -> None:
         self._db = db
 
-    def handle_incoming_event(
+    def prepare_incoming_event(
         self,
         *,
         event: MessengerWebhookMessagingEvent,
-    ) -> list[MessengerOutgoingMessage]:
+    ) -> tuple[MessengerIncomingCommand, MessengerIdentity]:
         command = self._to_command(event)
         identity = self.resolve_or_create_identity(psid=command.psid, page_id=command.page_id)
         identity.last_interacted_at = datetime.now(UTC)
         self._db.add(identity)
         self._db.commit()
+        return command, identity
 
+    def handle_incoming_event(
+        self,
+        *,
+        event: MessengerWebhookMessagingEvent,
+    ) -> list[MessengerOutgoingMessage]:
+        command, identity = self.prepare_incoming_event(event=event)
+        return self.handle_prepared_command(command=command, identity=identity)
+
+    def handle_prepared_command(
+        self,
+        *,
+        command: MessengerIncomingCommand,
+        identity: MessengerIdentity,
+    ) -> list[MessengerOutgoingMessage]:
         if command.event_type == EVENT_TYPE_MESSAGE:
             return self.handle_text_message(command=command, identity=identity)
         if command.event_type == EVENT_TYPE_QUICK_REPLY:
@@ -99,6 +114,46 @@ class MessengerEventService:
         if command.event_type == EVENT_TYPE_POSTBACK:
             return self.handle_postback(command=command, identity=identity)
         return self.build_outgoing_messages(command=command, identity=identity)
+
+    def should_emit_processing_feedback(
+        self,
+        *,
+        command: MessengerIncomingCommand,
+        identity: MessengerIdentity,
+    ) -> bool:
+        user_id = self.maybe_resolve_internal_user(identity=identity)
+        if user_id is None or not self._has_complete_profile(user_id=user_id):
+            return False
+
+        if command.event_type == EVENT_TYPE_MESSAGE:
+            return bool((command.text or "").strip())
+
+        if command.event_type == EVENT_TYPE_QUICK_REPLY:
+            followup_id = self._parse_followup_payload(command.quick_reply_payload)
+            if followup_id is None:
+                return False
+            followup = self._db.scalar(select(Followup).where(Followup.id == followup_id))
+            return (
+                followup is not None
+                and followup.user_id == user_id
+                and followup.status == "pending"
+            )
+
+        if command.event_type == EVENT_TYPE_POSTBACK:
+            pending_ask_id = self._parse_replay_pending_ask_payload(command.postback_payload)
+            if pending_ask_id is None:
+                return False
+            pending_ask = self._db.scalar(
+                select(MessengerPendingAsk).where(MessengerPendingAsk.id == pending_ask_id)
+            )
+            return (
+                pending_ask is not None
+                and pending_ask.user_id == user_id
+                and pending_ask.messenger_identity_id == identity.id
+                and pending_ask.status == "pending"
+            )
+
+        return False
 
     def handle_text_message(
         self,

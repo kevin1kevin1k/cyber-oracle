@@ -214,6 +214,7 @@ Current channel capabilities:
 - `前往設定` persistent menu entry now uses postback bridge flow: Messenger first receives a signed WebView button, then opens the single-page WebView settings center with session bootstrap
 - linked users who have not filled `full_name` / `mother_name` are guided to `/settings` before ask/followup execution
 - when a linked user sends a text question before completing `full_name` / `mother_name`, backend stores a pending Messenger ask and returns both `/settings` and replay buttons so the original question can be resent after profile completion
+- direct ask / followup / replay now send best-effort `mark_seen` + `typing_on` before long-running OpenAI execution, then `typing_off` before the final reply so the user sees processing feedback instead of a long silent gap
 - when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets `greeting`, `get_started`, and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled and greeting improves first-open onboarding

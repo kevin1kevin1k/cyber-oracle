@@ -14,6 +14,12 @@ class MessengerClientError(Exception):
 
 
 class MessengerClientProtocol(Protocol):
+    def mark_seen(self, *, psid: str) -> None: ...
+
+    def typing_on(self, *, psid: str) -> None: ...
+
+    def typing_off(self, *, psid: str) -> None: ...
+
     def send_text(self, *, psid: str, text: str) -> None: ...
 
     def send_quick_replies(
@@ -40,6 +46,15 @@ class NoopMessengerClient:
 
     Intentionally no-op so webhook handling remains testable without external Meta calls.
     """
+
+    def mark_seen(self, *, psid: str) -> None:
+        _ = psid
+
+    def typing_on(self, *, psid: str) -> None:
+        _ = psid
+
+    def typing_off(self, *, psid: str) -> None:
+        _ = psid
 
     def send_text(self, *, psid: str, text: str) -> None:
         _ = (psid, text)
@@ -81,6 +96,15 @@ class MetaGraphMessengerClient:
     def __init__(self, *, page_access_token: str, timeout_seconds: float = 10.0) -> None:
         self.page_access_token = page_access_token
         self.timeout_seconds = timeout_seconds
+
+    def mark_seen(self, *, psid: str) -> None:
+        self._send_sender_action(psid=psid, sender_action="mark_seen")
+
+    def typing_on(self, *, psid: str) -> None:
+        self._send_sender_action(psid=psid, sender_action="typing_on")
+
+    def typing_off(self, *, psid: str) -> None:
+        self._send_sender_action(psid=psid, sender_action="typing_off")
 
     def send_text(self, *, psid: str, text: str) -> None:
         self._send_api_request(
@@ -169,6 +193,14 @@ class MetaGraphMessengerClient:
 
     def _send_api_request(self, payload: dict[str, Any]) -> None:
         self._post_json(self.graph_api_url, payload)
+
+    def _send_sender_action(self, *, psid: str, sender_action: str) -> None:
+        self._send_api_request(
+            {
+                "recipient": {"id": psid},
+                "sender_action": sender_action,
+            }
+        )
 
     def _send_profile_api_request(self, payload: dict[str, Any]) -> None:
         self._post_json(self.messenger_profile_api_url, payload)

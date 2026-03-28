@@ -136,6 +136,30 @@ def test_meta_graph_send_button_template_builds_expected_request(
     }
 
 
+@pytest.mark.parametrize("sender_action", ["mark_seen", "typing_on", "typing_off"])
+def test_meta_graph_send_sender_action_builds_expected_request(
+    monkeypatch: pytest.MonkeyPatch,
+    sender_action: str,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_urlopen(request, timeout):  # noqa: ANN001
+        captured["timeout"] = timeout
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return _FakeResponse()
+
+    monkeypatch.setattr("app.messenger.client.urlopen", _fake_urlopen)
+
+    client = MetaGraphMessengerClient(page_access_token="page-token")
+    getattr(client, sender_action)(psid="psid-action-1")
+
+    assert captured["timeout"] == 10.0
+    assert captured["payload"] == {
+        "recipient": {"id": "psid-action-1"},
+        "sender_action": sender_action,
+    }
+
+
 def test_meta_graph_set_messenger_profile_builds_expected_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

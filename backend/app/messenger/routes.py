@@ -78,6 +78,33 @@ def _get_outbound_client():
     return NoopMessengerClient()
 
 
+def _emit_processing_feedback(*, client, psid: str) -> None:
+    for action_name, sender_action in (
+        ("mark_seen", client.mark_seen),
+        ("typing_on", client.typing_on),
+    ):
+        try:
+            sender_action(psid=psid)
+        except MessengerClientError:
+            logger.warning(
+                "Messenger sender_action failed: psid=%s action=%s",
+                psid,
+                action_name,
+                exc_info=True,
+            )
+
+
+def _stop_processing_feedback(*, client, psid: str) -> None:
+    try:
+        client.typing_off(psid=psid)
+    except MessengerClientError:
+        logger.warning(
+            "Messenger sender_action failed: psid=%s action=typing_off",
+            psid,
+            exc_info=True,
+        )
+
+
 def process_webhook_events(*, payload: MessengerWebhookPayload) -> None:
     db = SessionLocal()
     try:
@@ -86,10 +113,22 @@ def process_webhook_events(*, payload: MessengerWebhookPayload) -> None:
 
         for entry in payload.entry:
             for event in entry.messaging:
-                outgoing_messages = service.handle_incoming_event(event=event)
+                command, identity = service.prepare_incoming_event(event=event)
                 sender = event.sender.get("id")
                 if not sender:
                     continue
+                should_emit_feedback = service.should_emit_processing_feedback(
+                    command=command,
+                    identity=identity,
+                )
+                if should_emit_feedback:
+                    _emit_processing_feedback(client=client, psid=sender)
+                outgoing_messages = service.handle_prepared_command(
+                    command=command,
+                    identity=identity,
+                )
+                if should_emit_feedback:
+                    _stop_processing_feedback(client=client, psid=sender)
                 for outgoing in outgoing_messages:
                     try:
                         dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)

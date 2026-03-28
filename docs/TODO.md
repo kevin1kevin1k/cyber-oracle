@@ -258,6 +258,7 @@
   - [ ] 文件化 token 更新後必須同步 Render env 並重新 deploy backend
   - [ ] 文件化 token 外洩或 `OAuthException code 190 / subcode 463` 時的 rotation 步驟
 - [x] Messenger：將 persistent menu 收斂為 `查看剩餘點數` / `前往設定`，避免 WebView 出現已退役的 wallet/history 入口
+- [x] Messenger：長時間問答先送 `mark_seen` + `typing_on`，避免 ask / followup / replay 過程完全無回饋
 - [ ] Messenger：驗證 production persistent menu bridge（`前往設定`）能成功回帶 signed WebView 按鈕並開啟首頁設定中心
 - [ ] Messenger：以「沒有任何 app role 的 Facebook 帳號」完成公開 smoke test
   - [ ] 一般帳號可從 Messenger 對 Page 發第一句訊息並收到 bot 回覆

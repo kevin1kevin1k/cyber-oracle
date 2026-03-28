@@ -221,6 +221,21 @@ def captured_outgoing(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object
     return sent
 
 
+@pytest.fixture
+def processing_feedback_events(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    events: list[tuple[str, str]] = []
+
+    def _capture_start(*, client, psid: str) -> None:  # noqa: ANN001
+        events.append(("start", psid))
+
+    def _capture_stop(*, client, psid: str) -> None:  # noqa: ANN001
+        events.append(("stop", psid))
+
+    monkeypatch.setattr("app.messenger.routes._emit_processing_feedback", _capture_start)
+    monkeypatch.setattr("app.messenger.routes._stop_processing_feedback", _capture_stop)
+    return events
+
+
 def test_webhook_verify_success(client: TestClient) -> None:
     response = client.get(
         "/api/v1/messenger/webhook",
@@ -540,6 +555,61 @@ def test_webhook_post_message_event_with_same_mid_is_idempotent(
     assert outgoing_messages == [
         (
             "psid-linked-2",
+            "quick_replies",
+            "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        )
+    ]
+
+
+def test_webhook_post_message_event_emits_processing_feedback_before_answer(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    processing_feedback_events: list[tuple[str, str]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-linked-feedback",
+        page_id="page-linked-feedback",
+        balance=2,
+    )
+    events: list[tuple[str, str, str]] = []
+
+    def _capture_dispatch(*, client, psid: str, outgoing) -> None:  # noqa: ANN001
+        events.append((psid, outgoing.kind, outgoing.text))
+
+    monkeypatch.setattr("app.messenger.routes.dispatch_outgoing_message", _capture_dispatch)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-linked-feedback",
+                "time": 1700000204,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-linked-feedback"},
+                        "recipient": {"id": "page-linked-feedback"},
+                        "timestamp": 1700000204,
+                        "message": {
+                            "mid": "m_linked_feedback",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert processing_feedback_events == [
+        ("start", "psid-linked-feedback"),
+        ("stop", "psid-linked-feedback"),
+    ]
+    assert events == [
+        (
+            "psid-linked-feedback",
             "quick_replies",
             "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
         )
@@ -1111,6 +1181,41 @@ def test_webhook_post_postback_show_balance_for_zero_balance_returns_topup(
     )
 
 
+def test_webhook_post_postback_show_balance_does_not_emit_processing_feedback(
+    client: TestClient,
+    db_session: Session,
+    processing_feedback_events: list[tuple[str, str]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-balance-no-feedback",
+        page_id="page-balance-no-feedback",
+        balance=3,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-balance-no-feedback",
+                "time": 1700001009,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-balance-no-feedback"},
+                        "recipient": {"id": "page-balance-no-feedback"},
+                        "timestamp": 1700001009,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert processing_feedback_events == []
+
+
 def test_webhook_post_postback_show_balance_for_unlinked_user_returns_linking(
     client: TestClient,
     outgoing_messages: list[tuple[str, str, str]],
@@ -1347,6 +1452,63 @@ def test_webhook_post_quick_reply_for_linked_user_runs_followup_flow(
         "quick_replies",
         "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
     )
+
+
+def test_webhook_post_quick_reply_emits_processing_feedback_before_answer(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    processing_feedback_events: list[tuple[str, str]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-followup-feedback",
+        page_id="page-followup-feedback",
+        balance=2,
+    )
+    followup = _create_pending_followup(db_session, user_id=user.id, content="請延伸分析")
+    events: list[tuple[str, str, str]] = []
+
+    def _capture_dispatch(*, client, psid: str, outgoing) -> None:  # noqa: ANN001
+        events.append((psid, outgoing.kind, outgoing.text))
+
+    monkeypatch.setattr("app.messenger.routes.dispatch_outgoing_message", _capture_dispatch)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-followup-feedback",
+                "time": 1700002101,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-followup-feedback"},
+                        "recipient": {"id": "page-followup-feedback"},
+                        "timestamp": 1700002101,
+                        "message": {
+                            "mid": "m_followup_feedback",
+                            "text": "請繼續",
+                            "quick_reply": {"payload": f"FOLLOWUP:{followup.id}"},
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert processing_feedback_events == [
+        ("start", "psid-followup-feedback"),
+        ("stop", "psid-followup-feedback"),
+    ]
+    assert events == [
+        (
+            "psid-followup-feedback",
+            "quick_replies",
+            "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        )
+    ]
 
 
 def test_webhook_post_quick_reply_with_same_followup_is_not_double_charged(
@@ -1700,6 +1862,79 @@ def test_webhook_post_postback_replays_pending_ask_after_topup(
         outgoing.text
         == "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C"
     )
+
+
+def test_webhook_post_postback_replay_pending_ask_emits_processing_feedback(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    processing_feedback_events: list[tuple[str, str]],
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-pending-ask-feedback",
+        page_id="page-pending-ask-feedback",
+        balance=3,
+    )
+    identity = db_session.scalar(
+        select(MessengerIdentity).where(
+            MessengerIdentity.psid == "psid-pending-ask-feedback",
+            MessengerIdentity.page_id == "page-pending-ask-feedback",
+        )
+    )
+    assert identity is not None
+    pending_ask = MessengerPendingAsk(
+        user_id=user.id,
+        messenger_identity_id=identity.id,
+        question_text="剛剛那題再問一次",
+        lang="zh",
+        mode="analysis",
+        idempotency_key=f"msg:{uuid.uuid4().hex}",
+        status="pending",
+    )
+    db_session.add(pending_ask)
+    db_session.commit()
+    events: list[tuple[str, str, str]] = []
+
+    def _capture_dispatch(*, client, psid: str, outgoing) -> None:  # noqa: ANN001
+        events.append((psid, outgoing.kind, outgoing.text))
+
+    monkeypatch.setattr("app.messenger.routes.dispatch_outgoing_message", _capture_dispatch)
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-pending-ask-feedback",
+                "time": 1700002501,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-pending-ask-feedback"},
+                        "recipient": {"id": "page-pending-ask-feedback"},
+                        "timestamp": 1700002501,
+                        "postback": {
+                            "payload": f"REPLAY_PENDING_ASK:{pending_ask.id}",
+                            "title": "購買完成，重新送出剛剛的問題",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert processing_feedback_events == [
+        ("start", "psid-pending-ask-feedback"),
+        ("stop", "psid-pending-ask-feedback"),
+    ]
+    assert events == [
+        (
+            "psid-pending-ask-feedback",
+            "quick_replies",
+            "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        )
+    ]
 
 
 def test_webhook_post_postback_replay_pending_ask_without_credit_returns_topup_again(
