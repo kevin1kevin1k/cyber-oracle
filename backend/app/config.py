@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
     @model_validator(mode="after")
+    def normalize_database_url(self) -> "Settings":
+        database_url = self.database_url.strip()
+        if database_url.startswith("postgres://"):
+            self.database_url = "postgresql+psycopg://" + database_url[len("postgres://") :]
+        elif database_url.startswith("postgresql://") and "+psycopg" not in database_url:
+            self.database_url = "postgresql+psycopg://" + database_url[len("postgresql://") :]
+        else:
+            self.database_url = database_url
+        return self
+
+    @model_validator(mode="after")
     def validate_production_jwt_secret(self) -> "Settings":
         app_env = self.app_env.strip().lower()
         jwt_secret = self.jwt_secret.strip()

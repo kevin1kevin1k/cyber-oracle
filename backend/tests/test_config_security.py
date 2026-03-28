@@ -25,6 +25,33 @@ def test_prod_accepts_strong_jwt_secret_without_email_settings() -> None:
     assert settings.app_env == "prod"
 
 
+def test_database_url_normalizes_render_postgresql_connection_string() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://user:pass@host:5432/elin",
+    )
+
+    assert settings.database_url == "postgresql+psycopg://user:pass@host:5432/elin"
+
+
+def test_database_url_normalizes_legacy_postgres_scheme() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgres://user:pass@host:5432/elin",
+    )
+
+    assert settings.database_url == "postgresql+psycopg://user:pass@host:5432/elin"
+
+
+def test_database_url_keeps_explicit_psycopg_scheme() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://user:pass@host:5432/elin",
+    )
+
+    assert settings.database_url == "postgresql+psycopg://user:pass@host:5432/elin"
+
+
 def test_dev_allows_default_jwt_secret() -> None:
     settings = Settings(app_env="dev", jwt_secret="dev-only-change-me-please-replace-32+")
 

@@ -131,6 +131,7 @@ Environment variables:
 - `APP_ENV`: runtime env (`dev` / `test` / `prod`, default `dev`)
 - `CORS_ORIGINS`: comma-separated browser origins allowed to call backend APIs (must include public frontend/WebView origins such as Messenger frontend tunnel URLs)
 - `DATABASE_URL`: app runtime database
+  - accepts both `postgresql+psycopg://...` and raw Render-style `postgresql://...`; backend startup normalizes the latter to `postgresql+psycopg://...`
 - `TEST_DATABASE_URL`: test-only database (use `elin_test`)
 - `JWT_SECRET`: HS256 signing secret for access token
 - `JWT_ALGORITHM`: JWT algorithm (default `HS256`)

@@ -42,6 +42,7 @@
 - `NEXT_PUBLIC_API_BASE_URL=https://api.<your-domain>`
 
 補充：
+- backend 會自動把 Render 常見的 `postgresql://...` 連線字串正規化為 `postgresql+psycopg://...`，因此直接使用 Render 注入的 Postgres connection string 也能正常啟動
 - frontend 如果未設定 `NEXT_PUBLIC_API_BASE_URL`，在 HTTPS 非 localhost 情境會走 same-origin；但正式部署仍建議明確填入 `https://api.<your-domain>`，避免 WebView / custom domain 切換時判斷混淆。
 - `PAYMENTS_ENABLED=false` 是目前公開體驗版的正式策略；wallet 保留餘額與流水查詢，但不開放真實購點。
 
