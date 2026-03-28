@@ -161,6 +161,7 @@
   - [x] Backend：新增 Messenger profile sync script，將 persistent menu 寫入 Meta Graph API
   - [x] Backend：新增 greeting / Get Started welcome onboarding，首次打開對話視窗即可看到新手引導
   - [x] Backend：新增 `SHOW_BALANCE` postback，回覆目前剩餘點數
+  - [x] Backend：主問題 / 延伸問題 / replay 成功後主動追加剩餘點數訊息，降低對手機版 persistent menu 可見性的依賴
   - [x] Backend：`SHOW_BALANCE` 在 0 點時回覆目前體驗點數不足的對應提示
   - [x] Backend：未綁定使用者點擊需要帳號的 menu 入口時回覆 linking 引導
   - [x] Backend：`前往設定` 改為 postback bridge，再回 signed WebView 按鈕避免首次進入卡在 session required

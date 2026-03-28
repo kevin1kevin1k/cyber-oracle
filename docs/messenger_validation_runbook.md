@@ -75,6 +75,7 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 因此即使使用者尚未建立 WebView session，也能從 persistent menu 自救，不必先手動找回原本的 linking button
 - 若 linked user 尚未完成固定問答參數，Messenger 會回一個導向 `/settings?from=messenger-profile-required` 的 WebView 按鈕，並保留原問題供使用者完成設定後一鍵重送
 - ask / followup / replay 這類較慢的流程，會先出現 `mark_seen` / `typing_on` 的處理中回饋，正式答案送出前再 `typing_off`
+- 主問題 / followup / replay 成功後，系統會再補一則 `本次已扣 1 點，目前剩餘 X 點。`，因此手機版即使不明顯顯示 persistent menu，使用者仍可即時得知餘額
 
 ## 通訊流程圖
 

@@ -29,6 +29,7 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_OPEN_SETTINGS_BUTTON_TITLE,
     DEFAULT_MESSENGER_OPEN_SETTINGS_REPLY,
     DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
+    DEFAULT_MESSENGER_POST_ASK_BALANCE_REPLY,
     DEFAULT_MESSENGER_PROFILE_BUTTON_TITLE,
     DEFAULT_MESSENGER_PROFILE_REPLAY_ASK_BUTTON_TITLE,
     DEFAULT_MESSENGER_PROFILE_REQUIRED_REPLY,
@@ -219,6 +220,7 @@ class MessengerEventService:
             return []
 
         return self._build_answer_outgoing_messages(
+            user_id=user_id,
             answer_text=ask_result.response.answer,
             followup_options=ask_result.response.followup_options,
         )
@@ -269,6 +271,7 @@ class MessengerEventService:
             ]
 
         return self._build_answer_outgoing_messages(
+            user_id=user_id,
             answer_text=followup_result.response.answer,
             followup_options=followup_result.response.followup_options,
         )
@@ -347,11 +350,18 @@ class MessengerEventService:
     def _build_answer_outgoing_messages(
         self,
         *,
+        user_id: UUID,
         answer_text: str,
         followup_options,
     ) -> list[MessengerOutgoingMessage]:
+        balance_message = MessengerOutgoingMessage(
+            kind="text",
+            text=DEFAULT_MESSENGER_POST_ASK_BALANCE_REPLY.format(
+                balance=self._get_wallet_balance(user_id=user_id)
+            ),
+        )
         if not followup_options:
-            return [MessengerOutgoingMessage(kind="text", text=answer_text)]
+            return [MessengerOutgoingMessage(kind="text", text=answer_text), balance_message]
 
         followup_lines = self._format_followup_lines(followup_options)
         quick_replies = [
@@ -370,6 +380,7 @@ class MessengerEventService:
                 ),
                 quick_replies=quick_replies,
             ),
+            balance_message,
         ]
 
     def _build_followup_outgoing_messages(self, followup_options) -> list[MessengerOutgoingMessage]:
@@ -394,6 +405,10 @@ class MessengerEventService:
 
     def _format_followup_lines(self, followup_options) -> list[str]:
         return [f"{index + 1}. {option.content}" for index, option in enumerate(followup_options)]
+
+    def _get_wallet_balance(self, *, user_id: UUID) -> int:
+        wallet = self._db.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+        return wallet.balance if wallet is not None else 0
 
     def build_linking_message(self, *, identity: MessengerIdentity) -> MessengerOutgoingMessage:
         return MessengerOutgoingMessage(
@@ -668,6 +683,7 @@ class MessengerEventService:
             self._db.commit()
 
         return self._build_answer_outgoing_messages(
+            user_id=user_id,
             answer_text=ask_result.response.answer,
             followup_options=ask_result.response.followup_options,
         )
