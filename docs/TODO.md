@@ -52,10 +52,12 @@
 - [x] 使用者固定問答參數設定檔（姓名 / 母親姓名）
   - [x] Backend：`users` 新增 `full_name`、`mother_name`
   - [x] Backend：新增 `GET/PUT /api/v1/me/profile`
+  - [x] Backend：新增 `DELETE /api/v1/me`，刪除帳號後可讓同一個 Messenger 帳號重新走新手流程
   - [x] Backend：ask / followup runtime 自動拼接固定資料，但 `questions.question_text` 仍只保存原始問題
   - [x] Backend：Messenger linked user 若 profile 未完成，先引導 `/settings`
   - [x] Backend：Messenger linked user 因 profile 未完成而被擋下時，保留原問題並提供「設定完成，重新送出剛剛的問題」按鈕
   - [x] Frontend：新增 `/settings` 頁並可修改固定資料
+  - [x] Frontend：`/settings` 提供危險操作區，可自助刪除帳號並清掉 WebView session
   - [x] Frontend：首頁在 profile 未完成時停用提問並導向設定
   - [x] 測試：profile API、ask augmentation、Messenger profile gating、frontend settings flow
 - [x] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）

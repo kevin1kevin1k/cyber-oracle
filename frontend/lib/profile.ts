@@ -23,3 +23,10 @@ export async function updateMyProfile(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export async function deleteMyAccount(): Promise<void> {
+  return apiRequest<void>("/api/v1/me", {
+    method: "DELETE",
+    auth: true,
+  });
+}

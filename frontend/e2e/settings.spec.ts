@@ -79,6 +79,37 @@ test("settings page loads and saves fixed ask profile fields", async ({ page }) 
   await expect(page.getByRole("link", { name: "前往提問" })).toBeVisible();
 });
 
+test("settings page can delete account and clear local session", async ({ page }) => {
+  await seedMessengerSession(page);
+  await page.route("**/api/v1/me/profile", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        full_name: "王小明",
+        mother_name: "林淑芬",
+        is_complete: true,
+      }),
+    });
+  });
+  await page.route("**/api/v1/me", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.goto("/settings");
+
+  await page.getByRole("button", { name: "刪除帳號" }).click();
+  await expect(page.getByText("這個操作無法復原。確認後會直接刪除帳號與所有相關資料。")).toBeVisible();
+  await page.getByRole("button", { name: "確認刪除帳號" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  const accessToken = await page.evaluate(() => window.localStorage.getItem("elin_access_token"));
+  expect(accessToken).toBeNull();
+});
+
 test("messenger link page redirects to requested next path after bootstrap", async ({ page }) => {
   await page.route("**/api/v1/messenger/link", async (route) => {
     await route.fulfill({

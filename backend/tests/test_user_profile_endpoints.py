@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.auth import issue_user_session
 from app.db import Base, get_db
 from app.main import app
+from app.models.credit_wallet import CreditWallet
+from app.models.messenger_identity import MessengerIdentity
+from app.models.question import Question
 from app.models.session_record import SessionRecord
 from app.models.user import User
 
@@ -36,9 +39,27 @@ def engine():
     except OperationalError:
         pytest.skip(f"PostgreSQL is not available at {TEST_DATABASE_URL}")
 
-    Base.metadata.create_all(bind=engine, tables=[User.__table__, SessionRecord.__table__])
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            User.__table__,
+            SessionRecord.__table__,
+            MessengerIdentity.__table__,
+            CreditWallet.__table__,
+            Question.__table__,
+        ],
+    )
     yield engine
-    Base.metadata.drop_all(bind=engine, tables=[User.__table__, SessionRecord.__table__])
+    Base.metadata.drop_all(
+        bind=engine,
+        tables=[
+            Question.__table__,
+            CreditWallet.__table__,
+            MessengerIdentity.__table__,
+            SessionRecord.__table__,
+            User.__table__,
+        ],
+    )
     engine.dispose()
 
 
@@ -48,6 +69,9 @@ def db_session(engine):
     session = session_local()
     try:
         session.query(SessionRecord).delete()
+        session.query(Question).delete()
+        session.query(CreditWallet).delete()
+        session.query(MessengerIdentity).delete()
         session.query(User).delete()
         session.commit()
         yield session
@@ -147,3 +171,62 @@ def test_put_my_profile_rejects_blank_values(client: TestClient, db_session: Ses
     )
 
     assert response.status_code == 422
+
+
+def test_delete_my_account_deletes_user_data_and_unlinks_messenger_identity(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, token = _create_user_with_session(
+        db_session,
+        full_name="王小明",
+        mother_name="林淑芬",
+    )
+    identity = MessengerIdentity(
+        psid="psid-delete-me",
+        page_id="page-delete-me",
+        user_id=user.id,
+        status="linked",
+        is_active=True,
+    )
+    wallet = CreditWallet(user_id=user.id, balance=9)
+    question = Question(
+        user_id=user.id,
+        question_text="測試問題",
+        lang="zh",
+        mode="analysis",
+        status="succeeded",
+        source="rag",
+        request_id="request-delete-account",
+        idempotency_key="delete-account-key",
+    )
+    db_session.add_all([identity, wallet, question])
+    db_session.commit()
+
+    response = client.delete(
+        "/api/v1/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 204
+
+    db_session.expire_all()
+
+    assert db_session.get(User, user.id) is None
+    assert db_session.query(SessionRecord).filter(SessionRecord.user_id == user.id).first() is None
+    assert db_session.query(CreditWallet).filter(CreditWallet.user_id == user.id).first() is None
+    assert db_session.query(Question).filter(Question.user_id == user.id).first() is None
+
+    reset_identity = db_session.get(MessengerIdentity, identity.id)
+    assert reset_identity is not None
+    assert reset_identity.user_id is None
+    assert reset_identity.status == "unlinked"
+    assert reset_identity.is_active is True
+    assert reset_identity.linked_at is None
+
+    followup_response = client.get(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert followup_response.status_code == 401
+    assert followup_response.json()["detail"]["code"] == "UNAUTHORIZED"

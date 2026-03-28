@@ -21,6 +21,7 @@ from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
+from app.models.messenger_identity import MessengerIdentity
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -728,6 +729,35 @@ def update_my_profile(
     db.commit()
     db.refresh(user)
     return _to_user_profile_response(user=user)
+
+
+@app.delete(
+    "/api/v1/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def delete_my_account(
+    auth_context: AuthContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> None:
+    user = _load_user_profile(db=db, user_id=auth_context.user_id)
+    identities = list(
+        db.scalars(
+            select(MessengerIdentity).where(
+                MessengerIdentity.user_id == auth_context.user_id
+            )
+        )
+    )
+    for identity in identities:
+        identity.user_id = None
+        identity.status = "unlinked"
+        identity.is_active = True
+        identity.linked_at = None
+        db.add(identity)
+
+    db.flush()
+    db.delete(user)
+    db.commit()
 
 
 @app.get(

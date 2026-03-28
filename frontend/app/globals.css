@@ -128,6 +128,35 @@ main {
   border-color: #f3c7cc;
 }
 
+.danger-zone {
+  margin-top: 18px;
+  border-color: #f3c7cc;
+  background: #fff7f8;
+}
+
+.danger-button {
+  background: #b42318;
+}
+
+.danger-button:disabled {
+  opacity: 0.6;
+}
+
+.danger-confirm {
+  margin-top: 12px;
+}
+
+.danger-note {
+  margin: 0 0 8px;
+  color: #7a271a;
+}
+
+.danger-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .card {
   background: #fff;
   border: 1px solid #dde5f0;

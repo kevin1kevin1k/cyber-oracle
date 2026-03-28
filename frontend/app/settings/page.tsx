@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import AppTopNav from "@/components/AppTopNav";
 import MessengerSessionRequired from "@/components/MessengerSessionRequired";
 import { ApiError } from "@/lib/api";
-import { getAuthSession } from "@/lib/auth";
-import { getMyProfile, updateMyProfile } from "@/lib/profile";
+import { clearAuthSession, getAuthSession } from "@/lib/auth";
+import { deleteMyAccount, getMyProfile, updateMyProfile } from "@/lib/profile";
 
 const MESSENGER_PROFILE_SOURCES = new Set(["messenger-profile-required"]);
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [authSession, setAuthSession] = useState<ReturnType<typeof getAuthSession>>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [profileSource, setProfileSource] = useState<string | null>(null);
@@ -19,6 +21,8 @@ export default function SettingsPage() {
   const [motherName, setMotherName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -102,6 +106,26 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleDeleteAccount() {
+    setError(null);
+    setSuccess(null);
+    setDeleting(true);
+    try {
+      await deleteMyAccount();
+      clearAuthSession();
+      router.replace("/");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        clearAuthSession();
+        setAuthSession(null);
+        setError("登入狀態已失效，請回 Messenger 重新進入。");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "刪除帳號失敗");
+      setDeleting(false);
+    }
+  }
+
   if (!authLoaded) {
     return (
       <main>
@@ -166,6 +190,49 @@ export default function SettingsPage() {
             <p className="helper-links">
               <Link href="/">前往提問</Link>
             </p>
+          </div>
+        )}
+      </section>
+
+      <section className="card danger-zone">
+        <h2>危險操作</h2>
+        <p>
+          刪除帳號後，系統會清除你的點數、歷史問答、固定問答設定與目前登入狀態；之後同一個
+          Messenger 帳號會回到未綁定狀態，需要重新走完整新手流程。
+        </p>
+
+        {!showDeleteConfirm ? (
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting || saving}
+          >
+            刪除帳號
+          </button>
+        ) : (
+          <div className="danger-confirm">
+            <p className="danger-note">
+              這個操作無法復原。確認後會直接刪除帳號與所有相關資料。
+            </p>
+            <div className="danger-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => void handleDeleteAccount()}
+                disabled={deleting}
+              >
+                {deleting ? "刪除中..." : "確認刪除帳號"}
+              </button>
+            </div>
           </div>
         )}
       </section>

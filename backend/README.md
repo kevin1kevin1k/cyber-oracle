@@ -53,6 +53,10 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - requires authenticated session
   - updates the fixed ask-profile fields used for question augmentation
   - both `full_name` and `mother_name` are required and trimmed server-side
+- `DELETE /api/v1/me`
+  - requires authenticated session
+  - hard deletes current user account data (`wallet`, `history`, `sessions`, profile fields)
+  - resets linked Messenger identities back to `unlinked`, so the same Messenger account can re-run onboarding as a fresh user
 
 ## Ask API (credit flow)
 - `POST /api/v1/ask`
