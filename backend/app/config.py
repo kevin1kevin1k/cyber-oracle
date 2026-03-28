@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     messenger_verify_signature: bool = False
     messenger_outbound_mode: Literal["noop", "meta_graph"] = "noop"
     messenger_web_base_url: str = "http://localhost:3000"
+    messenger_profile_sync_on_startup: bool = False
     payments_enabled: bool = True
     launch_credit_grant_amount: int = 50
 

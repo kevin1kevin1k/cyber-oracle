@@ -42,6 +42,8 @@ services:
         value: "true"
       - key: MESSENGER_OUTBOUND_MODE
         value: meta_graph
+      - key: MESSENGER_PROFILE_SYNC_ON_STARTUP
+        value: "true"
       - key: MESSENGER_WEB_BASE_URL
         sync: false
 

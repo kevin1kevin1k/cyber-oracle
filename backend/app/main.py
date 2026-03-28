@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -14,6 +15,7 @@ from app.ask_service import execute_ask_for_user, execute_followup_for_user
 from app.auth import AuthContext, require_authenticated
 from app.config import settings
 from app.db import get_db
+from app.messenger.profile_sync import maybe_sync_messenger_profile_on_startup
 from app.messenger.routes import router as messenger_router
 from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
@@ -60,7 +62,14 @@ from app.schemas import (
 from app.user_profile import is_profile_complete, normalize_profile_value
 from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
-app = FastAPI(title="ELIN Backend", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    maybe_sync_messenger_profile_on_startup()
+    yield
+
+
+app = FastAPI(title="ELIN Backend", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

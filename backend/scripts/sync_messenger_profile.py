@@ -7,22 +7,9 @@ if str(ROOT) not in sys.path:
 
 
 def main() -> None:
-    from app.config import settings
-    from app.messenger.client import MetaGraphMessengerClient
-    from app.messenger.service import (
-        build_default_get_started_payload,
-        build_default_persistent_menu,
-    )
+    from app.messenger.profile_sync import sync_messenger_profile
 
-    if not settings.meta_page_access_token:
-        raise SystemExit("META_PAGE_ACCESS_TOKEN is required")
-
-    client = MetaGraphMessengerClient(page_access_token=settings.meta_page_access_token)
-    menu_items = build_default_persistent_menu()
-    client.set_messenger_profile(
-        get_started_payload=build_default_get_started_payload(),
-        menu_items=menu_items,
-    )
+    sync_messenger_profile()
     print("Messenger profile synced (get started + persistent menu).")
 
 

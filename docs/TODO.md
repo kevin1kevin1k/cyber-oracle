@@ -243,6 +243,7 @@
   - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
 - [ ] DB：production 部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
 - [ ] Messenger：Meta 後台切換正式 webhook callback URL、Page 訂閱與 persistent menu sync
+- [x] Messenger：backend 啟動時自動 best-effort sync `Get Started` + `persistent_menu`
 - [ ] Messenger：將 `META_PAGE_ACCESS_TOKEN` 收斂為 production 可持續使用的正式 token 管理流程
   - [ ] 不再直接使用 Graph API Explorer 臨時 token 作為 production backend token
   - [ ] 用 Meta Access Token Debugger 驗證 token 是否仍有效、權限是否包含 `pages_messaging`
