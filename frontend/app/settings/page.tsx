@@ -10,7 +10,10 @@ import { ApiError } from "@/lib/api";
 import { clearAuthSession, getAuthSession } from "@/lib/auth";
 import { deleteMyAccount, getMyProfile, updateMyProfile } from "@/lib/profile";
 
-const MESSENGER_PROFILE_SOURCES = new Set(["messenger-profile-required"]);
+const MESSENGER_PROFILE_SOURCES = new Set([
+  "messenger-profile-required",
+  "messenger-first-link",
+]);
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -29,6 +32,7 @@ export default function SettingsPage() {
   const isLoggedIn = !!authSession?.accessToken;
   const isMessengerProfileFlow =
     profileSource !== null && MESSENGER_PROFILE_SOURCES.has(profileSource);
+  const isFirstMessengerLinkFlow = profileSource === "messenger-first-link";
   const canSave = useMemo(
     () => !loading && !saving && fullName.trim().length > 0 && motherName.trim().length > 0,
     [fullName, loading, motherName, saving]
@@ -93,7 +97,11 @@ export default function SettingsPage() {
         full_name: fullName.trim(),
         mother_name: motherName.trim(),
       });
-      setSuccess("個人設定已儲存，之後提問會自動帶入這兩個固定資料。");
+      setSuccess(
+        isFirstMessengerLinkFlow
+          ? "個人設定已儲存，現在可以回 Messenger 直接提問。"
+          : "個人設定已儲存，之後提問會自動帶入這兩個固定資料。"
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setAuthSession(null);
@@ -151,9 +159,13 @@ export default function SettingsPage() {
 
       {isMessengerProfileFlow && (
         <section className="card wallet-section wallet-messenger-note">
-          <h2>Messenger 提問前設定</h2>
+          <h2>{isFirstMessengerLinkFlow ? "綁定完成，請先補資料" : "Messenger 提問前設定"}</h2>
           <p>這套問答需要固定使用你的姓名與母親姓名作為背景資料。</p>
-          <p>完成儲存後，就可以回首頁或回 Messenger 繼續提問。</p>
+          <p>
+            {isFirstMessengerLinkFlow
+              ? "你已完成 Messenger 綁定。再完成這一步，之後就能直接回 Messenger 提問。"
+              : "完成儲存後，就可以回首頁或回 Messenger 繼續提問。"}
+          </p>
         </section>
       )}
 
@@ -188,7 +200,7 @@ export default function SettingsPage() {
           <div className="answer">
             <p className="success">{success}</p>
             <p className="helper-links">
-              <Link href="/">前往提問</Link>
+              <Link href="/">{isFirstMessengerLinkFlow ? "返回首頁" : "前往提問"}</Link>
             </p>
           </div>
         )}

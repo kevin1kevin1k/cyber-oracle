@@ -50,6 +50,10 @@ export default function MessengerLinkPage() {
           router.replace(nextPath);
           return;
         }
+        if (payload.link_status === "linked_new") {
+          router.replace("/settings?from=messenger-first-link");
+          return;
+        }
         setLinkStatus(payload.link_status);
         setStatus("linked");
       } catch (err) {

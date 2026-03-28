@@ -19,7 +19,7 @@ test("messenger link page bootstraps a new session", async ({ page }) => {
 
   await page.goto("/messenger/link?token=link-token-123");
 
-  await expect(page.getByText("綁定完成，請回 Messenger 繼續提問。")).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\?from=messenger-first-link$/);
   const accessToken = await page.evaluate(() => window.localStorage.getItem("elin_access_token"));
   expect(accessToken).toBe("token-1");
 });

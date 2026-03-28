@@ -79,6 +79,48 @@ test("settings page loads and saves fixed ask profile fields", async ({ page }) 
   await expect(page.getByRole("link", { name: "前往提問" })).toBeVisible();
 });
 
+test("settings page shows first-link onboarding hint and messenger success copy", async ({ page }) => {
+  await seedMessengerSession(page);
+  await page.route("**/api/v1/me/profile", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          full_name: null,
+          mother_name: null,
+          is_complete: false,
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        full_name: "陳大文",
+        mother_name: "黃美玉",
+        is_complete: true,
+      }),
+    });
+  });
+
+  await page.goto("/settings?from=messenger-first-link");
+
+  await expect(page.getByText("綁定完成，請先補資料")).toBeVisible();
+  await expect(
+    page.getByText("你已完成 Messenger 綁定。再完成這一步，之後就能直接回 Messenger 提問。")
+  ).toBeVisible();
+
+  await page.getByLabel("我的姓名").fill("陳大文");
+  await page.getByLabel("我母親的姓名").fill("黃美玉");
+  await page.getByRole("button", { name: "儲存設定" }).click();
+
+  await expect(page.getByText("個人設定已儲存，現在可以回 Messenger 直接提問。")).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回首頁" })).toBeVisible();
+});
+
 test("settings page can delete account and clear local session", async ({ page }) => {
   await seedMessengerSession(page);
   await page.route("**/api/v1/me/profile", async (route) => {
