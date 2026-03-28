@@ -20,7 +20,10 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_FOLLOWUP_FAILED_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_FOLLOWUP_UPSTREAM_REPLY,
+    DEFAULT_MESSENGER_GET_STARTED_BUTTON_TITLE,
+    DEFAULT_MESSENGER_GET_STARTED_ONBOARDING_REPLY,
     DEFAULT_MESSENGER_GET_STARTED_REPLY,
+    DEFAULT_MESSENGER_GREETING_TEXT,
     DEFAULT_MESSENGER_HISTORY_BUTTON_TITLE,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
@@ -225,6 +228,24 @@ class MessengerEventService:
     ) -> list[MessengerOutgoingMessage]:
         payload = command.postback_payload or ""
         if payload == GET_STARTED_PAYLOAD:
+            user_id = self.maybe_resolve_internal_user(identity=identity)
+            if user_id is None or not self._has_complete_profile(user_id=user_id):
+                return [
+                    MessengerOutgoingMessage(
+                        kind="button_template",
+                        text=DEFAULT_MESSENGER_GET_STARTED_ONBOARDING_REPLY,
+                        buttons=[
+                            {
+                                "type": "web_url",
+                                "title": DEFAULT_MESSENGER_GET_STARTED_BUTTON_TITLE,
+                                "url": self._build_messenger_link_url(
+                                    identity=identity,
+                                    next_path="/settings?from=messenger-get-started",
+                                ),
+                            }
+                        ],
+                    )
+                ]
             return [
                 MessengerOutgoingMessage(
                     kind="text",
@@ -792,6 +813,10 @@ def build_default_persistent_menu() -> list[dict[str, str]]:
             "payload": OPEN_HISTORY_PAYLOAD,
         },
     ]
+
+
+def build_default_greeting_text() -> str:
+    return DEFAULT_MESSENGER_GREETING_TEXT
 
 
 def build_default_get_started_payload() -> str:

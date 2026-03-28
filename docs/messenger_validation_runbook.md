@@ -12,6 +12,7 @@
 已完成：
 - `GET /api/v1/messenger/webhook` challenge verify
 - `POST /api/v1/messenger/webhook` event ingest
+- Messenger greeting / `Get Started` welcome onboarding
 - linked / unlinked identity 分流
 - linked user 的 inbound ask flow
 - linked user 的固定問答參數 gating（姓名 / 母親姓名未完成時先引導 `/settings`）
@@ -65,8 +66,9 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 ```
 
 預期結果：
-- script 會同時設定 `Get Started` 與 `persistent_menu`；Meta 不接受只設定 persistent menu
+- script 會同時設定 `greeting`、`Get Started` 與 `persistent_menu`；Meta 不接受只設定 persistent menu
 - Meta Page 的 Messenger persistent menu 會被更新為目前程式內定義的預設 menu
+- 新使用者第一次打開對話視窗時，可先看到 welcome greeting 與 `Get Started`
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
 - 若剩餘點數為 `0`，系統會再附上既有購點按鈕
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
@@ -550,6 +552,10 @@ cloudflared tunnel --url http://localhost:8000
    - 預期結果：followup 事件可進 domain flow，不會只 echo payload
 6. 打開 Messenger persistent menu，點 `查看剩餘點數`
    - 預期結果：已綁定使用者會直接收到目前剩餘點數；若是未綁定使用者，會收到 linking 引導
+7. 用全新或已刪帳的測試帳號，第一次打開 Messenger 對話視窗
+   - 預期結果：welcome screen 可看到 greeting 與 `Get Started`
+8. 點 `Get Started`
+   - 預期結果：bot 回一顆 signed WebView 按鈕，導向 `/settings?from=messenger-get-started`
 
 適合驗證：
 - webhook 綁定

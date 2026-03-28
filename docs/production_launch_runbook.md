@@ -104,7 +104,7 @@ curl -I https://app.<your-domain>
    - 先用 Access Token Debugger 驗證 token 是否有效、是否仍帶有 `pages_messaging`
    - token 更新後，必須同步更新 Render backend `META_PAGE_ACCESS_TOKEN`，並重新 deploy backend
    - 若 token 曾在聊天、截圖、螢幕分享或其他非 secrets 管道外露，視同外洩，應立即重發並替換
-6. 若 `MESSENGER_PROFILE_SYNC_ON_STARTUP=true`，backend 每次 deploy / restart 都會 best-effort 自動同步 Messenger profile（`Get Started` + `persistent_menu`），失敗只記 warning，不阻止服務啟動。
+6. 若 `MESSENGER_PROFILE_SYNC_ON_STARTUP=true`，backend 每次 deploy / restart 都會 best-effort 自動同步 Messenger profile（`greeting` + `Get Started` + `persistent_menu`），失敗只記 warning，不阻止服務啟動。
 7. 如需手動重刷或在 deploy 前先驗證，也可用 production env 執行 persistent menu sync：
 ```bash
 cd /Users/kevin1kevin1k/cyber-oracle/backend && \

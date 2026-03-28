@@ -59,12 +59,17 @@ class NoopMessengerClient:
     def set_messenger_profile(
         self,
         *,
+        greeting_text: str,
         get_started_payload: str,
         menu_items: list[dict[str, Any]],
     ) -> None: ...
 
     def set_persistent_menu(self, *, menu_items: list[dict[str, Any]]) -> None:
-        self.set_messenger_profile(get_started_payload="GET_STARTED", menu_items=menu_items)
+        self.set_messenger_profile(
+            greeting_text="",
+            get_started_payload="GET_STARTED",
+            menu_items=menu_items,
+        )
 
 
 class MetaGraphMessengerClient:
@@ -132,11 +137,18 @@ class MetaGraphMessengerClient:
     def set_messenger_profile(
         self,
         *,
+        greeting_text: str,
         get_started_payload: str,
         menu_items: list[dict[str, Any]],
     ) -> None:
         self._send_profile_api_request(
             {
+                "greeting": [
+                    {
+                        "locale": "default",
+                        "text": greeting_text,
+                    }
+                ],
                 "get_started": {"payload": get_started_payload},
                 "persistent_menu": [
                     {
@@ -149,7 +161,11 @@ class MetaGraphMessengerClient:
         )
 
     def set_persistent_menu(self, *, menu_items: list[dict[str, Any]]) -> None:
-        self.set_messenger_profile(get_started_payload="GET_STARTED", menu_items=menu_items)
+        self.set_messenger_profile(
+            greeting_text="",
+            get_started_payload="GET_STARTED",
+            menu_items=menu_items,
+        )
 
     def _send_api_request(self, payload: dict[str, Any]) -> None:
         self._post_json(self.graph_api_url, payload)

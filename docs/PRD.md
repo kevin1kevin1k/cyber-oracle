@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.17（Messenger-first WebView Home Hub）
+- 文件版本：v0.18（Messenger Welcome Onboarding）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -24,6 +24,7 @@ MVP 目標：
 - Messenger 主入口：
   - 支援 Messenger webhook verification 與 webhook event handling。
   - 支援 Messenger outbound message delivery（文字、quick replies/buttons）。
+  - 支援 Messenger greeting / Get Started welcome onboarding。
   - 支援 Messenger persistent menu，提供常用入口（如點數、購點、歷史）。
 - 身份與綁定：
   - 支援 Messenger 身份（PSID / external identity）建檔與對應。
@@ -71,6 +72,8 @@ MVP 目標：
 ## 5. 核心使用流程
 ### 5.1 主要 User Journeys
 1. 新使用者首次提問（未綁定）
+   - 使用者第一次打開 Messenger 對話視窗時，可先看到 welcome greeting 與 `Get Started`。
+   - 點下 `Get Started` 後，系統需回一顆 signed WebView 按鈕，直接導到設定頁完成綁定與固定問答資料。
    - 使用者在 Messenger 傳送問題。
    - 系統透過 webhook 接收事件，建立/更新 Messenger identity。
    - 若策略允許，先提供最小回覆；若需完整服務（如歷史保存/購點）則引導 WebView 綁定。
@@ -168,6 +171,7 @@ sequenceDiagram
 ### 6.1 通路與身份
 - 系統需支援 Messenger webhook verification（challenge 驗證）。
 - 系統需支援 webhook event handling（message/postback/quick reply）。
+- 系統需支援 Messenger greeting 與 `Get Started`，作為首次進入對話視窗的新手引導入口。
 - 系統需支援 Messenger persistent menu / postback 常用入口（如查點數）。
 - 對需要站內 session 的 persistent menu 入口（例如購點、歷史），系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
 - 系統正式公開前，需完成 Meta app 對應的 review / advanced access / publish 流程，避免功能只對 `Administrators / Developers / Testers` 可用。

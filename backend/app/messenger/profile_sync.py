@@ -4,6 +4,7 @@ from app.config import settings
 from app.messenger.client import MessengerClientError, MetaGraphMessengerClient
 from app.messenger.service import (
     build_default_get_started_payload,
+    build_default_greeting_text,
     build_default_persistent_menu,
 )
 
@@ -16,6 +17,7 @@ def sync_messenger_profile() -> None:
 
     client = MetaGraphMessengerClient(page_access_token=settings.meta_page_access_token)
     client.set_messenger_profile(
+        greeting_text=build_default_greeting_text(),
         get_started_payload=build_default_get_started_payload(),
         menu_items=build_default_persistent_menu(),
     )

@@ -12,6 +12,10 @@ IDENTITY_STATUS_LINKED = "linked"
 IDENTITY_STATUS_BLOCKED = "blocked"
 
 DEFAULT_UNLINKED_REPLY = "已收到你的訊息。請先點擊下方按鈕完成 Messenger 綁定，之後就能直接提問。"
+DEFAULT_MESSENGER_GREETING_TEXT = (
+    "歡迎使用 ELIN 神域引擎。先點擊下方的 Get Started，再前往 WebView "
+    "完成綁定與固定資料設定，就能直接在 Messenger 提問。"
+)
 DEFAULT_UNSUPPORTED_EVENT_REPLY = "目前僅支援文字訊息與按鈕互動。"
 DEFAULT_MESSENGER_ASK_FAILED_REPLY = "目前暫時無法完成提問，請稍後再試。"
 DEFAULT_MESSENGER_ASK_CONFIG_REPLY = "目前系統設定尚未完成，請稍後再試。"
@@ -32,6 +36,10 @@ DEFAULT_MESSENGER_BALANCE_BUTTON_TITLE = "查看剩餘點數"
 DEFAULT_MESSENGER_GET_STARTED_REPLY = (
     "已開啟 Messenger 助手。你可以直接提問，或使用選單查看點數、購點與歷史。"
 )
+DEFAULT_MESSENGER_GET_STARTED_ONBOARDING_REPLY = (
+    "先完成 Messenger 綁定與固定資料設定，之後就能直接回 Messenger 提問。"
+)
+DEFAULT_MESSENGER_GET_STARTED_BUTTON_TITLE = "前往設定"
 DEFAULT_FOLLOWUP_PROMPT_TEXT = "你也可以選擇以下延伸問題："
 DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY = "這個延伸問題目前無法使用，請重新選擇或重新提問。"
 DEFAULT_MESSENGER_FOLLOWUP_UNAVAILABLE_REPLY = "這個延伸問題已失效，請重新提問。"

@@ -151,6 +151,7 @@ def test_meta_graph_set_messenger_profile_builds_expected_request(
 
     client = MetaGraphMessengerClient(page_access_token="page-token")
     client.set_messenger_profile(
+        greeting_text="歡迎使用 ELIN。",
         get_started_payload="GET_STARTED",
         menu_items=[
             {"type": "postback", "title": "查看剩餘點數", "payload": "SHOW_BALANCE"},
@@ -161,6 +162,12 @@ def test_meta_graph_set_messenger_profile_builds_expected_request(
     assert captured["url"] == "https://graph.facebook.com/v24.0/me/messenger_profile"
     assert captured["timeout"] == 10.0
     assert captured["payload"] == {
+        "greeting": [
+            {
+                "locale": "default",
+                "text": "歡迎使用 ELIN。",
+            }
+        ],
         "get_started": {"payload": "GET_STARTED"},
         "persistent_menu": [
             {
@@ -225,6 +232,12 @@ def test_set_persistent_menu_delegates_to_default_get_started(
     client.set_persistent_menu(menu_items=[{"type": "postback", "title": "A", "payload": "B"}])
 
     assert captured["payload"] == {
+        "greeting": [
+            {
+                "locale": "default",
+                "text": "",
+            }
+        ],
         "get_started": {"payload": "GET_STARTED"},
         "persistent_menu": [
             {

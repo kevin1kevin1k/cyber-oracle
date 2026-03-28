@@ -153,6 +153,7 @@
 - [x] 完成 Messenger persistent menu MVP（常用入口）
   - [x] Backend：新增 persistent menu payload builder（查看剩餘點數 / 前往購點 / 查看歷史）
   - [x] Backend：新增 Messenger profile sync script，將 persistent menu 寫入 Meta Graph API
+  - [x] Backend：新增 greeting / Get Started welcome onboarding，首次打開對話視窗即可看到新手引導
   - [x] Backend：新增 `SHOW_BALANCE` postback，回覆目前剩餘點數
   - [x] Backend：`SHOW_BALANCE` 在 0 點時附帶既有購點導流按鈕
   - [x] Backend：未綁定使用者點擊需要帳號的 menu 入口時回覆 linking 引導

@@ -149,7 +149,7 @@ Environment variables:
 - `MESSENGER_VERIFY_SIGNATURE`: enable webhook signature validation (`false` by default)
 - `MESSENGER_OUTBOUND_MODE`: outbound client mode (`noop` or `meta_graph`)
 - `MESSENGER_WEB_BASE_URL`: frontend/WebView base URL used in Messenger web_url buttons (`http://localhost:3000` by default; set to your public frontend URL in local tunnel / staging / production)
-- `MESSENGER_PROFILE_SYNC_ON_STARTUP`: when `true`, backend startup performs best-effort Messenger profile sync (`Get Started` + `persistent_menu`) using current env; failures are logged as warnings and do not block service startup
+- `MESSENGER_PROFILE_SYNC_ON_STARTUP`: when `true`, backend startup performs best-effort Messenger profile sync (`greeting` + `Get Started` + `persistent_menu`) using current env; failures are logged as warnings and do not block service startup
 
 Docker Compose note:
 - local Compose should not hardcode `CORS_ORIGINS=http://localhost:3000` in service env, otherwise public frontend tunnel origins from `backend/.env` will be ignored and browser preflight (`OPTIONS`) requests from Messenger WebView will fail with `400`
@@ -217,7 +217,8 @@ Current channel capabilities:
 - when `PAYMENTS_ENABLED=false`, insufficient-credit flows return a read-only wallet / no-purchase experience instead of purchase buttons
 - insufficient-credit entry buttons now also use signed WebView bridge flow, so `/wallet` can still be opened after WebView session loss
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
-- Messenger profile sync now sets both `get_started` and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled
+- Messenger profile sync now sets `greeting`, `get_started`, and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled and greeting improves first-open onboarding
+- `GET_STARTED` now acts as a real onboarding entry: unlinked users or linked users with incomplete profile receive a signed WebView button that opens `/settings?from=messenger-get-started`
 - backend startup can auto-sync Messenger profile when `MESSENGER_PROFILE_SYNC_ON_STARTUP=true`; keep `backend/scripts/sync_messenger_profile.py` as manual fallback after token rotation or emergency menu refresh
 - failure handling:
   - ask / replay / followup failures are classified into config / upstream / generic user-facing Messenger replies instead of a single fallback for every case

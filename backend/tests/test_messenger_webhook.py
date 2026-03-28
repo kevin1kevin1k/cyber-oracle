@@ -978,9 +978,9 @@ def test_webhook_post_postback_get_started_for_linked_user(
     )
 
 
-def test_webhook_post_postback_get_started_for_unlinked_user_returns_linking(
+def test_webhook_post_postback_get_started_for_unlinked_user_returns_onboarding_button(
     client: TestClient,
-    outgoing_messages: list[tuple[str, str, str]],
+    captured_outgoing: list[tuple[str, object]],
 ) -> None:
     payload = {
         "object": "page",
@@ -1003,11 +1003,63 @@ def test_webhook_post_postback_get_started_for_unlinked_user_returns_linking(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
-    assert outgoing_messages[-1] == (
-        "psid-get-started-unlinked",
-        "text",
-        "已開啟 Messenger 助手。你可以直接提問，或使用選單查看點數、購點與歷史。",
+    assert len(captured_outgoing) == 1
+    psid, outgoing = captured_outgoing[0]
+    assert psid == "psid-get-started-unlinked"
+    assert outgoing.kind == "button_template"
+    assert outgoing.text == "先完成 Messenger 綁定與固定資料設定，之後就能直接回 Messenger 提問。"
+    assert outgoing.buttons[0]["type"] == "web_url"
+    assert outgoing.buttons[0]["title"] == "前往設定"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
     )
+    assert "next=%2Fsettings%3Ffrom%3Dmessenger-get-started" in outgoing.buttons[0]["url"]
+
+
+def test_webhook_post_postback_get_started_for_linked_user_without_profile(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing: list[tuple[str, object]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-get-started-no-profile",
+        page_id="page-get-started-no-profile",
+        balance=2,
+        profile_complete=False,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-get-started-no-profile",
+                "time": 1700001008,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-get-started-no-profile"},
+                        "recipient": {"id": "page-get-started-no-profile"},
+                        "timestamp": 1700001008,
+                        "postback": {"payload": "GET_STARTED"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    psid, outgoing = captured_outgoing[0]
+    assert psid == "psid-get-started-no-profile"
+    assert outgoing.kind == "button_template"
+    assert outgoing.text == "先完成 Messenger 綁定與固定資料設定，之後就能直接回 Messenger 提問。"
+    assert outgoing.buttons[0]["type"] == "web_url"
+    assert outgoing.buttons[0]["title"] == "前往設定"
+    assert outgoing.buttons[0]["url"].startswith(
+        "https://frontend.example.com/messenger/link?token="
+    )
+    assert "next=%2Fsettings%3Ffrom%3Dmessenger-get-started" in outgoing.buttons[0]["url"]
 
 
 def test_webhook_post_postback_show_balance_for_zero_balance_returns_topup(

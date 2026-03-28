@@ -21,9 +21,11 @@ def test_sync_messenger_profile_pushes_get_started_and_menu(
         def set_messenger_profile(
             self,
             *,
+            greeting_text: str,
             get_started_payload: str,
             menu_items: list[dict[str, str]],
         ) -> None:
+            captured["greeting_text"] = greeting_text
             captured["get_started_payload"] = get_started_payload
             captured["menu_items"] = menu_items
 
@@ -39,6 +41,11 @@ def test_sync_messenger_profile_pushes_get_started_and_menu(
     sync_messenger_profile()
 
     assert captured["page_access_token"] == "page-token"
+    assert (
+        captured["greeting_text"]
+        == "歡迎使用 ELIN 神域引擎。先點擊下方的 Get Started，再前往 WebView "
+        "完成綁定與固定資料設定，就能直接在 Messenger 提問。"
+    )
     assert captured["get_started_payload"] == "GET_STARTED"
     assert captured["menu_items"] == [
         {
