@@ -17,7 +17,7 @@
 - linked user 的 inbound ask flow
 - linked user 的固定問答參數 gating（姓名 / 母親姓名未完成時先引導 `/settings`）
 - Messenger quick reply followup flow
-- Messenger persistent menu（查點數 / 購點 / 歷史）
+- Messenger persistent menu（查看剩餘點數 / 前往設定）
 - Messenger WebView session bootstrap（`POST /api/v1/messenger/link`）
 - `noop` / `meta_graph` outbound client abstraction
 
@@ -69,7 +69,7 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - Meta Page 的 Messenger persistent menu 會被更新為目前程式內定義的預設 menu
 - 新使用者第一次打開對話視窗時，可先看到 welcome greeting 與 `Get Started`
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
-- 若剩餘點數為 `0`，系統會再附上既有購點按鈕
+- 若剩餘點數為 `0`，系統會回覆目前體驗點數不足的對應提示
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
 - `前往設定` 會先走 postback bridge，再回一顆帶 signed token 的 WebView 按鈕
 - 因此即使使用者尚未建立 WebView session，也能從 persistent menu 自救，不必先手動找回原本的 linking button
@@ -109,7 +109,7 @@ sequenceDiagram
   end
 
   opt Messenger web_url button
-    U->>M: 點擊綁定 / 購點按鈕
+    U->>M: 點擊綁定 / 設定按鈕
     M->>F: 開啟 MESSENGER_WEB_BASE_URL 對應頁面
   end
 ```
@@ -175,7 +175,7 @@ sequenceDiagram
 - 正式 webhook / Page / App / secrets 全部正確
 - 正式 outbound message delivery 正常
 - signature verify、監控告警、重試與營運排障入口齊備
-- 正式用戶行為與綁定/購點策略一致
+- 正式用戶行為與綁定/體驗版點數策略一致
 - 非 app role 的一般 Facebook 使用者也能完成同樣的主流程驗證
 
 ## Webhook 綁定步驟
@@ -592,8 +592,8 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 補充：
 - 現在 `meta_graph` 模式已可在 local + `cloudflared` 下做真正的 Messenger 端到端回覆驗證
 - 若 Graph Send API 失敗，webhook ingest 應仍維持 `accepted`，錯誤主要看 backend log
-- 若要測 WebView 綁定 / 購點按鈕，請另外把 `MESSENGER_WEB_BASE_URL` 設成 frontend 的公開 tunnel URL
-- 對直接提問遇到 402 的情境，系統現在也會保留一筆待重送問題，購點後可從 Messenger 一鍵重送，不必手動重新輸入
+- 若要測 WebView 綁定 / 設定按鈕，請另外把 `MESSENGER_WEB_BASE_URL` 設成 frontend 的公開 tunnel URL
+- 目前 public beta 關閉真實購點；對 402 情境應驗證體驗版提示，不應再期待購點後一鍵重送
 
 ### Local 成功標準
 - webhook verify 成功
@@ -632,7 +632,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 
 ### Pre-prod 暫時無法完成的閉環
 目前 codebase 尚未完成以下能力，因此 pre-prod 只能驗證缺口，不可假裝已驗過：
-- Messenger WebView Stripe Checkout 完整流程
+- Messenger WebView Stripe Checkout 完整流程（後續版本）
 - payment webhook -> 點數入帳 -> Messenger 成功通知閉環
 - 完整 signature replay protection
 

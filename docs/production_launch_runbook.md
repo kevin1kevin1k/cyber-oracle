@@ -44,7 +44,7 @@
 補充：
 - backend 會自動把 Render 常見的 `postgresql://...` 連線字串正規化為 `postgresql+psycopg://...`，因此直接使用 Render 注入的 Postgres connection string 也能正常啟動
 - frontend 如果未設定 `NEXT_PUBLIC_API_BASE_URL`，在 HTTPS 非 localhost 情境會走 same-origin；但正式部署仍建議明確填入 `https://api.<your-domain>`，避免 WebView / custom domain 切換時判斷混淆。
-- `PAYMENTS_ENABLED=false` 是目前公開體驗版的正式策略；WebView 只保留單頁設定中心，不開放真實購點或歷史查詢。
+- `PAYMENTS_ENABLED=false` 是目前公開體驗版的正式策略；WebView 只保留單頁設定中心，不開放真實購點或歷史查詢，點數不足時僅回體驗版提示。
 
 ## Render 建立步驟
 1. 在 Render 建立 Blueprint，直接指向 repo root 的 [render.yaml](/Users/kevin1kevin1k/cyber-oracle/render.yaml)。

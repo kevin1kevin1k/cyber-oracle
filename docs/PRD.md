@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.20（Messenger Balance Feedback）
+- 文件版本：v0.21（Docs Cleanup for Messenger-first Public Beta）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -12,7 +12,7 @@ MVP 目標：
 - 讓新使用者可在 Messenger 對話中於 3 分鐘內完成首次提問並收到回覆。
 - 提供穩定、可追蹤的問答與扣點流程（reserve/capture/refund）。
 - 提供一致且可程式化處理的回答格式（structured output，結論優先）。
-- 建立可營運的 Messenger 導購購點閉環（WebView Stripe Checkout + 回流 Messenger）。
+- 建立以 Messenger 為主、WebView 為輔的公開體驗版主流程（設定固定資料、顯示點數、刪除帳號）。
 
 ## 3. 目標使用者
 - 一般使用者：主要在 Messenger 對話中提問與追問，希望快速取得可用答案。
@@ -33,7 +33,7 @@ MVP 目標：
   - 已綁定使用者可在 WebView 維護固定問答參數（姓名、母親姓名），供後續提問自動帶入。
 - 問答系統：
   - 使用者可直接在 Messenger 發問並收到回覆。
-  - 保留 RAG 為主、Router（rule/rag/openai）分流、structured output、followups。
+  - 目前公開版本以 RAG + structured output + followups 為主，不再將 deterministic router 視為 MVP 必要能力。
   - 系統需在 ask 前自動將使用者固定問答參數與本次問題組裝後再送入模型，但歷史紀錄只保留原始問題文字。
 - 回答輸出規則：
   - 前台（Messenger）顯示「結論 → 必要說明」。
@@ -67,7 +67,7 @@ MVP 目標：
 ### 4.3 MVP 假設與待確認
 - MVP 先以單一 Facebook Page / 單一 Messenger 通路為主。
 - WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 目前只保留 `查看剩餘點數` 與 `前往設定` 兩個入口。
-- Stripe Checkout 成功/失敗回傳以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
+- 若後續重新開放真實購點，Stripe Checkout 成功/失敗回傳仍需以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
 - 對外公開試用的 release gate 不只包含 deploy 成功，也包含 Meta app 已完成對應 review / advanced access 與公開化設定，讓非 app role 的一般使用者可實際與 bot 互動。
 
 ## 5. 核心使用流程
@@ -77,13 +77,13 @@ MVP 目標：
    - 點下 `Get Started` 後，系統需回一顆 signed WebView 按鈕，直接導到單頁設定中心完成綁定與固定問答資料。
    - 使用者在 Messenger 傳送問題。
    - 系統透過 webhook 接收事件，建立/更新 Messenger identity。
-   - 若策略允許，先提供最小回覆；若需完整服務（如歷史保存/購點）則引導 WebView 綁定。
+   - 若尚未完成綁定或固定資料設定，先引導 WebView 完成必要步驟，再回 Messenger 提問。
 
 2. 體驗點數不足
    - 使用者在 Messenger 提問時餘額不足。
    - 系統回覆體驗版提示，不在目前版本導向 WebView 購點。
 
-3. WebView 付款後返回 Messenger
+3. WebView 付款後返回 Messenger（後續版本）
    - 使用者在 WebView 完成付款。
    - 系統接收支付結果，更新訂單與點數餘額。
    - 系統回 Messenger 通知購點成功/失敗與可用點數。
@@ -95,7 +95,7 @@ MVP 目標：
 
 5. 已綁定 vs 未綁定能力
    - 未綁定：可進行有限互動（由產品策略決定），必要時被引導綁定。
-   - 已綁定：可使用完整問答、購點、歷史與點數一致性能力。
+   - 已綁定：可使用完整問答、點數查詢、固定資料設定與刪除帳號能力。
    - 若已綁定但尚未完成固定問答參數設定，系統需先引導完成設定後才能提問。
    - 若使用者在 Messenger 直接提問時被固定問答參數 gate 擋下，系統需保留該問題，讓使用者完成設定後可在 Messenger 一鍵重送。
 
@@ -109,29 +109,27 @@ MVP 目標：
 2. Identity Resolve：以 PSID/page_id 查找 external identity，必要時建立。
 3. Eligibility Check：判斷是否可直接回答、是否需綁定或導購。
 4. Credit Reserve：可提問時先預扣 1 點（reserve）。
-5. Router：判斷 rule/rag/openai 路徑。
-6. Retriever + Rerank：RAG 檢索並固定選取 Top-3。
-7. Generator：LLM 生成答案草稿。
-8. Post-process：轉為 structured output（answer + followup options）。
-9. Persist：保存問答、followup 關聯、交易與事件。
-10. Credit Capture/Refund：成功 capture，失敗 refund。
-11. Outbound Delivery：將回答與 followup 按鈕回傳至 Messenger。
+5. Retriever + Rerank：RAG 檢索並固定選取 Top-3。
+6. Generator：LLM 生成答案草稿。
+7. Post-process：轉為 structured output（answer + followup options）。
+8. Persist：保存問答、followup 關聯、交易與事件。
+9. Credit Capture/Refund：成功 capture，失敗 refund。
+10. Outbound Delivery：將回答與 followup 按鈕回傳至 Messenger。
 
 ```mermaid
 flowchart TD
   M1[Messenger 使用者訊息] --> M2[Webhook Receiver]
   M2 --> M3[Identity Resolve / Mapping]
   M3 --> M4{已綁定且可提問?}
-  M4 -->|否| M5[回覆綁定或購點引導 + WebView 按鈕]
+  M4 -->|否| M5[回覆綁定或設定引導 + WebView 按鈕]
   M4 -->|是| M6[Credit Reserve]
-  M6 --> M7[Router rule/rag/openai]
-  M7 --> M8[RAG Top-3 + LLM]
-  M8 --> M9[Structured Output + Followups]
-  M9 --> M10{成功?}
-  M10 -->|是| M11[Persist + Capture]
-  M10 -->|否| M12[Persist Error + Refund]
-  M11 --> M13[Send API 回 Messenger]
-  M12 --> M13
+  M6 --> M7[RAG Top-3 + LLM]
+  M7 --> M8[Structured Output + Followups]
+  M8 --> M9{成功?}
+  M9 -->|是| M10[Persist + Capture]
+  M9 -->|否| M11[Persist Error + Refund]
+  M10 --> M12[Send API 回 Messenger]
+  M11 --> M12
 ```
 
 ```mermaid
@@ -147,14 +145,10 @@ sequenceDiagram
   MSG->>API: webhook event
   API->>W: 檢查餘額
   alt 餘額不足
-    API-->>MSG: 回購點按鈕（開 WebView）
-    U->>WV: 完成 Stripe Checkout
-    WV->>API: payment callback
-    API->>W: 入帳
-    API-->>MSG: 通知購點結果
+    API-->>MSG: 回體驗版提示
   else 餘額足夠
     API->>W: reserve 1 點
-    API->>QA: Router + RAG Top-3 + Generator
+    API->>QA: RAG Top-3 + Generator
     alt 生成成功
       QA-->>API: structured output(answer + followups)
       API->>W: capture
@@ -182,7 +176,7 @@ sequenceDiagram
 
 ### 6.2 問答與知識檢索
 - 問題字數上限（建議 1,000 字）。
-- 問答流程需包含 Intake、Identity Resolve、Router、Retriever、Generator、Post-process、Persist。
+- 問答流程需包含 Intake、Identity Resolve、Retriever、Generator、Post-process、Persist。
 - ask runtime 需在 generator 前自動注入使用者固定資料（至少姓名、母親姓名）。
 - RAG 檢索後內部固定採用 Top-3 證據作答。
 - 回答需以 structured output 回傳，至少包含：回答內容、延伸問題選項。
@@ -243,15 +237,14 @@ sequenceDiagram
 ## 9. 驗收標準（MVP）
 - 使用者可直接從 Messenger 成功提問並收到回答。
 - 使用者可從 Messenger persistent menu 主動查詢剩餘點數，且結果與錢包資料一致。
+- 主問題、延伸問題與 replay 成功後，系統需主動追加一則剩餘點數訊息。
 - 針對已綁定帳號使用者，每次提問皆正確扣點；失敗情境可正確回補。
-- 點數不足時，Messenger 內可被正確引導至 WebView 購點流程。
-- 直接提問遇到點數不足時，購點後可從 Messenger 一鍵重送剛剛的問題。
-- Stripe Checkout 完成後，點數與訂單狀態可在可接受時間內（建議 10 秒）反映，並回傳 Messenger 成功/失敗訊息。
+- 目前公開版本點數不足時，Messenger 內應回體驗版提示，不啟用真實購點導流。
 - 回答格式固定為「結論→說明」，並由 structured output 保證欄位一致。
 - 前台（Messenger）不顯示內部演算法名稱、規則編號、來源摘要、request id、三層比例。
 - 回答尾端依回傳顯示 0..3 個延伸問題按鈕（若多於 1 個則內容互異，且 Messenger 不應重複顯示兩組內容相近的延伸問題文字）。
 - 點擊任一延伸問題按鈕後，需新增同主題子問答並正確扣 1 點（失敗可回補）。
-- 已綁定帳號者，其歷史問答與點數流水需維持一致性與可追溯性。
+- 已綁定帳號者，其問答與點數流水需維持一致性與可追溯性。
 - 後台調整文件後，可影響後續 RAG 回答內容。
 
 ## 10. 風險與依賴

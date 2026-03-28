@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.19` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.21` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -30,19 +30,19 @@
   - [x] Backend：失敗流程 `reserve -> refund`（冪等保護）
   - [x] 測試：成功扣點、失敗回補、同 key 重試不重複扣點
   - [x] 測試：前端提問流程覆蓋 `401/403/402` 錯誤分支與提示文案
-- [x] 實作購點方案與訂單流程：1題 168、3題 358、5題 518
+- [x] 實作購點方案與訂單流程：1題 168、3題 358、5題 518（backend 保留，public beta 暫停）
   - [x] Backend：`GET /api/v1/credits/balance`
   - [x] Backend：`GET /api/v1/credits/transactions`
   - [x] Backend：`POST /api/v1/orders`（僅 1/3/5 題包）
   - [x] Backend：`POST /api/v1/orders/{id}/simulate-paid`（首次入帳，重複冪等）
   - [x] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
-  - [x] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
-  - [x] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
-  - [x] Frontend：首頁改為 WebView 中控頁，整合餘額顯示與設定/錢包/歷史入口
+  - [x] Frontend：曾新增點數錢包區塊（目前 public beta 已退役為單頁設定中心）
+  - [x] Frontend：曾新增購點操作（目前 public beta 已停用）
+  - [x] Frontend：首頁改為 WebView 中控頁，後續再收斂為單頁設定中心
   - [x] Frontend：提問成功後即時扣點顯示（含 `-1` 動畫提示與背景對帳）
   - [x] 測試：建單、入帳、餘額/流水一致性
   - [x] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
-- [x] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/Router/Persist 最小可用）
+- [x] 將 `POST /api/v1/ask` 從 mock 升級為可持久化流程（Intake/RAG/Persist 最小可用）
   - [x] Backend：`AskResponse.source` 擴充為 `rag/rule/openai/mock`
   - [x] Frontend：更新 `AskResponse` 型別（source 不再只限 `mock`）
   - [x] Frontend：送出提問時自動帶 `Idempotency-Key`，重試沿用同 key
@@ -76,7 +76,6 @@
   - [x] Frontend：改為只顯示回答內容與延伸問題，不顯示來源/request id/三層比例
   - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
   - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
-- [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
 - [x] 前端導覽一致化（已於單頁設定中心版本退役）
   - [x] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
   - [x] Frontend：在 `/`、`/wallet`、`/history` 三頁套用同一導覽區塊與一致文案順序
@@ -88,15 +87,15 @@
   - [x] Frontend：帳號選單結構預留後續擴充（個人檔案、設定）
   - [x] 測試：frontend e2e 覆蓋三頁互相跳轉（`/` -> `/wallet` -> `/history` -> `/`）
   - [x] 測試：frontend e2e 覆蓋帳號選單開合、email 顯示與登出流程
-- [x] 實作歷史問答頁（問題/答案/時間/扣點）
+- [x] 實作歷史問答頁（問題/答案/時間/扣點；目前 public beta 前端入口暫停）
   - [x] Backend：`GET /api/v1/history/questions`（使用者隔離 + limit/offset + newest-first）
   - [x] Backend：`GET /api/v1/history/questions` 僅顯示每個對話串首題（排除延伸問題）
   - [x] Backend：回傳 `answer_preview` 與 `charged_credits`
-  - [x] Frontend：新增 `/history` 頁（列表顯示問題/答案摘要/時間/扣點）
-  - [x] Frontend：登入保護與 return path（`/login?next=%2Fhistory`）
+  - [x] Frontend：曾新增 `/history` 頁（目前 public beta 已退役為首頁 redirect）
+  - [x] Frontend：曾新增登入保護與 return path（後續 Messenger-primary 後已不再作為主流程）
   - [x] Frontend：`載入更多`（offset pagination）
   - [x] 測試：backend history endpoint（401、分頁、排序、使用者隔離）
-  - [x] 測試：frontend history e2e（未登入導轉、載入與追加）
+  - [x] 測試：frontend history e2e（後續路由退役前已覆蓋）
   - [x] 後續：歷史詳情頁（完整答案、關聯交易、延伸問題樹與對應回覆）
 - [x] 實作延伸問題三按鈕互動與即點即問扣點（同主題追問）
   - [x] Backend：`ask` 回應帶出 3 個互異 `followup_options`
@@ -105,7 +104,7 @@
   - [x] Backend：一個問題支援 0..N 延伸問題關聯
   - [x] Frontend：回答尾端渲染 0..3 個延伸問題按鈕
   - [x] Frontend：點擊任一按鈕即送出追問、顯示回覆與即時扣點
-  - [x] Frontend：歷史問答詳細頁呈現延伸問題鏈與對應回答
+  - [x] Frontend：曾呈現歷史問答詳細頁（目前 public beta 已退役為首頁 redirect）
   - [x] 測試：Backend followup API（404/403/409、點擊扣點、子問答建立、餘額不足回復 pending）
   - [x] 測試：Frontend followup 三按鈕顯示與點擊互動
 - [ ] 實作後台最小可用：使用者、文件庫、訂單/點數流水查詢
@@ -120,7 +119,7 @@
   - [x] backend lint（Ruff）導入與 blocking
   - [x] frontend lint（ESLint）導入與 blocking
   - [x] pre-commit hooks（pre-commit stage）導入
-  - [x] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新）
+  - [x] 補齊 frontend 關鍵流程測試（提問、購點、餘額刷新；後續再收斂到目前版本）
   - [x] Frontend：補齊 Auth E2E 流程驗證（註冊/登入/登出/忘記密碼/重設密碼）
     - [x] Playwright 測試檔與案例已建立（待安裝依賴後執行）
   - [x] Frontend：註冊/登入/重設密碼頁新增顯示/隱藏密碼 toggle
@@ -167,11 +166,11 @@
   - [x] Backend：`前往設定` 改為 postback bridge，再回 signed WebView 按鈕避免首次進入卡在 session required
   - [x] 文件：PRD / README / Messenger 驗證 runbook 補上 persistent menu 與同步方式
   - [x] 測試：覆蓋 persistent menu payload 與 `SHOW_BALANCE` postback
-- [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示）
-  - [x] Backend：點數不足時回 Messenger web_url 購點按鈕（導向 `/wallet`）
-  - [x] Backend：直接提問遇到點數不足時，建立待重送問題並提供「購買完成，重新送出剛剛的問題」按鈕
-  - [x] Frontend：`/wallet?from=messenger-insufficient-credit` 顯示 Messenger 專用提示與購買成功後回 Messenger 操作引導
-  - [x] Frontend：`/wallet` 適配 Messenger WebView 使用情境與返回提示
+- [ ] 完成 Messenger WebView Stripe Checkout 流程（開啟、返回、狀態提示；目前 public beta 暫停）
+  - [x] Backend：曾支援點數不足時回 Messenger web_url 購點按鈕（目前 public beta 已停用）
+  - [x] Backend：曾支援直接提問遇到點數不足時建立待重送問題並提供購買完成重送按鈕（目前 public beta 已停用）
+  - [x] Frontend：曾支援 `/wallet?from=messenger-insufficient-credit` 專用提示（目前 public beta 已退役）
+  - [x] Frontend：曾支援 `/wallet` Messenger WebView 使用情境（目前 public beta 已退役）
   - [ ] Backend：payment callback -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
@@ -190,22 +189,22 @@
 - [x] 回答尾端 0..3 個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
 - [x] 單頁設定中心需顯示 Messenger session 狀態、目前點數與固定資料設定
 - [x] 未登入時需顯示「請從 Messenger 重新進入」提示，而非登入/註冊入口
-- [x] 購點成功後餘額更新正確（含重試冪等）
-- [x] 歷史紀錄可查完整問答與交易流水
+- [x] 購點成功後餘額更新正確（含重試冪等；目前 public beta 暫停）
+- [x] 歷史紀錄可查完整問答與交易流水（目前 public beta 前端入口暫停）
 - [ ] 每次回答尾端依回傳顯示 0..3 個延伸問題按鈕（若超過 1 個則互異）
 - [x] 點擊任一延伸問題按鈕需建立同主題子問答並扣 1 點（失敗回補）
-- [x] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答
+- [x] 歷史問答詳細頁可查該問題底下全部延伸問題與對應回答（目前 public beta 前端入口暫停）
 - [x] `GET /api/v1/messenger/webhook` challenge verify 成功/失敗分支
 - [x] `POST /api/v1/messenger/webhook` 可解析 message/postback/quick reply
 - [x] 使用者可從 Messenger 直接發問並收到答案回覆（不需切到獨立 web 問答頁）
 - [x] 使用者可從 Messenger 點擊延伸問題 quick reply 繼續追問，並沿用既有扣點/回補規則
 - [x] 使用者可從 Messenger 常駐入口主動查詢剩餘點數
-- [x] 點數不足時 Messenger 內可被導向 WebView 購點
+- [x] 點數不足時 Messenger 內可被導向 WebView 購點（目前 public beta 暫停）
 - [ ] WebView 付款成功後可在 Messenger 收到購點成功通知且餘額生效
 - [x] 未綁定與已綁定使用者的行為差異符合產品定義
 
 ## 驗收定義
-- [ ] 通過 PRD v0.8 第 9 節驗收標準
+- [ ] 通過 PRD v0.21 第 9 節驗收標準
 - [ ] 每個完成項目附測試證據（命令、輸出、截圖或 API 回應）
 - [ ] 文件與實作一致（README / API schema / UI 文案同步）
   - [x] 更新 `backend/README.md`（API、錯誤碼、env）
@@ -215,7 +214,6 @@
   - [ ] 文件收尾需附 production 切換清單完成證據（API 行為、UI 文案、環境變數、部署流程）
 
 ## 備註與依賴
-- Router 規則由工程團隊維護
 - 前台維持不顯示來源摘要、request id、三層比例
 - 固定扣點策略：每次提問 1 點
 
@@ -226,7 +224,7 @@
 - [x] Auth：停用 `register/login/verify-email/forgot-password/reset-password` email/password 流程
 - [x] Secrets：production 啟動時強制檢查 `JWT_SECRET` 與 Messenger signature 設定
 - [x] Launch：新增 `PAYMENTS_ENABLED` 開關，付款關閉時 backend 拒絕建立訂單
-- [x] Launch：`GET /api/v1/credits/balance` 回傳 `payments_enabled`，frontend 依 capability 顯示唯讀錢包
+- [x] Launch：`GET /api/v1/credits/balance` 回傳 `payments_enabled`，frontend 依 capability 顯示目前點數與體驗版狀態
 - [x] Launch：Messenger 綁定成功後一次性發送 `LAUNCH_CREDIT_GRANT_AMOUNT` 體驗點數
 - [x] Launch：新增內部補發腳本 `backend/scripts/grant_launch_credits.py`
 - [x] Frontend：停用獨立 auth 頁面，改為 Messenger-only 文案與 re-entry 提示
@@ -252,7 +250,7 @@
   - [ ] production env 實際填入 `NEXT_PUBLIC_API_BASE_URL`、`MESSENGER_WEB_BASE_URL`、`CORS_ORIGINS`
 - [ ] DB：production 部署流程固定先 `alembic upgrade head`，並驗證 `alembic_version == head`
 - [ ] Messenger：Meta 後台切換正式 webhook callback URL、Page 訂閱與 persistent menu sync
-- [x] Messenger：backend 啟動時自動 best-effort sync `Get Started` + `persistent_menu`
+- [x] Messenger：backend 啟動時自動 best-effort sync `greeting` + `Get Started` + `persistent_menu`
 - [ ] Messenger：將 `META_PAGE_ACCESS_TOKEN` 收斂為 production 可持續使用的正式 token 管理流程
   - [ ] 不再直接使用 Graph API Explorer 臨時 token 作為 production backend token
   - [ ] 用 Meta Access Token Debugger 驗證 token 是否仍有效、權限是否包含 `pages_messaging`
@@ -284,7 +282,7 @@
   - [x] 檢查 backend 測試命令與文件，避免讓開發中的 docker compose backend 誤用測試資料庫或與測試共用破壞性流程
 - [x] Frontend：補齊 production 環境變數文件（API base URL、站點 URL、付款開關）
 - [x] 文件收尾：同步固定問答參數設定流程（PRD / TODO / Messenger runbook / backend README）
-- [ ] 文件收尾：更新本文件完成勾選與子項
+- [x] 文件收尾：更新本文件完成勾選與子項
 - [ ] 文件收尾：補齊 production 切換命令、人工測試步驟與完成證據
   - [x] 補齊 production 切換命令與人工測試步驟
   - [ ] 補齊實際完成證據
