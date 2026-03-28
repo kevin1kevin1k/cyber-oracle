@@ -140,7 +140,7 @@ export default function HistoryDetailPage() {
     <main>
       <h1>歷史問答詳情</h1>
       <p className="helper-links">
-        <Link href="/history">返回歷史問答</Link> · <Link href="/">返回提問頁</Link>
+        <Link href="/history">返回歷史問答</Link> · <Link href="/">返回首頁</Link>
       </p>
 
       <section className="card history-section">

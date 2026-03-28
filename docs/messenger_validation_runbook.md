@@ -657,7 +657,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 5. incident runbook 驗證
    - 預期結果：營運能快速確認是 webhook 問題、Graph API 問題、還是 ask domain 問題
 6. 非 role 一般使用者公開 smoke test
-   - 預期結果：沒有任何 app role 的 Facebook 帳號也能完成第一句訊息、linking、`/settings`、Web ask、Messenger ask、`查看剩餘點數`、`前往購點` / `查看歷史` bridge
+   - 預期結果：沒有任何 app role 的 Facebook 帳號也能完成第一句訊息、linking、`/settings`、Messenger ask、`查看剩餘點數`、`前往購點` / `查看歷史` bridge，且 WebView 首頁只作為設定/錢包/歷史入口
 
 ### Prod 必要風險控管
 正式環境不應只停留在目前 skeleton：

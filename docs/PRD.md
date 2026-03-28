@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.16（Public Beta Readiness and Meta Release Gates）
+- 文件版本：v0.17（Messenger-first WebView Home Hub）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -51,7 +51,8 @@ MVP 目標：
   - 點擊任一選項視為同主題新提問，立即扣 1 點。
   - 一個問題可有 0 個或任意多個延伸問題（不限制層數）。
 - 輔助 Web 與後台：
-  - Web 獨立站可保留為輔助入口與 WebView 容器。
+  - Web 獨立站僅保留為 Messenger 配套入口與 WebView 容器。
+  - Web 不提供獨立提問頁作為主流程；真正提問入口維持在 Messenger 對話內。
   - 後台保留使用者、文件庫、訂單/點數流水與流程觀測。
 
 ### 4.2 Out of Scope（MVP 不含）

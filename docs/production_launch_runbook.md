@@ -127,13 +127,13 @@ cd ..
    - 預期 `/messenger/link` 可建立 session
 3. 進入 `/settings` 填入 `姓名` 與 `母親姓名`
    - 預期儲存成功
-4. 回首頁送出問題
-   - 預期成功回答
+4. 回首頁確認 WebView 中控頁
+   - 預期可看到帳號狀態、點數與 `設定 / 點數錢包 / 歷史問答` 入口
 5. 打開 `/wallet`
    - 預期可看到餘額與交易流水
    - 不應出現購買按鈕
-6. 打開 `/history`
-   - 預期可看到剛剛問題
+6. 回 Messenger 送出一個問題後，再打開 `/history`
+   - 預期可看到剛剛的 Messenger 問答紀錄
 
 ### Messenger
 1. 用 app role 帳號直接在 Messenger 提問
@@ -152,8 +152,8 @@ cd ..
    - 預期可以正常開始聊天；若完全沒有回覆，優先懷疑 app 仍停留在 role-only 測試模式。
 2. 非 role 帳號直接傳第一句訊息。
    - 預期 bot 會回覆，而不是只對 admin / developer / tester 有反應。
-3. 非 role 帳號完成 linking、settings、Web ask、Messenger ask。
-   - 預期整條主流程都可用。
+3. 非 role 帳號完成 linking、settings、Messenger ask。
+   - 預期整條主流程都可用，WebView 端則可正常進入首頁/錢包/歷史。
 4. 非 role 帳號測 `查看剩餘點數`、`前往購點`、`查看歷史`。
    - 預期 menu bridge 與 WebView 入口都正常。
 

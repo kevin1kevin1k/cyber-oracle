@@ -8,7 +8,7 @@ import { logoutAndRedirect } from "@/lib/session";
 import { getAuthSession } from "@/lib/auth";
 
 const NAV_ITEMS = [
-  { href: "/", label: "提問" },
+  { href: "/", label: "首頁" },
   { href: "/wallet", label: "點數錢包" },
   { href: "/history", label: "歷史問答" },
 ] as const;

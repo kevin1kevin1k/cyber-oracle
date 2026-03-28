@@ -100,7 +100,7 @@ export default function SettingsPage() {
       setSuccess(
         isFirstMessengerLinkFlow
           ? "個人設定已儲存，現在可以回 Messenger 直接提問。"
-          : "個人設定已儲存，之後提問會自動帶入這兩個固定資料。"
+          : "個人設定已儲存，之後 Messenger 提問會自動帶入這兩個固定資料。"
       );
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -164,7 +164,7 @@ export default function SettingsPage() {
           <p>
             {isFirstMessengerLinkFlow
               ? "你已完成 Messenger 綁定。再完成這一步，之後就能直接回 Messenger 提問。"
-              : "完成儲存後，就可以回首頁或回 Messenger 繼續提問。"}
+              : "完成儲存後，就可以回首頁查看錢包與歷史，或直接回 Messenger 繼續提問。"}
           </p>
         </section>
       )}
@@ -200,7 +200,7 @@ export default function SettingsPage() {
           <div className="answer">
             <p className="success">{success}</p>
             <p className="helper-links">
-              <Link href="/">{isFirstMessengerLinkFlow ? "返回首頁" : "前往提問"}</Link>
+              <Link href="/">返回首頁</Link>
             </p>
           </div>
         )}

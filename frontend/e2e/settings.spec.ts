@@ -8,7 +8,7 @@ async function seedMessengerSession(page: import("@playwright/test").Page) {
   });
 }
 
-test("home blocks ask and links to settings when profile is incomplete", async ({ page }) => {
+test("home highlights settings when profile is incomplete", async ({ page }) => {
   await seedMessengerSession(page);
   await page.route("**/api/v1/credits/balance", async (route) => {
     await route.fulfill({
@@ -36,7 +36,6 @@ test("home blocks ask and links to settings when profile is incomplete", async (
   await page.goto("/");
 
   await expect(page.getByText("目前已連結 Messenger，但還沒完成個人設定。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "送出問題" })).toBeDisabled();
   await expect(page.getByRole("link", { name: "先完成個人設定" })).toBeVisible();
 });
 
@@ -75,8 +74,8 @@ test("settings page loads and saves fixed ask profile fields", async ({ page }) 
   await page.getByLabel("我母親的姓名").fill("黃美玉");
   await page.getByRole("button", { name: "儲存設定" }).click();
 
-  await expect(page.getByText("個人設定已儲存，之後提問會自動帶入這兩個固定資料。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "前往提問" })).toBeVisible();
+  await expect(page.getByText("個人設定已儲存，之後 Messenger 提問會自動帶入這兩個固定資料。")).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回首頁" })).toBeVisible();
 });
 
 test("settings page shows first-link onboarding hint and messenger success copy", async ({ page }) => {

@@ -15,7 +15,7 @@ test("home shows messenger-only entry message when unauthenticated", async ({ pa
   await page.goto("/");
 
   await expect(page.getByText("這個頁面僅支援從 Messenger WebView 進入。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "送出問題" })).toBeDisabled();
+  await expect(page.getByText("這裡是 Messenger WebView 的配套首頁")).toBeVisible();
 });
 
 test("legacy auth pages show disabled messenger-only notice", async ({ page }) => {
@@ -35,7 +35,7 @@ test("legacy auth pages show disabled messenger-only notice", async ({ page }) =
   await expect(page.getByRole("heading", { name: "密碼重設已停用" })).toBeVisible();
 });
 
-test("authenticated messenger session can ask and logout", async ({ page }) => {
+test("authenticated messenger session sees home hub and can logout", async ({ page }) => {
   await seedMessengerSession(page);
   let logoutCalls = 0;
   await page.route("**/api/v1/credits/balance", async (route) => {
@@ -60,23 +60,6 @@ test("authenticated messenger session can ask and logout", async ({ page }) => {
       }),
     });
   });
-  await page.route("**/api/v1/ask", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        answer: "這是 Messenger session 的測試回答。",
-        source: "rag",
-        layer_percentages: [
-          { label: "主層", pct: 70 },
-          { label: "輔層", pct: 20 },
-          { label: "參照層", pct: 10 },
-        ],
-        request_id: "req-home-1",
-        followup_options: [],
-      }),
-    });
-  });
   await page.route("**/api/v1/auth/logout", async (route) => {
     logoutCalls += 1;
     await route.fulfill({ status: 204, body: "" });
@@ -84,10 +67,10 @@ test("authenticated messenger session can ask and logout", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByText("目前已連結 Messenger，可直接提問。")).toBeVisible();
-  await page.getByLabel("問題內容").fill("今天適合開始公開測試嗎？");
-  await page.getByRole("button", { name: "送出問題" }).click();
-  await expect(page.getByText("這是 Messenger session 的測試回答。")).toBeVisible();
+  await expect(page.getByText("目前已連結 Messenger，可回 Messenger 直接提問。")).toBeVisible();
+  await expect(page.getByRole("link", { name: "設定" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "點數錢包" }).nth(1)).toBeVisible();
+  await expect(page.getByRole("link", { name: "歷史問答" }).nth(1)).toBeVisible();
 
   await page.getByTestId("account-menu-trigger").click();
   await expect(page.getByTestId("account-menu")).toContainText("Messenger 已連結");

@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.16` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.17` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -38,7 +38,7 @@
   - [x] Backend：`simulate-paid` 僅允許非 production 環境（環境守衛 + 權限限制）
   - [x] Frontend：新增點數錢包區塊（餘額顯示 + 交易流水）
   - [x] Frontend：新增購點操作（1/3/5 題包）與支付成功後餘額刷新
-  - [x] Frontend：在提問頁整合餘額顯示與「點數不足」導購入口
+  - [x] Frontend：首頁改為 WebView 中控頁，整合餘額顯示與設定/錢包/歷史入口
   - [x] Frontend：提問成功後即時扣點顯示（含 `-1` 動畫提示與背景對帳）
   - [x] 測試：建單、入帳、餘額/流水一致性
   - [x] 測試：前端購點後 10 秒內反映餘額（含重試冪等）
@@ -58,7 +58,7 @@
   - [x] Backend：Messenger linked user 因 profile 未完成而被擋下時，保留原問題並提供「設定完成，重新送出剛剛的問題」按鈕
   - [x] Frontend：新增 `/settings` 頁並可修改固定資料
   - [x] Frontend：`/settings` 提供危險操作區，可自助刪除帳號並清掉 WebView session
-  - [x] Frontend：首頁在 profile 未完成時停用提問並導向設定
+  - [x] Frontend：首頁在 profile 未完成時強調先完成設定，再回 Messenger 提問
   - [x] 測試：profile API、ask augmentation、Messenger profile gating、frontend settings flow
 - [x] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）
   - [x] Backend：建立 OpenAI file search 向量庫建置腳本與共用查詢 library（`backend/cyber oracle`）
@@ -71,7 +71,7 @@
   - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
   - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
 - [ ] 實作 deterministic 分流（Router）與工程可維護規則配置
-- [x] 前端導覽一致化：提問/錢包/歷史頁共用頂部 nav bar
+- [x] 前端導覽一致化：首頁/錢包/歷史頁共用頂部 nav bar
   - [x] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
   - [x] Frontend：在 `/`、`/wallet`、`/history` 三頁套用同一導覽區塊與一致文案順序
   - [x] Frontend：移除三頁內文區分散的 `helper-links`（避免重複導覽）
@@ -255,7 +255,7 @@
 - [ ] Messenger：驗證 production persistent menu bridge（`前往購點` / `查看歷史`）能成功回帶 signed WebView 按鈕並開啟目標頁
 - [ ] Messenger：以「沒有任何 app role 的 Facebook 帳號」完成公開 smoke test
   - [ ] 一般帳號可從 Messenger 對 Page 發第一句訊息並收到 bot 回覆
-  - [ ] 一般帳號可完成 linking、settings、Web ask、Messenger ask
+  - [ ] 一般帳號可完成 linking、settings、Messenger ask
   - [ ] 一般帳號可使用 `查看剩餘點數`、`前往購點`、`查看歷史` bridge
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
