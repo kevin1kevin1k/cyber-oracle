@@ -44,7 +44,8 @@ def test_sync_messenger_profile_pushes_get_started_and_menu(
     assert (
         captured["greeting_text"]
         == "歡迎使用 ELIN 神域引擎。先點擊下方的 Get Started，再前往 WebView "
-        "完成綁定與固定資料設定，就能直接在 Messenger 提問。"
+        "完成綁定與固定資料設定。目前會先提供 50 點測試用點數，每次提問扣 1 點，"
+        "之後就能直接在 Messenger 提問。"
     )
     assert captured["get_started_payload"] == "GET_STARTED"
     assert captured["menu_items"] == [

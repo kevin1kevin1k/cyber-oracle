@@ -44,6 +44,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - creates a new internal user for an unlinked PSID/page pair, or restores session for an already linked identity
   - returns HS256 bearer token with `sub` + `jti` claims
   - creates a `sessions` record for token revocation/expiration checks
+  - on first successful `linked_new`, backend also sends a best-effort Messenger chat message explaining the launch credits and the `1 credit per ask` rule
 
 ## User Profile APIs
 - `GET /api/v1/me/profile`
@@ -226,6 +227,7 @@ Current channel capabilities:
 - direct ask insufficient-credit recovery now stores a pending Messenger ask and lets the user replay the exact question after top-up with a single postback
 - Messenger profile sync now sets `greeting`, `get_started`, and `persistent_menu`, because Meta requires `Get Started` before persistent menu can be enabled and greeting improves first-open onboarding
 - `GET_STARTED` now acts as a real onboarding entry: unlinked users or linked users with incomplete profile receive a signed WebView button that opens `/?from=messenger-get-started`
+- greeting / `Get Started` / first successful `linked_new` all explicitly explain the current launch-credit amount and that each ask costs 1 credit
 - backend startup can auto-sync Messenger profile when `MESSENGER_PROFILE_SYNC_ON_STARTUP=true`; keep `backend/scripts/sync_messenger_profile.py` as manual fallback after token rotation or emergency menu refresh
 - failure handling:
   - ask / replay / followup failures are classified into config / upstream / generic user-facing Messenger replies instead of a single fallback for every case

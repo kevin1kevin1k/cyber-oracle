@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.22` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.23` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -160,6 +160,7 @@
   - [x] Backend：新增 persistent menu payload builder（查看剩餘點數 / 前往設定）
   - [x] Backend：新增 Messenger profile sync script，將 persistent menu 寫入 Meta Graph API
   - [x] Backend：新增 greeting / Get Started welcome onboarding，首次打開對話視窗即可看到新手引導
+  - [x] Backend：首次進入對話與首次綁定完成後，會明確告知目前有 50 點測試用點數、每次提問扣 1 點
   - [x] Backend：新增 `SHOW_BALANCE` postback，回覆目前剩餘點數
   - [x] Backend：主問題 / 延伸問題 / replay 成功後主動追加剩餘點數訊息，且會先送點數、再送最後一則答案/延伸問題按鈕，避免 quick replies 被後續訊息吃掉
   - [x] Backend：`SHOW_BALANCE` 在 0 點時回覆目前體驗點數不足的對應提示

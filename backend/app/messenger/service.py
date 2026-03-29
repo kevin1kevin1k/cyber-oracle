@@ -26,6 +26,7 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_GREETING_TEXT,
     DEFAULT_MESSENGER_INVALID_FOLLOWUP_REPLY,
     DEFAULT_MESSENGER_LINK_BUTTON_TITLE,
+    DEFAULT_MESSENGER_LINKED_NEW_CREDIT_REPLY,
     DEFAULT_MESSENGER_OPEN_SETTINGS_BUTTON_TITLE,
     DEFAULT_MESSENGER_OPEN_SETTINGS_REPLY,
     DEFAULT_MESSENGER_PAYMENTS_DISABLED_REPLY,
@@ -289,7 +290,9 @@ class MessengerEventService:
                 return [
                     MessengerOutgoingMessage(
                         kind="button_template",
-                        text=DEFAULT_MESSENGER_GET_STARTED_ONBOARDING_REPLY,
+                        text=build_launch_credit_onboarding_text(
+                            DEFAULT_MESSENGER_GET_STARTED_ONBOARDING_REPLY
+                        ),
                         buttons=[
                             {
                                 "type": "web_url",
@@ -871,8 +874,16 @@ def build_default_persistent_menu() -> list[dict[str, str]]:
 
 
 def build_default_greeting_text() -> str:
-    return DEFAULT_MESSENGER_GREETING_TEXT
+    return build_launch_credit_onboarding_text(DEFAULT_MESSENGER_GREETING_TEXT)
 
 
 def build_default_get_started_payload() -> str:
     return GET_STARTED_PAYLOAD
+
+
+def build_launch_credit_onboarding_text(template: str) -> str:
+    return template.format(grant_amount=settings.launch_credit_grant_amount)
+
+
+def build_linked_new_credit_message() -> str:
+    return build_launch_credit_onboarding_text(DEFAULT_MESSENGER_LINKED_NEW_CREDIT_REPLY)

@@ -1082,7 +1082,11 @@ def test_webhook_post_postback_get_started_for_unlinked_user_returns_onboarding_
     psid, outgoing = captured_outgoing[0]
     assert psid == "psid-get-started-unlinked"
     assert outgoing.kind == "button_template"
-    assert outgoing.text == "先完成 Messenger 綁定與固定資料設定，之後就能直接回 Messenger 提問。"
+    assert (
+        outgoing.text
+        == "先完成 Messenger 綁定與固定資料設定。目前會先提供 50 點測試用點數，每次提問扣 1 點，"
+        "之後就能直接回 Messenger 提問。"
+    )
     assert outgoing.buttons[0]["type"] == "web_url"
     assert outgoing.buttons[0]["title"] == "前往設定"
     assert outgoing.buttons[0]["url"].startswith(
@@ -1128,7 +1132,11 @@ def test_webhook_post_postback_get_started_for_linked_user_without_profile(
     psid, outgoing = captured_outgoing[0]
     assert psid == "psid-get-started-no-profile"
     assert outgoing.kind == "button_template"
-    assert outgoing.text == "先完成 Messenger 綁定與固定資料設定，之後就能直接回 Messenger 提問。"
+    assert (
+        outgoing.text
+        == "先完成 Messenger 綁定與固定資料設定。目前會先提供 50 點測試用點數，每次提問扣 1 點，"
+        "之後就能直接回 Messenger 提問。"
+    )
     assert outgoing.buttons[0]["type"] == "web_url"
     assert outgoing.buttons[0]["title"] == "前往設定"
     assert outgoing.buttons[0]["url"].startswith(
@@ -2438,7 +2446,16 @@ def test_webhook_post_invalid_payload_returns_422(client: TestClient) -> None:
 def test_messenger_link_endpoint_bootstraps_new_session_and_launch_grant(
     client: TestClient,
     db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    sent_messages: list[tuple[str, str]] = []
+
+    class _FakeClient:
+        def send_text(self, *, psid: str, text: str) -> None:
+            sent_messages.append((psid, text))
+
+    monkeypatch.setattr("app.messenger.routes._get_outbound_client", lambda: _FakeClient())
+
     identity = MessengerIdentity(
         platform="messenger",
         psid="psid-link-1",
@@ -2500,11 +2517,27 @@ def test_messenger_link_endpoint_bootstraps_new_session_and_launch_grant(
         )
     )
     assert launch_grant is not None
+    assert sent_messages == [
+        (
+            "psid-link-1",
+            "你目前有 50 點測試用點數，每次問問題會扣 1 點。"
+            "完成資料設定後，就可以直接在 Messenger 開始提問。",
+        )
+    ]
 
 def test_messenger_link_endpoint_restores_session_for_existing_linked_identity(
     client: TestClient,
     db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    sent_messages: list[tuple[str, str]] = []
+
+    class _FakeClient:
+        def send_text(self, *, psid: str, text: str) -> None:
+            sent_messages.append((psid, text))
+
+    monkeypatch.setattr("app.messenger.routes._get_outbound_client", lambda: _FakeClient())
+
     user = User(
         id=uuid.uuid4(),
         channel="messenger",
@@ -2565,6 +2598,44 @@ def test_messenger_link_endpoint_restores_session_for_existing_linked_identity(
         CreditTransaction.reason_code == "MESSENGER_LINK_BETA_GRANT",
     ).count()
     assert grant_count == 1
+    assert sent_messages == []
+
+
+def test_messenger_link_endpoint_logs_but_still_succeeds_when_intro_send_fails(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class _FailingClient:
+        def send_text(self, *, psid: str, text: str) -> None:
+            raise MessengerClientError("boom")
+
+    monkeypatch.setattr("app.messenger.routes._get_outbound_client", lambda: _FailingClient())
+    identity = MessengerIdentity(
+        platform="messenger",
+        psid="psid-link-send-fail",
+        page_id="page-link-send-fail",
+        status="unlinked",
+        is_active=True,
+    )
+    db_session.add(identity)
+    db_session.commit()
+    link_token = create_messenger_link_token(
+        psid="psid-link-send-fail",
+        page_id="page-link-send-fail",
+        secret_key=settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    with caplog.at_level("WARNING"):
+        response = client.post(
+            "/api/v1/messenger/link",
+            json={"token": link_token},
+        )
+
+    assert response.status_code == 200
+    assert "Messenger new-link intro message failed" in caplog.text
 
 
 def test_messenger_link_endpoint_rejects_invalid_token(

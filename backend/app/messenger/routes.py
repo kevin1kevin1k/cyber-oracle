@@ -36,6 +36,7 @@ from app.messenger.constants import (
 from app.messenger.schemas import (
     MessengerLinkRequest,
     MessengerLinkResponse,
+    MessengerOutgoingMessage,
     MessengerWebhookPayload,
     MessengerWebhookProcessResponse,
 )
@@ -44,7 +45,10 @@ from app.messenger.security import (
     verify_app_secret_signature,
     verify_webhook_challenge,
 )
-from app.messenger.service import MessengerEventService
+from app.messenger.service import (
+    MessengerEventService,
+    build_linked_new_credit_message,
+)
 from app.models.messenger_identity import MessengerIdentity
 from app.models.user import User
 from app.rate_limit import RateLimitRule, enforce_rate_limit
@@ -100,6 +104,27 @@ def _stop_processing_feedback(*, client, psid: str) -> None:
     except MessengerClientError:
         logger.warning(
             "Messenger sender_action failed: psid=%s action=typing_off",
+            psid,
+            exc_info=True,
+        )
+
+
+def _maybe_send_new_link_credit_message(*, psid: str) -> None:
+    if settings.launch_credit_grant_amount <= 0:
+        return
+    try:
+        client = _get_outbound_client()
+        dispatch_outgoing_message(
+            client=client,
+            psid=psid,
+            outgoing=MessengerOutgoingMessage(
+                kind="text",
+                text=build_linked_new_credit_message(),
+            ),
+        )
+    except (HTTPException, MessengerClientError):
+        logger.warning(
+            "Messenger new-link intro message failed: psid=%s",
             psid,
             exc_info=True,
         )
@@ -251,6 +276,8 @@ def link_identity(
         link_status,
         wallet_balance,
     )
+    if link_status == "linked_new":
+        _maybe_send_new_link_credit_message(psid=identity.psid)
     return MessengerLinkResponse(
         status="linked",
         link_status=link_status,

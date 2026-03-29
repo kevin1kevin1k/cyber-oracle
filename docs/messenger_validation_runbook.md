@@ -67,12 +67,13 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 預期結果：
 - script 會同時設定 `greeting`、`Get Started` 與 `persistent_menu`；Meta 不接受只設定 persistent menu
 - Meta Page 的 Messenger persistent menu 會被更新為目前程式內定義的預設 menu
-- 新使用者第一次打開對話視窗時，可先看到 welcome greeting 與 `Get Started`
+- 新使用者第一次打開對話視窗時，可先看到 welcome greeting 與 `Get Started`，並知道目前有 50 點測試用點數、每次提問扣 1 點
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
 - 若剩餘點數為 `0`，系統會回覆目前體驗點數不足的對應提示
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
 - `前往設定` 會先走 postback bridge，再回一顆帶 signed token 的 WebView 按鈕
 - 因此即使使用者尚未建立 WebView session，也能從 persistent menu 自救，不必先手動找回原本的 linking button
+- 使用者首次完成綁定後，聊天室會主動再收到一則說明訊息，告知目前已有 50 點測試用點數、每次提問扣 1 點
 - 若 linked user 尚未完成固定問答參數，Messenger 會回一個導向 `/settings?from=messenger-profile-required` 的 WebView 按鈕，並保留原問題供使用者完成設定後一鍵重送
 - ask / followup / replay 這類較慢的流程，會先出現 `mark_seen` / `typing_on` 的處理中回饋，正式答案送出前再 `typing_off`
 - 主問題 / followup / replay 成功後，系統會先送一則 `本次已扣 1 點，目前剩餘 X 點。`，再送最後一則正式答案；若有延伸問題，按鈕會附在最後那則答案上，避免被點數訊息吃掉
