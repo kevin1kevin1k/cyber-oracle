@@ -553,12 +553,12 @@ def test_webhook_post_message_event_with_same_mid_is_idempotent(
     ).count()
     assert capture_count == 1
     assert outgoing_messages == [
+        ("psid-linked-2", "text", "本次已扣 1 點，目前剩餘 1 點。"),
         (
             "psid-linked-2",
             "quick_replies",
             "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
         ),
-        ("psid-linked-2", "text", "本次已扣 1 點，目前剩餘 1 點。"),
     ]
 
 
@@ -609,12 +609,12 @@ def test_webhook_post_message_event_emits_processing_feedback_before_answer(
         ("stop", "psid-linked-feedback"),
     ]
     assert events == [
+        ("psid-linked-feedback", "text", "本次已扣 1 點，目前剩餘 1 點。"),
         (
             "psid-linked-feedback",
             "quick_replies",
             "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
         ),
-        ("psid-linked-feedback", "text", "本次已扣 1 點，目前剩餘 1 點。"),
     ]
 
 
@@ -663,12 +663,12 @@ def test_webhook_post_message_event_strips_followup_text_from_answer(
 
     assert response.status_code == 200
     assert outgoing_messages == [
+        ("psid-linked-sanitized", "text", "本次已扣 1 點，目前剩餘 1 點。"),
         (
             "psid-linked-sanitized",
             "quick_replies",
             "主回答第一段。\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
         ),
-        ("psid-linked-sanitized", "text", "本次已扣 1 點，目前剩餘 1 點。"),
     ]
 
 
@@ -707,7 +707,10 @@ def test_webhook_post_message_event_followup_quick_replies_use_fixed_titles(
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
-    _, quick_reply_outgoing = captured_outgoing[0]
+    _, balance_outgoing = captured_outgoing[0]
+    assert balance_outgoing.kind == "text"
+    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 1 點。"
+    _, quick_reply_outgoing = captured_outgoing[1]
     assert quick_reply_outgoing.kind == "quick_replies"
     assert quick_reply_outgoing.text.startswith(
         "測試回答（messenger）\n\n你也可以選擇以下延伸問題："
@@ -717,11 +720,6 @@ def test_webhook_post_message_event_followup_quick_replies_use_fixed_titles(
         "延伸問題二",
         "延伸問題三",
     ]
-    _, balance_outgoing = captured_outgoing[1]
-    assert balance_outgoing.kind == "text"
-    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 1 點。"
-
-
 def test_webhook_post_message_event_with_two_followups_lists_only_existing_items(
     client: TestClient,
     db_session: Session,
@@ -762,7 +760,10 @@ def test_webhook_post_message_event_with_two_followups_lists_only_existing_items
     response = client.post("/api/v1/messenger/webhook", json=payload)
 
     assert response.status_code == 200
-    _, quick_reply_outgoing = captured_outgoing[0]
+    _, balance_outgoing = captured_outgoing[0]
+    assert balance_outgoing.kind == "text"
+    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 1 點。"
+    _, quick_reply_outgoing = captured_outgoing[1]
     assert (
         quick_reply_outgoing.text
         == "雙延伸回答\n\n你也可以選擇以下延伸問題：\n1. 延伸 1\n2. 延伸 2"
@@ -771,11 +772,6 @@ def test_webhook_post_message_event_with_two_followups_lists_only_existing_items
         "延伸問題一",
         "延伸問題二",
     ]
-    _, balance_outgoing = captured_outgoing[1]
-    assert balance_outgoing.kind == "text"
-    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 1 點。"
-
-
 def test_webhook_post_message_event_with_insufficient_credit(
     client: TestClient,
     db_session: Session,
@@ -1458,13 +1454,13 @@ def test_webhook_post_quick_reply_for_linked_user_runs_followup_flow(
     assert capture_count == 1
     assert outgoing_messages[0] == (
         "psid-followup-1",
-        "quick_replies",
-        "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        "text",
+        "本次已扣 1 點，目前剩餘 1 點。",
     )
     assert outgoing_messages[1] == (
         "psid-followup-1",
-        "text",
-        "本次已扣 1 點，目前剩餘 1 點。",
+        "quick_replies",
+        "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
     )
 
 
@@ -1517,12 +1513,12 @@ def test_webhook_post_quick_reply_emits_processing_feedback_before_answer(
         ("stop", "psid-followup-feedback"),
     ]
     assert events == [
+        ("psid-followup-feedback", "text", "本次已扣 1 點，目前剩餘 1 點。"),
         (
             "psid-followup-feedback",
             "quick_replies",
             "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
         ),
-        ("psid-followup-feedback", "text", "本次已扣 1 點，目前剩餘 1 點。"),
     ]
 
 
@@ -1870,16 +1866,16 @@ def test_webhook_post_postback_replays_pending_ask_after_topup(
     assert stored_pending_ask.status == "used"
     assert stored_pending_ask.used_question_id is not None
     assert len(captured_outgoing) == 2
-    psid, outgoing = captured_outgoing[0]
+    psid, balance_outgoing = captured_outgoing[0]
     assert psid == "psid-pending-ask-replay"
+    assert balance_outgoing.kind == "text"
+    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 2 點。"
+    _, outgoing = captured_outgoing[1]
     assert outgoing.kind == "quick_replies"
     assert (
         outgoing.text
         == "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C"
     )
-    _, balance_outgoing = captured_outgoing[1]
-    assert balance_outgoing.kind == "text"
-    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 2 點。"
 
 
 def test_webhook_post_postback_replay_pending_ask_emits_processing_feedback(
@@ -1947,12 +1943,12 @@ def test_webhook_post_postback_replay_pending_ask_emits_processing_feedback(
         ("stop", "psid-pending-ask-feedback"),
     ]
     assert events == [
+        ("psid-pending-ask-feedback", "text", "本次已扣 1 點，目前剩餘 2 點。"),
         (
             "psid-pending-ask-feedback",
             "quick_replies",
             "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
         ),
-        ("psid-pending-ask-feedback", "text", "本次已扣 1 點，目前剩餘 2 點。"),
     ]
 
 
@@ -2173,15 +2169,15 @@ def test_webhook_post_postback_replays_pending_ask_after_profile_completed(
     assert stored_pending_ask is not None
     assert stored_pending_ask.status == "used"
     assert stored_pending_ask.used_question_id is not None
-    _, outgoing = captured_outgoing[0]
+    _, balance_outgoing = captured_outgoing[0]
+    assert balance_outgoing.kind == "text"
+    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 2 點。"
+    _, outgoing = captured_outgoing[1]
     assert outgoing.kind == "quick_replies"
     assert (
         outgoing.text
         == "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C"
     )
-    _, balance_outgoing = captured_outgoing[1]
-    assert balance_outgoing.kind == "text"
-    assert balance_outgoing.text == "本次已扣 1 點，目前剩餘 2 點。"
 
 
 def test_webhook_post_message_event_returns_configured_ask_failure_message(

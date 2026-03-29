@@ -361,7 +361,7 @@ class MessengerEventService:
             ),
         )
         if not followup_options:
-            return [MessengerOutgoingMessage(kind="text", text=answer_text), balance_message]
+            return [balance_message, MessengerOutgoingMessage(kind="text", text=answer_text)]
 
         followup_lines = self._format_followup_lines(followup_options)
         quick_replies = [
@@ -372,6 +372,7 @@ class MessengerEventService:
             for index, option in enumerate(followup_options)
         ]
         return [
+            balance_message,
             MessengerOutgoingMessage(
                 kind="quick_replies",
                 text=(
@@ -380,7 +381,6 @@ class MessengerEventService:
                 ),
                 quick_replies=quick_replies,
             ),
-            balance_message,
         ]
 
     def _build_followup_outgoing_messages(self, followup_options) -> list[MessengerOutgoingMessage]:
