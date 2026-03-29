@@ -66,6 +66,12 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
+  - answer body is now normalized into a fixed five-part format:
+    - `🔮 結論`
+    - `🧭 分層解析`
+    - `🪶 神諭籤詩`
+    - `🪞 籤詩解讀`
+    - `⚓ 定錨語`
   - response now includes `followup_options` (0..3 model-generated followup options)
   - backend augments the model input with per-user fixed fields (`full_name`, `mother_name`), but persisted `questions.question_text` remains the raw user-entered question
   - credit flow:
@@ -296,7 +302,7 @@ pre-commit run --all-files
 This repo includes helper scripts for one-stage/two-stage Responses flow:
 1) one-time vector store build + persist `rag_files` mapping in manifest
 2) one-time input files upload + persist `input_files` mapping in manifest
-3) query-time one-stage or two-stage response with structured output (`answer_without_followup` + `followup_options`)
+3) query-time one-stage or two-stage response with structured output (`conclusion` / `layered_analysis` / `oracle_poem` / `poem_interpretation` / `anchoring_phrase` + `followup_options`)
 
 ```mermaid
 sequenceDiagram

@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.21` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.22` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -73,6 +73,7 @@
   - [x] Backend：將 `POST /api/v1/ask` 串接實際 file_search 檢索與回答（非 mock）
   - [x] Backend：新增 one-stage 流程（直接回傳 first stage 文字結果）並與 two-stage 共用可切換介面
   - [x] Backend：導入 OpenAI structured output（class/schema）統一回答欄位
+  - [x] Backend：structured output 正式固定為五段回答格式（結論、分層解析、神諭籤詩、籤詩解讀、定錨語）
   - [x] Frontend：改為只顯示回答內容與延伸問題，不顯示來源/request id/三層比例
   - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
   - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
@@ -185,6 +186,7 @@
 - [x] 提問成功流程：reserve -> capture
 - [x] 提問失敗流程：reserve -> refund
 - [x] `ask` 回傳需符合 structured output schema（欄位完整且型別正確）
+- [x] `ask` 主回答需固定呈現五段格式（結論、分層解析、神諭籤詩、籤詩解讀、定錨語）
 - [x] 前台不顯示內部演算法名稱/規則編號/來源/request id/三層比例
 - [x] 回答尾端 0..3 個延伸問題按鈕需直接使用 API 回傳 `followup_options`（非 mock）
 - [x] 單頁設定中心需顯示 Messenger session 狀態、目前點數與固定資料設定
@@ -204,7 +206,7 @@
 - [x] 未綁定與已綁定使用者的行為差異符合產品定義
 
 ## 驗收定義
-- [ ] 通過 PRD v0.21 第 9 節驗收標準
+- [ ] 通過 PRD v0.22 第 9 節驗收標準
 - [ ] 每個完成項目附測試證據（命令、輸出、截圖或 API 回應）
 - [ ] 文件與實作一致（README / API schema / UI 文案同步）
   - [x] 更新 `backend/README.md`（API、錯誤碼、env）

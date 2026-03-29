@@ -4,15 +4,57 @@ from types import SimpleNamespace
 
 import pytest
 
-from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
+from openai_integration.openai_file_search_lib import AskStructuredOutput, OpenAIFileSearchClient
 
 
-def _structured_output_text(answer: str, followups: list[str] | None = None) -> str:
+def _formatted_answer(seed: str) -> str:
+    return "\n\n".join(
+        [
+            f"🔮 結論\n{seed}：結論",
+            f"🧭 分層解析\n{seed}：分層解析",
+            f"🪶 神諭籤詩\n{seed}：神諭籤詩",
+            f"🪞 籤詩解讀\n{seed}：籤詩解讀",
+            f"⚓ 定錨語\n{seed}：定錨語",
+        ]
+    )
+
+
+def _structured_output_text(answer_seed: str, followups: list[str] | None = None) -> str:
     payload = {
-        "answer_without_followup": answer,
+        "conclusion": f"{answer_seed}：結論",
+        "layered_analysis": f"{answer_seed}：分層解析",
+        "oracle_poem": f"{answer_seed}：神諭籤詩",
+        "poem_interpretation": f"{answer_seed}：籤詩解讀",
+        "anchoring_phrase": f"{answer_seed}：定錨語",
         "followup_options": followups or [],
     }
     return json.dumps(payload, ensure_ascii=False)
+
+
+def test_format_structured_answer_renders_fixed_five_sections() -> None:
+    rendered = OpenAIFileSearchClient._format_structured_answer(
+        AskStructuredOutput(
+            conclusion="直接回答",
+            layered_analysis="層次拆解",
+            oracle_poem="一首籤詩",
+            poem_interpretation="詩意解讀",
+            anchoring_phrase="記住這句話",
+            followup_options=["延伸 A"],
+        )
+    )
+
+    assert rendered == (
+        "🔮 結論\n直接回答\n\n"
+        "🧭 分層解析\n層次拆解\n\n"
+        "🪶 神諭籤詩\n一首籤詩\n\n"
+        "🪞 籤詩解讀\n詩意解讀\n\n"
+        "⚓ 定錨語\n記住這句話"
+    )
+
+
+def test_require_non_empty_section_rejects_whitespace_only() -> None:
+    with pytest.raises(RuntimeError, match="conclusion"):
+        OpenAIFileSearchClient._require_non_empty_section("   ", field_name="conclusion")
 
 
 def test_init_requires_openai_api_key(tmp_path: Path) -> None:
@@ -120,7 +162,7 @@ def test_one_stage_response_falls_back_when_manifest_missing(
         debug=True,
     )
 
-    assert result.response_text == "fallback answer"
+    assert result.response_text == _formatted_answer("fallback answer")
     assert result.followup_options == ["延伸 A"]
     assert result.input_files == []
     assert len(result.top_matches) == 1
@@ -189,7 +231,7 @@ def test_two_stage_response_falls_back_to_vector_file_ids_when_manifest_missing(
         debug=True,
     )
 
-    assert result.response_text == "two stage fallback"
+    assert result.response_text == _formatted_answer("two stage fallback")
     assert result.followup_options == ["延伸 B"]
     assert result.input_files == []
     assert len(result.top_matches) == 2
@@ -336,7 +378,7 @@ def test_two_stage_response_uses_file_search_tool_and_maps_top_matches(
         system_prompt="你是文件助手",
     )
 
-    assert result.response_text == "final answer"
+    assert result.response_text == _formatted_answer("final answer")
     assert result.followup_options == ["延伸 A", "延伸 B", "延伸 C"]
     assert result.first_response_id == "resp_1"
     assert result.second_response_id == "resp_2"
@@ -435,7 +477,7 @@ def test_first_stage_uses_system_prompt_and_user_question_files(
         top_k=3,
     )
 
-    assert result.response_text == "final"
+    assert result.response_text == _formatted_answer("final")
     assert result.followup_options == ["延伸 1"]
     assert result.debug_steps == []
     first_call = client._client.responses.calls[0]
@@ -607,7 +649,7 @@ def test_one_stage_response_uses_single_file_search_request(
         debug=True,
     )
 
-    assert result.response_text == "one stage answer"
+    assert result.response_text == _formatted_answer("one stage answer")
     assert result.followup_options == ["延伸 A", "延伸 B", "延伸 C"]
     assert result.response_id == "resp_one"
     assert len(result.top_matches) == 1
@@ -628,7 +670,11 @@ def test_one_stage_response_uses_single_file_search_request(
     assert request["tools"][0]["max_num_results"] == 3
     assert request["text"]["format"]["type"] == "json_schema"
     assert set(request["text"]["format"]["schema"]["required"]) == {
-        "answer_without_followup",
+        "conclusion",
+        "layered_analysis",
+        "oracle_poem",
+        "poem_interpretation",
+        "anchoring_phrase",
         "followup_options",
     }
 
@@ -705,7 +751,7 @@ def test_map_falls_back_to_vector_file_id_when_input_mapping_missing(
         debug=True,
     )
 
-    assert result.response_text == "final"
+    assert result.response_text == _formatted_answer("final")
     assert len(result.unmatched_top_matches) == 0
     assert result.top_matches[0].matched_input_file_id == "rag_file_only"
     assert not any("fallback_to_vector_file_id" in line for line in result.debug_steps)
@@ -791,7 +837,7 @@ def test_map_does_not_fallback_to_non_pdf_vector_file(
         debug=True,
     )
 
-    assert result.response_text == "final"
+    assert result.response_text == _formatted_answer("final")
     assert len(result.unmatched_top_matches) == 0
     assert not any("skipped_unsupported_extension" in line for line in result.debug_steps)
 

@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.21（Docs Cleanup for Messenger-first Public Beta）
+- 文件版本：v0.22（Five-Part Answer Format Restoration）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -11,7 +11,7 @@ ELIN 神域引擎是一個以 AI 問答為核心的點數制服務。產品以 F
 MVP 目標：
 - 讓新使用者可在 Messenger 對話中於 3 分鐘內完成首次提問並收到回覆。
 - 提供穩定、可追蹤的問答與扣點流程（reserve/capture/refund）。
-- 提供一致且可程式化處理的回答格式（structured output，結論優先）。
+- 提供一致且可程式化處理的回答格式（structured output，固定五段）。
 - 建立以 Messenger 為主、WebView 為輔的公開體驗版主流程（設定固定資料、顯示點數、刪除帳號）。
 
 ## 3. 目標使用者
@@ -36,7 +36,12 @@ MVP 目標：
   - 目前公開版本以 RAG + structured output + followups 為主，不再將 deterministic router 視為 MVP 必要能力。
   - 系統需在 ask 前自動將使用者固定問答參數與本次問題組裝後再送入模型，但歷史紀錄只保留原始問題文字。
 - 回答輸出規則：
-  - 前台（Messenger）顯示「結論 → 必要說明」。
+  - 前台（Messenger）固定顯示五個段落：
+    - `🔮 結論`
+    - `🧭 分層解析`
+    - `🪶 神諭籤詩`
+    - `🪞 籤詩解讀`
+    - `⚓ 定錨語`
   - 不顯示內部演算法名稱、規則編號、來源/request id/三層比例。
 - 點數系統：
   - 每次提問固定扣 1 點（不採動態計費）。
@@ -179,7 +184,7 @@ sequenceDiagram
 - 問答流程需包含 Intake、Identity Resolve、Retriever、Generator、Post-process、Persist。
 - ask runtime 需在 generator 前自動注入使用者固定資料（至少姓名、母親姓名）。
 - RAG 檢索後內部固定採用 Top-3 證據作答。
-- 回答需以 structured output 回傳，至少包含：回答內容、延伸問題選項。
+- 回答需以 structured output 回傳，至少包含：`conclusion`、`layered_analysis`、`oracle_poem`、`poem_interpretation`、`anchoring_phrase`、延伸問題選項。
 - 流程 metadata（來源標記、request id、檢索分數）作為後端觀測資料，不在 Messenger 前台顯示。
 - `questions` / 歷史頁僅保存本次原始提問，不直接保存拼接後含個資的完整 prompt。
 - 回答尾端需產生 0..3 個延伸問題選項，並可映射為 Messenger quick replies/buttons。
@@ -240,7 +245,7 @@ sequenceDiagram
 - 主問題、延伸問題與 replay 成功後，系統需主動追加一則剩餘點數訊息。
 - 針對已綁定帳號使用者，每次提問皆正確扣點；失敗情境可正確回補。
 - 目前公開版本點數不足時，Messenger 內應回體驗版提示，不啟用真實購點導流。
-- 回答格式固定為「結論→說明」，並由 structured output 保證欄位一致。
+- 回答格式固定為五段（結論、分層解析、神諭籤詩、籤詩解讀、定錨語），並由 structured output 保證欄位一致。
 - 前台（Messenger）不顯示內部演算法名稱、規則編號、來源摘要、request id、三層比例。
 - 回答尾端依回傳顯示 0..3 個延伸問題按鈕（若多於 1 個則內容互異，且 Messenger 不應重複顯示兩組內容相近的延伸問題文字）。
 - 點擊任一延伸問題按鈕後，需新增同主題子問答並正確扣 1 點（失敗可回補）。

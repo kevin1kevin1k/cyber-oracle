@@ -23,7 +23,11 @@ FIRST_STAGE_FILE_SEARCH_PROMPT = (
 class AskStructuredOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    answer_without_followup: str = Field(min_length=1)
+    conclusion: str = Field(min_length=1)
+    layered_analysis: str = Field(min_length=1)
+    oracle_poem: str = Field(min_length=1)
+    poem_interpretation: str = Field(min_length=1)
+    anchoring_phrase: str = Field(min_length=1)
     followup_options: list[str] = Field(default_factory=list)
 
 
@@ -275,7 +279,7 @@ class OpenAIFileSearchClient:
         )
 
         return TwoStageSearchResult(
-            response_text=structured_output.answer_without_followup,
+            response_text=self._format_structured_answer(structured_output),
             followup_options=structured_output.followup_options,
             first_response_id=first_response_id,
             second_response_id=second_response_id,
@@ -343,7 +347,7 @@ class OpenAIFileSearchClient:
         )
 
         return OneStageSearchResult(
-            response_text=structured_output.answer_without_followup,
+            response_text=self._format_structured_answer(structured_output),
             followup_options=structured_output.followup_options,
             response_id=response_id,
             input_files=manifest.input_files if manifest else [],
@@ -570,14 +574,25 @@ class OpenAIFileSearchClient:
     def _build_structured_text_format() -> dict[str, Any]:
         schema = {
             "type": "object",
-                "properties": {
-                    "answer_without_followup": {"type": "string"},
-                    "followup_options": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
+            "properties": {
+                "conclusion": {"type": "string"},
+                "layered_analysis": {"type": "string"},
+                "oracle_poem": {"type": "string"},
+                "poem_interpretation": {"type": "string"},
+                "anchoring_phrase": {"type": "string"},
+                "followup_options": {
+                    "type": "array",
+                    "items": {"type": "string"},
                 },
-            "required": ["answer_without_followup", "followup_options"],
+            },
+            "required": [
+                "conclusion",
+                "layered_analysis",
+                "oracle_poem",
+                "poem_interpretation",
+                "anchoring_phrase",
+                "followup_options",
+            ],
             "additionalProperties": False,
         }
         return {
@@ -605,9 +620,43 @@ class OpenAIFileSearchClient:
             raise RuntimeError("Structured output parse failed") from exc
 
         return AskStructuredOutput(
-            answer_without_followup=parsed.answer_without_followup.strip(),
+            conclusion=self._require_non_empty_section(parsed.conclusion, field_name="conclusion"),
+            layered_analysis=self._require_non_empty_section(
+                parsed.layered_analysis,
+                field_name="layered_analysis",
+            ),
+            oracle_poem=self._require_non_empty_section(
+                parsed.oracle_poem,
+                field_name="oracle_poem",
+            ),
+            poem_interpretation=self._require_non_empty_section(
+                parsed.poem_interpretation,
+                field_name="poem_interpretation",
+            ),
+            anchoring_phrase=self._require_non_empty_section(
+                parsed.anchoring_phrase,
+                field_name="anchoring_phrase",
+            ),
             followup_options=self._normalize_followup_options(parsed.followup_options),
         )
+
+    @staticmethod
+    def _format_structured_answer(value: AskStructuredOutput) -> str:
+        sections = [
+            ("🔮 結論", value.conclusion),
+            ("🧭 分層解析", value.layered_analysis),
+            ("🪶 神諭籤詩", value.oracle_poem),
+            ("🪞 籤詩解讀", value.poem_interpretation),
+            ("⚓ 定錨語", value.anchoring_phrase),
+        ]
+        return "\n\n".join(f"{title}\n{content.strip()}" for title, content in sections)
+
+    @staticmethod
+    def _require_non_empty_section(value: str, *, field_name: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise RuntimeError(f"Structured output field {field_name} is empty")
+        return normalized
 
     @staticmethod
     def _normalize_followup_options(values: list[str]) -> list[str]:
