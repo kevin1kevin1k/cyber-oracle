@@ -67,6 +67,8 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 預期結果：
 - script 會同時設定 `greeting`、`Get Started` 與 `persistent_menu`；Meta 不接受只設定 persistent menu
 - Meta Page 的 Messenger persistent menu 會被更新為目前程式內定義的預設 menu
+- repo 目前刻意保留 `composer_input_disabled=false`，以便使用者可直接在 Messenger 打字提問
+- 因此桌面版與手機版對 menu 的呈現可能不同；手機版若優先顯示 `Like` / composer，而不是漢堡 menu，視為平台 UI 差異，不單獨視為 blocker
 - 新使用者第一次打開對話視窗時，可先看到 welcome greeting 與 `Get Started`，並知道目前有 50 點測試用點數、每次提問扣 1 點
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
 - 若剩餘點數為 `0`，系統會回覆目前體驗點數不足的對應提示
@@ -77,6 +79,7 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 若 linked user 尚未完成固定問答參數，Messenger 會回一個導向 `/settings?from=messenger-profile-required` 的 WebView 按鈕，並保留原問題供使用者完成設定後一鍵重送
 - ask / followup / replay 這類較慢的流程，會先出現 `mark_seen` / `typing_on` 的處理中回饋，正式答案送出前再 `typing_off`
 - 主問題 / followup / replay 成功後，系統會先送一則 `本次已扣 1 點，目前剩餘 X 點。`，再送最後一則正式答案；若有延伸問題，按鈕會附在最後那則答案上，避免被點數訊息吃掉
+- public beta 的主要可用性驗收，不再以「手機版一定要明顯顯示 persistent menu」為標準；只驗證功能能否透過 greeting / Get Started / 直接提問 / 自動餘額訊息完成
 
 ## 通訊流程圖
 

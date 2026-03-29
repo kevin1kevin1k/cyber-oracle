@@ -219,6 +219,7 @@ Current channel capabilities:
   - button templates
 - linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往設定`)
 - `前往設定` persistent menu entry now uses postback bridge flow: Messenger first receives a signed WebView button, then opens the single-page WebView settings center with session bootstrap
+- Messenger profile keeps `composer_input_disabled=false` on purpose, so users can still type questions directly in chat; mobile Messenger may therefore prioritize `Like` / composer UI over the desktop-style hamburger menu
 - linked users who have not filled `full_name` / `mother_name` are guided to `/settings` before ask/followup execution
 - when a linked user sends a text question before completing `full_name` / `mother_name`, backend stores a pending Messenger ask and returns both `/settings` and replay buttons so the original question can be resent after profile completion
 - direct ask / followup / replay now send best-effort `mark_seen` + `typing_on` before long-running OpenAI execution, then `typing_off` before the final reply so the user sees processing feedback instead of a long silent gap

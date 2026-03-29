@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.23（Launch Credit Onboarding Messaging）
+- 文件版本：v0.24（Mobile Menu Visibility Constraints）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -26,6 +26,7 @@ MVP 目標：
   - 支援 Messenger outbound message delivery（文字、quick replies/buttons）。
   - 支援 Messenger greeting / Get Started welcome onboarding。
   - 支援 Messenger persistent menu，提供常用入口（如點數、設定）。
+  - 產品主流程不得依賴手機版 Messenger 一定先顯示 persistent menu；桌面與手機的 menu 可見性差異視為平台 UI 差異。
 - 身份與綁定：
   - 支援 Messenger 身份（PSID / external identity）建檔與對應。
   - 使用者可先以未綁定狀態互動，必要時透過 Messenger WebView 完成站內帳號建立/綁定。
@@ -72,6 +73,7 @@ MVP 目標：
 ### 4.3 MVP 假設與待確認
 - MVP 先以單一 Facebook Page / 單一 Messenger 通路為主。
 - WebView 帳號綁定流程以最小可用版本優先，首次 session 由聊天室內 linking button 建立；persistent menu 目前只保留 `查看剩餘點數` 與 `前往設定` 兩個入口。
+- 為保留 Messenger 內直接自由輸入提問，`composer_input_disabled` 維持關閉；因此手機版若優先顯示 `Like` / composer，而非桌面版漢堡 menu，視為可接受平台差異。
 - 若後續重新開放真實購點，Stripe Checkout 成功/失敗回傳仍需以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
 - 對外公開試用的 release gate 不只包含 deploy 成功，也包含 Meta app 已完成對應 review / advanced access 與公開化設定，讓非 app role 的一般使用者可實際與 bot 互動。
 
@@ -106,7 +108,7 @@ MVP 目標：
    - 若使用者在 Messenger 直接提問時被固定問答參數 gate 擋下，系統需保留該問題，讓使用者完成設定後可在 Messenger 一鍵重送。
 
 6. 常用功能入口
-   - 使用者可透過 Messenger persistent menu 隨時查詢剩餘點數。
+   - 使用者可透過 Messenger persistent menu 查詢剩餘點數，但主要餘額回饋仍以成功回答後自動追加訊息為主。
    - 使用者可透過 Messenger persistent menu 觸發 `前往設定`，打開單頁設定中心。
    - 若尚未綁定帳號或 WebView session 已失效，系統需回覆一顆可重新建立 session 並導到設定中心的按鈕，而不是讓頁面停在無法前進的 `session required` 狀態。
 
@@ -174,6 +176,7 @@ sequenceDiagram
 - 系統需支援 Messenger greeting 與 `Get Started`，作為首次進入對話視窗的新手引導入口。
 - greeting / `Get Started` / 首次綁定完成後的提示訊息，需明確告知目前體驗點數與每次提問扣 1 點規則。
 - 系統需支援 Messenger persistent menu / postback 常用入口（查點數、前往設定）。
+- 系統需以保留直接自由輸入提問為優先，不為了強迫手機版顯示 menu 而關閉 composer。
 - 對需要站內 session 的 `前往設定` 入口，系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
 - 系統正式公開前，需完成 Meta app 對應的 review / advanced access / publish 流程，避免功能只對 `Administrators / Developers / Testers` 可用。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
@@ -243,7 +246,7 @@ sequenceDiagram
 
 ## 9. 驗收標準（MVP）
 - 使用者可直接從 Messenger 成功提問並收到回答。
-- 使用者可從 Messenger persistent menu 主動查詢剩餘點數，且結果與錢包資料一致。
+- 使用者可從 Messenger persistent menu 主動查詢剩餘點數，且結果與錢包資料一致；若手機版未顯眼顯示 menu，成功回答後的自動餘額訊息仍需提供主要回饋。
 - 主問題、延伸問題與 replay 成功後，系統需主動追加一則剩餘點數訊息。
 - 針對已綁定帳號使用者，每次提問皆正確扣點；失敗情境可正確回補。
 - 目前公開版本點數不足時，Messenger 內應回體驗版提示，不啟用真實購點導流。
