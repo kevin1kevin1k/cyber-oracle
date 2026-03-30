@@ -2,7 +2,7 @@
 
 ## 1. 文件資訊
 - 產品名稱：ELIN 神域引擎
-- 文件版本：v0.24（Mobile Menu Visibility Constraints）
+- 文件版本：v0.25（Public Launch Gate Clarification）
 - 文件目的：定義 ELIN 神域引擎以 Messenger 為主入口的核心需求、範圍與驗收標準，供產品、設計、工程與測試協作。
 
 ## 2. 產品願景與目標
@@ -76,6 +76,7 @@ MVP 目標：
 - 為保留 Messenger 內直接自由輸入提問，`composer_input_disabled` 維持關閉；因此手機版若優先顯示 `Like` / composer，而非桌面版漢堡 menu，視為可接受平台差異。
 - 若後續重新開放真實購點，Stripe Checkout 成功/失敗回傳仍需以可觀測、可重試與冪等為前提；更進階財務對帳流程後續補強。
 - 對外公開試用的 release gate 不只包含 deploy 成功，也包含 Meta app 已完成對應 review / advanced access 與公開化設定，讓非 app role 的一般使用者可實際與 bot 互動。
+- 目前公開化最小 gate 以 `pages_messaging` review / permission request、app publish，以及非 app role 帳號 smoke test 為主；其他 permissions 只在 Meta dashboard 明確要求時再追加。
 
 ## 5. 核心使用流程
 ### 5.1 主要 User Journeys
@@ -179,6 +180,7 @@ sequenceDiagram
 - 系統需以保留直接自由輸入提問為優先，不為了強迫手機版顯示 menu 而關閉 composer。
 - 對需要站內 session 的 `前往設定` 入口，系統需支援 postback bridge，再回帶 signed token 的 WebView 按鈕。
 - 系統正式公開前，需完成 Meta app 對應的 review / advanced access / publish 流程，避免功能只對 `Administrators / Developers / Testers` 可用。
+- 若目前 Messenger use case 不需要 business portfolio，公開版應優先沿用非 business verification 路徑，避免重新引入不必要的 business verification blocker。
 - 系統需維護 Messenger 身份映射（external identity：PSID/page_id）與站內 user 的綁定關係。
 - 系統需允許「尚未綁定站內帳號」狀態存在，且有明確能力邊界與引導流程。
 - 帳號綁定與 WebView session 建立需可透過 Messenger WebView 完成。

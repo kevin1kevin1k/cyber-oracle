@@ -210,7 +210,7 @@ sequenceDiagram
    - 若 dashboard 要求資料刪除說明 / Terms URL，也一併補齊
 2. Meta app 已完成 Messenger 對應 review / advanced access
    - 至少確認 `pages_messaging`
-   - 並檢查 dashboard 是否同時要求 `pages_show_list`、`pages_manage_metadata`
+   - 若 dashboard 沒有明確阻擋，不要預設加送其他 permissions
 3. 已確認 app 目前的公開切換方式
    - 傳統 app 常見是 `Development -> Live`
    - Business app 可能改以 access levels 表示
@@ -649,6 +649,7 @@ META_PAGE_ACCESS_TOKEN=<your_page_access_token>
 4. outbound mode 為 `meta_graph`
 5. 監控、告警、log 查詢入口可用
 6. 已確認 Meta app 不再只是 role-only 測試狀態，非 app role 使用者可被允許互動
+7. 若目前正式 app 可避開 business portfolio / business verification 路徑，優先沿用該配置，不要為公開試用重新連回 business portfolio
 
 ### Prod 驗證案例
 1. 正式 webhook verify / event ingest

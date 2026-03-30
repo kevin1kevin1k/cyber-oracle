@@ -92,10 +92,11 @@ curl -I https://app.<your-domain>
    - `messages`
    - `messaging_postbacks`
 3. 檢查 Meta app 的公開化前置條件：
-   - `Settings > Basic` 已補齊公開前置資料（例如 App Icon、Privacy Policy URL、聯絡資訊）
+   - `Settings > Basic` 已補齊公開前置資料（至少 App Icon、Privacy Policy URL、Data Deletion URL、聯絡資訊）
    - app type / dashboard access mode 已確認，知道這個 app 應在哪裡切到公開可用
-   - Messenger 相關 review / advanced access 已通過，至少涵蓋 `pages_messaging`
-   - 若 dashboard 顯示 Messenger / Page 綁定還需要 `pages_show_list`、`pages_manage_metadata` 等 access，一併完成
+   - Messenger 相關 review / permission request 已通過，至少涵蓋 `pages_messaging`
+   - 若 dashboard 顯示 Messenger / Page 綁定還需要其他 permissions，再追加申請；不要預設先送一大包不必要權限
+   - 若目前 app 可避開 business portfolio / business verification 路徑，優先沿用該配置，不要為了公開試用重新引入額外 blocker
 4. 檢查對外使用的 Facebook Page：
    - Page 已發布
    - Messenger 已開啟
@@ -121,6 +122,10 @@ cd ..
 - `composer_input_disabled` 目前維持關閉，保留 Messenger 內直接輸入提問；因此手機版 persistent menu 是否明顯可見不作為 release blocker
 
 ## 正式上線 Smoke Test
+在進入這一段前，先確認：
+- `pages_messaging` 已通過 review / permission request
+- app 已 publish / live，非 app role 帳號理論上可互動
+
 ### API / Web
 1. `GET /api/v1/health`
    - 預期 `200`
@@ -152,6 +157,23 @@ cd ..
    - 預期整條主流程都可用，WebView 端則可正常進入首頁單頁設定中心。
 4. 非 role 帳號測 `查看剩餘點數`、`前往設定`。
    - 預期 menu bridge 與 WebView 入口都正常。
+
+## App Review 提交重點
+目前最小公開版本建議 submission scope：
+- `pages_messaging`
+
+Reviewer materials 建議至少包含：
+1. 一段完整 screencast：
+   - 打開 Page 對話
+   - greeting / `Get Started`
+   - linking
+   - 設定姓名 / 母親姓名
+   - 回 Messenger 提問
+   - bot 回答 + followup + 自動餘額訊息
+2. Reviewer instructions：
+   - 直接提供 Page、測試步驟、測試帳號前提
+3. 測試重點：
+   - 以 Messenger 對話主流程為主，不依賴手機版 persistent menu 漢堡圖示是否顯眼
 
 ## 排障與回滾
 ### 1. `UndefinedColumn` / `UndefinedTable`

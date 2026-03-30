@@ -1,7 +1,7 @@
 # ELIN 神域引擎 Implementation Todo
 
 ## 說明
-本清單依 `docs/PRD.md v0.24` 與現有 codebase 差距整理，依優先度排序。
+本清單依 `docs/PRD.md v0.25` 與現有 codebase 差距整理，依優先度排序。
 狀態以 checkbox 追蹤，完成後請在 PR 附上對應測試證據。
 
 ## P0（必做 / 上線門檻）
@@ -240,10 +240,13 @@
   - [ ] 確認目前 app type / dashboard 模式是 `Development/Live` 還是 `Business app access levels`，並記錄實際公開切換入口
   - [ ] 補齊 Meta `Settings > Basic` 的公開前置資料（App Icon、Privacy Policy URL、聯絡資訊、必要時的資料刪除說明）
     - [x] frontend 已提供公開 `/privacy` 與 `/data-deletion` 頁面
-    - [ ] 將正式網址填回 Meta `Settings > Basic`
-  - [ ] 送出 Messenger 相關 review / advanced access（至少涵蓋 `pages_messaging`，並檢查是否同時要求 `pages_show_list`、`pages_manage_metadata`）
+    - [x] `Cyber Oracle V2` 已填入 App Icon、Privacy Policy URL、Data Deletion URL、Contact email
+  - [ ] 送出 Messenger 相關 review / permission request
+    - [ ] 先送 `pages_messaging`
+    - [ ] 只有 Meta dashboard 明確阻擋時，才補送其他 permissions（例如 `pages_show_list`、`pages_manage_metadata`）
   - [ ] 準備 reviewer 可用的 Page、測試步驟與 screencast（message -> linking -> settings -> ask -> menu bridge）
   - [ ] 將 app 切到非 role 使用者可用的公開狀態
+  - [x] 目前正式 app 路徑以 `Cyber Oracle V2` 非 business portfolio 版本為主，先避免重新引入 business verification blocker
 - [ ] Meta：確認對外使用的 Facebook Page 已可公開互動
   - [ ] Page 已發布且 Messenger 已開啟
   - [ ] 沒有年齡 / 國家限制把預期試用者擋掉
