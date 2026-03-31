@@ -1,5 +1,8 @@
+import hashlib
+import json
 import logging
 from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -13,6 +16,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import issue_user_session
@@ -37,8 +41,10 @@ from app.messenger.schemas import (
     MessengerLinkRequest,
     MessengerLinkResponse,
     MessengerOutgoingMessage,
+    MessengerWebhookMessagingEvent,
     MessengerWebhookPayload,
     MessengerWebhookProcessResponse,
+    QueuedMessengerWebhookEvent,
 )
 from app.messenger.security import (
     decode_messenger_link_token,
@@ -50,6 +56,7 @@ from app.messenger.service import (
     build_linked_new_credit_message,
 )
 from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_webhook_receipt import MessengerWebhookReceipt
 from app.models.user import User
 from app.rate_limit import RateLimitRule, enforce_rate_limit
 
@@ -130,17 +137,209 @@ def _maybe_send_new_link_credit_message(*, psid: str) -> None:
         )
 
 
-def process_webhook_events(*, payload: MessengerWebhookPayload) -> None:
+def _compute_body_sha256(*, body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
+
+
+def _current_timestamp() -> datetime:
+    return datetime.now(UTC)
+
+
+def _truncate_payload_summary(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized[:255]
+
+
+def _event_type_for_receipt(*, event: MessengerWebhookMessagingEvent) -> str:
+    if event.message is not None:
+        has_quick_reply = bool(
+            event.message.quick_reply and event.message.quick_reply.get("payload")
+        )
+        return "quick_reply" if has_quick_reply else "message"
+    if event.postback is not None:
+        return "postback"
+    return "unsupported"
+
+
+def _event_occurred_at(*, event: MessengerWebhookMessagingEvent) -> datetime | None:
+    if event.timestamp is None:
+        return None
+    return datetime.fromtimestamp(event.timestamp / 1000, tz=UTC)
+
+
+def _canonical_event_json(*, event: MessengerWebhookMessagingEvent) -> str:
+    payload = event.model_dump(mode="json", exclude_none=True)
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _payload_summary_for_event(
+    *,
+    event: MessengerWebhookMessagingEvent,
+    event_type: str,
+) -> str | None:
+    if (
+        event_type == "quick_reply"
+        and event.message is not None
+        and event.message.quick_reply is not None
+    ):
+        return _truncate_payload_summary(event.message.quick_reply.get("payload"))
+    if event_type == "postback" and event.postback is not None:
+        return _truncate_payload_summary(event.postback.payload)
+    return None
+
+
+def _build_delivery_key(*, event: MessengerWebhookMessagingEvent, event_type: str) -> str:
+    if event.message is not None and event.message.mid:
+        return f"message:{event.message.mid.strip()}"
+
+    sender_id = (event.sender.get("id") or "").strip()
+    page_id = (event.recipient or {}).get("id", "").strip()
+    timestamp = str(event.timestamp or "")
+    if event_type == "postback" and event.postback is not None:
+        seed = f"{sender_id}|{page_id}|{event.postback.payload or ''}|{timestamp}"
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+        return f"postback:{digest}"
+
+    canonical_payload = _canonical_event_json(event=event)
+    digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+    return f"unsupported:{digest}"
+
+
+def _build_webhook_receipt(
+    *,
+    request_id: str,
+    body_sha256: str,
+    signature_status: str,
+    event: MessengerWebhookMessagingEvent,
+) -> MessengerWebhookReceipt:
+    event_type = _event_type_for_receipt(event=event)
+    return MessengerWebhookReceipt(
+        request_id=request_id,
+        delivery_key=_build_delivery_key(event=event, event_type=event_type),
+        body_sha256=body_sha256,
+        event_type=event_type,
+        psid=(event.sender.get("id") or "").strip() or None,
+        page_id=((event.recipient or {}).get("id") or "").strip() or None,
+        message_mid=(
+            event.message.mid.strip()
+            if event.message is not None and event.message.mid
+            else None
+        ),
+        payload_summary=_payload_summary_for_event(event=event, event_type=event_type),
+        occurred_at=_event_occurred_at(event=event),
+        signature_status=signature_status,
+        processing_status="accepted",
+    )
+
+
+def _insert_receipt(
+    *,
+    db: Session,
+    receipt: MessengerWebhookReceipt,
+) -> tuple[MessengerWebhookReceipt, bool]:
+    db.add(receipt)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(
+            select(MessengerWebhookReceipt).where(
+                MessengerWebhookReceipt.delivery_key == receipt.delivery_key
+            )
+        )
+        if existing is None:
+            raise
+        if existing.processing_status in {"accepted", "processing"}:
+            existing.processing_status = "duplicate_ignored"
+            existing.processed_at = _current_timestamp()
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
+        return existing, False
+    db.refresh(receipt)
+    return receipt, True
+
+
+def _record_invalid_signature_receipt(
+    *,
+    db: Session,
+    request_id: str,
+    body_sha256: str,
+) -> MessengerWebhookReceipt:
+    receipt = MessengerWebhookReceipt(
+        request_id=request_id,
+        delivery_key=f"request:{body_sha256}",
+        body_sha256=body_sha256,
+        event_type="request",
+        signature_status="invalid",
+        processing_status="failed",
+        error_code=ERROR_CODE_WEBHOOK_SIGNATURE_INVALID,
+        processed_at=_current_timestamp(),
+    )
+    stored_receipt, _ = _insert_receipt(db=db, receipt=receipt)
+    return stored_receipt
+
+
+def _set_receipt_processing_status(
+    *,
+    db: Session,
+    receipt_id: UUID,
+    processing_status: str,
+    error_code: str | None = None,
+) -> MessengerWebhookReceipt | None:
+    receipt = db.get(MessengerWebhookReceipt, receipt_id)
+    if receipt is None:
+        return None
+    receipt.processing_status = processing_status
+    receipt.error_code = error_code
+    receipt.processed_at = None if processing_status == "processing" else _current_timestamp()
+    db.add(receipt)
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+def _error_code_from_exception(exc: Exception) -> str:
+    if isinstance(exc, MessengerClientError):
+        return "MESSENGER_OUTBOUND_FAILED"
+    if isinstance(exc, HTTPException):
+        if isinstance(exc.detail, dict):
+            code = exc.detail.get("code")
+            if isinstance(code, str) and code.strip():
+                return code[:64]
+        return f"HTTP_{exc.status_code}"
+    return "WEBHOOK_PROCESSING_FAILED"
+
+
+def process_webhook_events(*, queued_events: list[QueuedMessengerWebhookEvent]) -> None:
     db = SessionLocal()
     try:
         service = MessengerEventService(db=db)
         client = _get_outbound_client()
 
-        for entry in payload.entry:
-            for event in entry.messaging:
+        for queued_event in queued_events:
+            receipt = _set_receipt_processing_status(
+                db=db,
+                receipt_id=queued_event.receipt_id,
+                processing_status="processing",
+            )
+            request_id = receipt.request_id if receipt is not None else "unknown"
+            delivery_key = receipt.delivery_key if receipt is not None else "unknown"
+            event = queued_event.event
+
+            try:
                 command, identity = service.prepare_incoming_event(event=event)
                 sender = event.sender.get("id")
                 if not sender:
+                    _set_receipt_processing_status(
+                        db=db,
+                        receipt_id=queued_event.receipt_id,
+                        processing_status="succeeded",
+                    )
                     continue
                 should_emit_feedback = service.should_emit_processing_feedback(
                     command=command,
@@ -148,24 +347,45 @@ def process_webhook_events(*, payload: MessengerWebhookPayload) -> None:
                 )
                 if should_emit_feedback:
                     _emit_processing_feedback(client=client, psid=sender)
-                outgoing_messages = service.handle_prepared_command(
-                    command=command,
-                    identity=identity,
-                )
-                if should_emit_feedback:
-                    _stop_processing_feedback(client=client, psid=sender)
+                try:
+                    outgoing_messages = service.handle_prepared_command(
+                        command=command,
+                        identity=identity,
+                    )
+                finally:
+                    if should_emit_feedback:
+                        _stop_processing_feedback(client=client, psid=sender)
                 for outgoing in outgoing_messages:
-                    try:
-                        dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
-                    except MessengerClientError:
-                        logger.exception(
-                            "Messenger outbound delivery failed: sender=%s kind=%s",
-                            sender,
-                            outgoing.kind,
-                        )
-                        break
-    except Exception:
-        logger.exception("Messenger webhook background processing failed")
+                    dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
+                _set_receipt_processing_status(
+                    db=db,
+                    receipt_id=queued_event.receipt_id,
+                    processing_status="succeeded",
+                )
+                logger.info(
+                    "Messenger webhook event processed: request_id=%s delivery_key=%s "
+                    "psid=%s page_id=%s event_type=%s",
+                    request_id,
+                    delivery_key,
+                    command.psid,
+                    command.page_id,
+                    command.event_type,
+                )
+            except Exception as exc:
+                error_code = _error_code_from_exception(exc)
+                _set_receipt_processing_status(
+                    db=db,
+                    receipt_id=queued_event.receipt_id,
+                    processing_status="failed",
+                    error_code=error_code,
+                )
+                logger.exception(
+                    "Messenger webhook event processing failed: request_id=%s "
+                    "delivery_key=%s error_code=%s",
+                    request_id,
+                    delivery_key,
+                    error_code,
+                )
     finally:
         db.close()
 
@@ -295,17 +515,26 @@ async def receive_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
+    db: Session = Depends(get_db),
 ) -> MessengerWebhookProcessResponse:
     _ensure_messenger_enabled()
+    request_id = str(uuid4())
+    body = await request.body()
+    body_sha256 = _compute_body_sha256(body=body)
+    signature_status = "skipped"
 
     if settings.messenger_verify_signature:
-        body = await request.body()
         valid_signature = verify_app_secret_signature(
             body=body,
             signature_header=x_hub_signature_256,
             app_secret=settings.meta_app_secret,
         )
         if not valid_signature:
+            _record_invalid_signature_receipt(
+                db=db,
+                request_id=request_id,
+                body_sha256=body_sha256,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
@@ -313,8 +542,38 @@ async def receive_webhook(
                     "message": "Invalid webhook signature",
                 },
             )
+        signature_status = "valid"
 
     processed = sum(len(entry.messaging) for entry in payload.entry)
-    background_tasks.add_task(process_webhook_events, payload=payload.model_copy(deep=True))
+    queued_events: list[QueuedMessengerWebhookEvent] = []
+    for entry in payload.entry:
+        for event in entry.messaging:
+            receipt = _build_webhook_receipt(
+                request_id=request_id,
+                body_sha256=body_sha256,
+                signature_status=signature_status,
+                event=event,
+            )
+            stored_receipt, is_new = _insert_receipt(db=db, receipt=receipt)
+            if not is_new:
+                logger.info(
+                    "Messenger webhook duplicate ignored: request_id=%s delivery_key=%s "
+                    "psid=%s page_id=%s event_type=%s",
+                    request_id,
+                    stored_receipt.delivery_key,
+                    stored_receipt.psid,
+                    stored_receipt.page_id,
+                    stored_receipt.event_type,
+                )
+                continue
+            queued_events.append(
+                QueuedMessengerWebhookEvent(
+                    receipt_id=stored_receipt.id,
+                    event=event.model_copy(deep=True),
+                )
+            )
+
+    if queued_events:
+        background_tasks.add_task(process_webhook_events, queued_events=queued_events)
 
     return MessengerWebhookProcessResponse(status="accepted", processed=processed)

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -68,6 +69,11 @@ class MessengerOutgoingMessage(BaseModel):
 class MessengerWebhookProcessResponse(BaseModel):
     status: Literal["accepted"]
     processed: int
+
+
+class QueuedMessengerWebhookEvent(BaseModel):
+    receipt_id: UUID
+    event: MessengerWebhookMessagingEvent
 
 
 class MessengerVerifyResult(BaseModel):

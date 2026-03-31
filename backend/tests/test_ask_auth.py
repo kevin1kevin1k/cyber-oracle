@@ -17,6 +17,9 @@ from app.models.answer import Answer
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
+from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_pending_ask import MessengerPendingAsk
+from app.models.messenger_webhook_receipt import MessengerWebhookReceipt
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -54,6 +57,9 @@ def engine():
         Order.__table__,
         CreditTransaction.__table__,
         Followup.__table__,
+        MessengerIdentity.__table__,
+        MessengerPendingAsk.__table__,
+        MessengerWebhookReceipt.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
@@ -68,6 +74,9 @@ def db_session(engine):
     try:
         session.query(CreditTransaction).delete()
         session.query(Followup).delete()
+        session.query(MessengerWebhookReceipt).delete()
+        session.query(MessengerPendingAsk).delete()
+        session.query(MessengerIdentity).delete()
         session.query(Answer).delete()
         session.query(Question).delete()
         session.query(Order).delete()

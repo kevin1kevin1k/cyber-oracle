@@ -195,7 +195,31 @@ cd /opt/render/project/src/backend && uv run alembic upgrade head && uv run alem
 - callback URL 是否確實是 `https://api.<your-domain>/api/v1/messenger/webhook`
 - `MESSENGER_VERIFY_SIGNATURE=true` 時，`META_APP_SECRET` 是否正確
 
-### 4. 快速回滾
+### 4. 懷疑 webhook 重送造成重複執行
+先查 backend DB 的 `messenger_webhook_receipts`：
+```bash
+cd /opt/render/project/src/backend && uv run python - <<'PY'
+from sqlalchemy import create_engine, text
+from app.config import settings
+
+engine = create_engine(settings.database_url, future=True)
+with engine.connect() as conn:
+    rows = conn.execute(text("""
+        select delivery_key, event_type, signature_status, processing_status, error_code, received_at, processed_at
+        from messenger_webhook_receipts
+        order by received_at desc
+        limit 20
+    """)).fetchall()
+    for row in rows:
+        print(row)
+PY
+```
+預期結果：
+- 同一個 Messenger event 只會保留一筆對應 `delivery_key`
+- 正常事件應看到 `succeeded`
+- 驗章失敗 request 應看到 `event_type=request`、`signature_status=invalid`
+
+### 5. 快速回滾
 1. 先在 Render 將 frontend/backend rollback 到上一個 healthy deploy。
 2. 若 webhook 仍在打壞版本，可暫時把 backend `MESSENGER_OUTBOUND_MODE` 切成 `noop`，降低錯誤擴散。
 3. 若問題是 schema drift，優先補 migration，不要直接 downgrade DB。
@@ -204,7 +228,7 @@ cd /opt/render/project/src/backend && uv run alembic upgrade head && uv run alem
    - Messenger linking
    - `SHOW_BALANCE`
 
-### 5. Messenger 有收 webhook，但完全回不出訊息
+### 6. Messenger 有收 webhook，但完全回不出訊息
 若 Render backend log 出現：
 - `OAuthException`
 - `code 190`
@@ -219,7 +243,7 @@ cd /opt/render/project/src/backend && uv run alembic upgrade head && uv run alem
    - `查看剩餘點數`
    - 直接提問
 
-### 6. 只有 app role 帳號可用，其他人完全收不到 bot 回覆
+### 7. 只有 app role 帳號可用，其他人完全收不到 bot 回覆
 優先檢查：
 1. Meta app 是否仍停留在 role-only 測試狀態。
 2. `pages_messaging` 與相關必要 access 是否已完成 review / advanced access。

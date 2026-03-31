@@ -204,6 +204,9 @@ Endpoints:
 - `POST /api/v1/messenger/webhook`
   - parses basic Messenger events (`message`, `quick reply`, `postback`)
   - returns `200 accepted` quickly after verify/parse, then processes ask/followup/send in background task
+  - persists `messenger_webhook_receipts` audit rows for accepted events and invalid-signature requests
+  - deduplicates repeated deliveries before background processing, so the same webhook event is not re-run twice
+  - tracks receipt status transitions (`accepted -> processing -> succeeded/failed`) and stores failure codes for replay/audit checks
   - resolves/creates `messenger_identities` mapping
   - for linked identities, text messages now execute the existing ask credit flow (`reserve -> capture/refund`)
   - maps ask followups into a single Messenger quick-replies message, and quick reply clicks now reuse the existing followup ask flow
@@ -218,6 +221,10 @@ Current channel capabilities:
   - quick replies
   - button templates
 - linked/unlinked routing, Messenger WebView session bootstrap, quick reply followups, re-show followups after top-up, and persistent menu (`查看剩餘點數` / `前往設定`)
+- duplicate webhook delivery hardening via `delivery_key` receipts:
+  - `message` / `quick_reply`: dedupe by `message.mid`
+  - `postback`: dedupe by hashed `psid + page_id + payload + timestamp`
+  - invalid signatures are recorded as synthetic request-level receipts using the raw body sha256 digest
 - `前往設定` persistent menu entry now uses postback bridge flow: Messenger first receives a signed WebView button, then opens the single-page WebView settings center with session bootstrap
 - Messenger profile keeps `composer_input_disabled=false` on purpose, so users can still type questions directly in chat; mobile Messenger may therefore prioritize `Like` / composer UI over the desktop-style hamburger menu
 - linked users who have not filled `full_name` / `mother_name` are guided to `/settings` before ask/followup execution

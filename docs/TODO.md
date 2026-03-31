@@ -178,7 +178,7 @@
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
   - [x] Backend：`POST /api/v1/messenger/webhook` 改為快速回 `200 accepted`，OpenAI ask / followup 與 outbound send 改走背景處理，避免 Meta timeout / `context canceled`
-- [ ] 完成 webhook signature hardening（replay protection、failure audit）
+- [x] 完成 webhook signature hardening（replay protection、failure audit）
 - [ ] 完成 Meta 平台政策與合規要求檢查清單落地
 
 ## Test Cases（必測）
@@ -272,6 +272,8 @@
   - [ ] 一般帳號可完成 linking、settings、Messenger ask
   - [ ] 一般帳號可使用 `查看剩餘點數`、`前往設定` bridge
 - [ ] Messenger：補 webhook replay protection 與更完整監控告警
+  - [x] Backend：新增 `messenger_webhook_receipts`，落地 delivery 去重與 failure audit
+  - [ ] Observability：補告警、dashboard 與更完整 metrics/telemetry
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
 - [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制
 - [ ] Billing：正式串接真實 Stripe callback、簽章驗證與 Messenger 回饋閉環

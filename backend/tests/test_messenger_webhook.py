@@ -17,7 +17,6 @@ from app.db import Base, get_db
 from app.main import app
 from app.messenger import routes as messenger_routes
 from app.messenger.client import MessengerClientError
-from app.messenger.schemas import MessengerWebhookPayload
 from app.messenger.security import create_messenger_link_token
 from app.messenger.service import build_default_persistent_menu
 from app.models.answer import Answer
@@ -26,6 +25,7 @@ from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
 from app.models.messenger_pending_ask import MessengerPendingAsk
+from app.models.messenger_webhook_receipt import MessengerWebhookReceipt
 from app.models.order import Order
 from app.models.question import Question
 from app.models.session_record import SessionRecord
@@ -64,6 +64,7 @@ def engine():
         Followup.__table__,
         MessengerIdentity.__table__,
         MessengerPendingAsk.__table__,
+        MessengerWebhookReceipt.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
@@ -80,6 +81,7 @@ def db_session(engine):
         session.query(Order).delete()
         session.query(Followup).delete()
         session.query(MessengerPendingAsk).delete()
+        session.query(MessengerWebhookReceipt).delete()
         session.query(Answer).delete()
         session.query(Question).delete()
         session.query(CreditWallet).delete()
@@ -325,10 +327,10 @@ def test_webhook_post_message_event_schedules_background_processing(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scheduled: list[MessengerWebhookPayload] = []
+    scheduled: list[list] = []
 
-    def _capture_process(*, payload: MessengerWebhookPayload) -> None:
-        scheduled.append(payload)
+    def _capture_process(*, queued_events) -> None:  # noqa: ANN001
+        scheduled.append(queued_events)
 
     monkeypatch.setattr("app.messenger.routes.process_webhook_events", _capture_process)
     payload = {
@@ -354,7 +356,8 @@ def test_webhook_post_message_event_schedules_background_processing(
     assert response.status_code == 200
     assert response.json() == {"status": "accepted", "processed": 1}
     assert len(scheduled) == 1
-    assert scheduled[0].entry[0].messaging[0].message.text == "hello"
+    assert len(scheduled[0]) == 1
+    assert scheduled[0][0].event.message.text == "hello"
 
 
 def test_webhook_post_message_event_for_unlinked_user_returns_link_button(
@@ -551,7 +554,17 @@ def test_webhook_post_message_event_with_same_mid_is_idempotent(
         CreditTransaction.user_id == user_id,
         CreditTransaction.action == "capture",
     ).count()
+    receipts = db_session.scalars(
+        select(MessengerWebhookReceipt).where(
+            MessengerWebhookReceipt.delivery_key == "message:m_linked_same"
+        )
+    ).all()
+
     assert capture_count == 1
+    assert len(receipts) == 1
+    assert receipts[0].processing_status == "succeeded"
+    assert receipts[0].event_type == "message"
+    assert receipts[0].message_mid == "m_linked_same"
     assert outgoing_messages == [
         ("psid-linked-2", "text", "本次已扣 1 點，目前剩餘 1 點。"),
         (
@@ -1579,11 +1592,14 @@ def test_webhook_post_quick_reply_with_same_followup_is_not_double_charged(
         CreditTransaction.action == "capture",
     ).count()
     assert capture_count == 1
-    assert outgoing_messages[-1] == (
-        "psid-followup-2",
-        "text",
-        "這個延伸問題已失效，請重新提問。",
-    )
+    assert outgoing_messages == [
+        ("psid-followup-2", "text", "本次已扣 1 點，目前剩餘 1 點。"),
+        (
+            "psid-followup-2",
+            "quick_replies",
+            "測試回答（messenger）\n\n你也可以選擇以下延伸問題：\n1. 延伸 A\n2. 延伸 B\n3. 延伸 C",
+        ),
+    ]
 
 
 def test_webhook_post_quick_reply_with_invalid_payload_returns_fallback(
@@ -2405,6 +2421,7 @@ def test_webhook_post_postback_replay_pending_ask_unavailable_returns_fallback(
 
 def test_webhook_signature_invalid_returns_403(
     client: TestClient,
+    db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "messenger_verify_signature", True)
@@ -2422,6 +2439,12 @@ def test_webhook_signature_invalid_returns_403(
 
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "WEBHOOK_SIGNATURE_INVALID"
+    receipt = db_session.scalar(select(MessengerWebhookReceipt))
+    assert receipt is not None
+    assert receipt.delivery_key.startswith("request:")
+    assert receipt.signature_status == "invalid"
+    assert receipt.processing_status == "failed"
+    assert receipt.error_code == "WEBHOOK_SIGNATURE_INVALID"
 
 
 def test_webhook_post_invalid_payload_returns_422(client: TestClient) -> None:
@@ -2807,5 +2830,62 @@ def test_webhook_outbound_failure_returns_accepted_instead_of_500(
     assert response.json() == {"status": "accepted", "processed": 1}
 
     wallet = db_session.scalar(select(CreditWallet).where(CreditWallet.user_id == user_id))
+    receipt = db_session.scalar(
+        select(MessengerWebhookReceipt).where(
+            MessengerWebhookReceipt.delivery_key == "message:m_outbound_fail"
+        )
+    )
     assert wallet is not None
     assert wallet.balance == 1
+    assert receipt is not None
+    assert receipt.processing_status == "failed"
+    assert receipt.error_code == "MESSENGER_OUTBOUND_FAILED"
+
+
+def test_webhook_post_postback_duplicate_is_ignored_after_first_delivery(
+    client: TestClient,
+    db_session: Session,
+    outgoing_messages: list[tuple[str, str, str]],
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-dup-postback",
+        page_id="page-dup-postback",
+        balance=7,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-dup-postback",
+                "time": 1700002700,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-dup-postback"},
+                        "recipient": {"id": "page-dup-postback"},
+                        "timestamp": 1700002700,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    first = client.post("/api/v1/messenger/webhook", json=payload)
+    second = client.post("/api/v1/messenger/webhook", json=payload)
+
+    receipts = db_session.scalars(
+        select(MessengerWebhookReceipt).where(
+            MessengerWebhookReceipt.event_type == "postback",
+            MessengerWebhookReceipt.psid == "psid-dup-postback",
+        )
+    ).all()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(receipts) == 1
+    assert receipts[0].processing_status == "succeeded"
+    assert receipts[0].payload_summary == "SHOW_BALANCE"
+    assert outgoing_messages == [
+        ("psid-dup-postback", "text", "目前剩餘 7 點。"),
+    ]
