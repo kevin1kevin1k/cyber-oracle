@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -10,7 +11,22 @@ logger = logging.getLogger(__name__)
 
 
 class MessengerClientError(Exception):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        status_code: int | None = None,
+        error_code: str | None = None,
+        response_body: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.status_code = status_code
+        self.error_code = error_code
+        self.response_body = response_body
+        self.reason = reason
 
 
 class MessengerClientProtocol(Protocol):
@@ -226,13 +242,34 @@ class MetaGraphMessengerClient:
                 )
         except HTTPError as exc:
             response_body = exc.read().decode("utf-8", errors="replace")
+            retryable = exc.code == 429 or 500 <= exc.code < 600
             raise MessengerClientError(
-                f"Meta Graph send failed: status={exc.code} body={response_body}"
+                f"Meta Graph send failed: status={exc.code} body={response_body}",
+                retryable=retryable,
+                status_code=exc.code,
+                error_code=f"META_GRAPH_HTTP_{exc.code}",
+                response_body=response_body,
             ) from exc
         except URLError as exc:
-            raise MessengerClientError(f"Meta Graph send failed: {exc.reason}") from exc
+            reason = str(exc.reason)
+            raise MessengerClientError(
+                f"Meta Graph send failed: {reason}",
+                retryable=True,
+                error_code="META_GRAPH_URL_ERROR",
+                reason=reason,
+            ) from exc
         except OSError as exc:
-            raise MessengerClientError(f"Meta Graph send failed: {exc}") from exc
+            error_code = (
+                "META_GRAPH_TIMEOUT"
+                if isinstance(exc, (TimeoutError, socket.timeout))
+                else "META_GRAPH_OS_ERROR"
+            )
+            raise MessengerClientError(
+                f"Meta Graph send failed: {exc}",
+                retryable=True,
+                error_code=error_code,
+                reason=str(exc),
+            ) from exc
 
 
 def dispatch_outgoing_message(

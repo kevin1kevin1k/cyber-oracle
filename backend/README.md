@@ -241,15 +241,16 @@ Current channel capabilities:
   - ask / replay / followup failures are classified into config / upstream / generic user-facing Messenger replies instead of a single fallback for every case
   - outbound send failures are logged and do not turn webhook ingest into `500`
   - webhook ingest and OpenAI/send execution are now decoupled via FastAPI background task to reduce Meta timeout / local tunnel `context canceled`
-  - retry / dead-letter / telemetry are not implemented yet
+  - outbound send now persists `messenger_outbound_deliveries`, retries retryable Meta failures, and marks terminal failures as `failed` / `dead_letter`
+  - retry configuration is controlled by `MESSENGER_SEND_TIMEOUT_SECONDS`, `MESSENGER_SEND_MAX_ATTEMPTS`, and `MESSENGER_SEND_INITIAL_BACKOFF_MS`
 
 Schema/Model:
 - `messenger_identities` table stores `platform/psid/page_id` and optional `user_id` link.
 - Unlinked state is supported (`user_id=NULL`, `status=unlinked`) for pre-linking interactions.
 
 Current status (explicitly non-production-complete):
-  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, Messenger WebView account linking MVP, inbound ask flow reuse, quick reply followup reuse, minimum viable Meta Graph outbound send, tests
-- not implemented yet: production-ready retry/telemetry, full webhook replay protection, policy/compliance hardening
+  - implemented: webhook adapter routes, identity mapping table, linked/unlinked routing, Messenger WebView account linking MVP, inbound ask flow reuse, quick reply followup reuse, outbound retry/dead-letter persistence, tests
+- not implemented yet: external queue/compensation workflow, policy/compliance hardening, dashboard/alerting
 - not implemented yet: Messenger in-flow Stripe checkout and payment callback closed loop
 
 ## Migrations (Alembic)

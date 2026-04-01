@@ -1,5 +1,5 @@
 import json
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -283,5 +283,51 @@ def test_meta_graph_send_http_error_raises_messenger_client_error(
     monkeypatch.setattr("app.messenger.client.urlopen", _fake_urlopen)
 
     client = MetaGraphMessengerClient(page_access_token="bad-token")
-    with pytest.raises(MessengerClientError, match="status=400"):
+    with pytest.raises(MessengerClientError, match="status=400") as exc_info:
         client.send_text(psid="psid-4", text="hello")
+
+    assert exc_info.value.retryable is False
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.error_code == "META_GRAPH_HTTP_400"
+    assert exc_info.value.response_body == '{"error":{"message":"Invalid token"}}'
+
+
+def test_meta_graph_send_http_500_is_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_urlopen(request, timeout):  # noqa: ANN001
+        raise HTTPError(
+            url=request.full_url,
+            code=500,
+            msg="Internal Error",
+            hdrs=None,
+            fp=_FakeResponse(body='{"error":{"message":"Server error"}}'),
+        )
+
+    monkeypatch.setattr("app.messenger.client.urlopen", _fake_urlopen)
+
+    client = MetaGraphMessengerClient(page_access_token="page-token")
+    with pytest.raises(MessengerClientError) as exc_info:
+        client.send_text(psid="psid-500", text="hello")
+
+    assert exc_info.value.retryable is True
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.error_code == "META_GRAPH_HTTP_500"
+
+
+def test_meta_graph_send_url_error_is_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_urlopen(request, timeout):  # noqa: ANN001
+        raise URLError("temporary failure")
+
+    monkeypatch.setattr("app.messenger.client.urlopen", _fake_urlopen)
+
+    client = MetaGraphMessengerClient(page_access_token="page-token")
+    with pytest.raises(MessengerClientError) as exc_info:
+        client.send_text(psid="psid-url", text="hello")
+
+    assert exc_info.value.retryable is True
+    assert exc_info.value.status_code is None
+    assert exc_info.value.error_code == "META_GRAPH_URL_ERROR"
+    assert exc_info.value.reason == "temporary failure"

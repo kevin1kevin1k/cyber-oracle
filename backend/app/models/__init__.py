@@ -3,6 +3,7 @@ from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_outbound_delivery import MessengerOutboundDelivery
 from app.models.messenger_pending_ask import MessengerPendingAsk
 from app.models.messenger_webhook_receipt import MessengerWebhookReceipt
 from app.models.order import Order
@@ -16,6 +17,7 @@ __all__ = [
     "CreditWallet",
     "Followup",
     "MessengerIdentity",
+    "MessengerOutboundDelivery",
     "MessengerPendingAsk",
     "MessengerWebhookReceipt",
     "Order",

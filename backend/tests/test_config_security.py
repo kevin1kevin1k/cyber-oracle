@@ -80,3 +80,13 @@ def test_prod_messenger_requires_signature_verification() -> None:
             meta_verify_token="verify-token",
             messenger_verify_signature=False,
         )
+
+
+def test_messenger_send_timeout_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="MESSENGER_SEND_TIMEOUT_SECONDS must be > 0"):
+        Settings(messenger_send_timeout_seconds=0)
+
+
+def test_messenger_send_attempts_must_be_at_least_one() -> None:
+    with pytest.raises(ValidationError, match="MESSENGER_SEND_MAX_ATTEMPTS must be >= 1"):
+        Settings(messenger_send_max_attempts=0)

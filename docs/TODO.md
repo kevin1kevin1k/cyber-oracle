@@ -176,8 +176,11 @@
   - [x] Frontend：曾支援 `/wallet` Messenger WebView 使用情境（目前 public beta 已退役）
   - [ ] Backend：payment callback -> 訂單入帳 -> Messenger 回饋訊息閉環
 - [ ] 完成 payment webhook -> 訂單入帳 -> Messenger 回饋訊息閉環
-- [ ] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
+- [x] 實作 production-ready Meta Graph Send API（含 retry / timeout / telemetry）
   - [x] Backend：`POST /api/v1/messenger/webhook` 改為快速回 `200 accepted`，OpenAI ask / followup 與 outbound send 改走背景處理，避免 Meta timeout / `context canceled`
+  - [x] Backend：Meta Graph outbound send 依錯誤類型區分 retryable / non-retryable
+  - [x] Backend：新增 `messenger_outbound_deliveries`，落地 retry attempt / dead-letter / terminal failure audit
+  - [x] Backend：新增 `MESSENGER_SEND_TIMEOUT_SECONDS`、`MESSENGER_SEND_MAX_ATTEMPTS`、`MESSENGER_SEND_INITIAL_BACKOFF_MS`
 - [x] 完成 webhook signature hardening（replay protection、failure audit）
 - [ ] 完成 Meta 平台政策與合規要求檢查清單落地
 
@@ -275,6 +278,8 @@
   - [x] Backend：新增 `messenger_webhook_receipts`，落地 delivery 去重與 failure audit
   - [ ] Observability：補告警、dashboard 與更完整 metrics/telemetry
 - [ ] Messenger：補 Send API retry / dead-letter / 補償策略
+  - [x] Backend：retry / dead-letter / terminal failure persistence 已落地
+  - [ ] Ops：補人工補償與重送 runbook
 - [ ] Auth：規劃 access token 從 `localStorage` 升級到 cookie / httpOnly，或導入更穩定的 Messenger WebView session 恢復機制
 - [ ] Billing：正式串接真實 Stripe callback、簽章驗證與 Messenger 回饋閉環
 - [ ] Observability：補 auth / billing / messenger / launch grant 的 request-level 審計與告警

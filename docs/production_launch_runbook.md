@@ -10,7 +10,7 @@
 
 不在本次正式切換範圍內：
 - 真實 Stripe callback 入帳閉環
-- Send API retry / dead-letter / telemetry 完整化
+- Send API dashboard / 告警 / 人工補償流程完整化
 - access token 升級為 cookie / httpOnly
 
 ## 固定部署拓樸
@@ -35,6 +35,9 @@
 - `META_APP_SECRET=<Meta app secret>`
 - `MESSENGER_VERIFY_SIGNATURE=true`
 - `MESSENGER_OUTBOUND_MODE=meta_graph`
+- `MESSENGER_SEND_TIMEOUT_SECONDS=10`
+- `MESSENGER_SEND_MAX_ATTEMPTS=3`
+- `MESSENGER_SEND_INITIAL_BACKOFF_MS=500`
 - `MESSENGER_PROFILE_SYNC_ON_STARTUP=true`
 - `MESSENGER_WEB_BASE_URL=https://app.<your-domain>`
 

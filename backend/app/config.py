@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     meta_app_secret: str | None = None
     messenger_verify_signature: bool = False
     messenger_outbound_mode: Literal["noop", "meta_graph"] = "noop"
+    messenger_send_timeout_seconds: float = 10.0
+    messenger_send_max_attempts: int = 3
+    messenger_send_initial_backoff_ms: int = 500
     messenger_web_base_url: str = "http://localhost:3000"
     messenger_profile_sync_on_startup: bool = False
     payments_enabled: bool = True
@@ -85,6 +88,12 @@ class Settings(BaseSettings):
             raise ValueError("META_APP_SECRET is required when MESSENGER_VERIFY_SIGNATURE=true")
         if app_env == "prod" and self.messenger_enabled and not self.messenger_verify_signature:
             raise ValueError("MESSENGER_VERIFY_SIGNATURE must be true when APP_ENV=prod")
+        if self.messenger_send_timeout_seconds <= 0:
+            raise ValueError("MESSENGER_SEND_TIMEOUT_SECONDS must be > 0")
+        if self.messenger_send_max_attempts < 1:
+            raise ValueError("MESSENGER_SEND_MAX_ATTEMPTS must be >= 1")
+        if self.messenger_send_initial_backoff_ms < 0:
+            raise ValueError("MESSENGER_SEND_INITIAL_BACKOFF_MS must be >= 0")
         return self
 
     @model_validator(mode="after")

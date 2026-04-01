@@ -24,6 +24,7 @@ from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
 from app.models.followup import Followup
 from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_outbound_delivery import MessengerOutboundDelivery
 from app.models.messenger_pending_ask import MessengerPendingAsk
 from app.models.messenger_webhook_receipt import MessengerWebhookReceipt
 from app.models.order import Order
@@ -65,6 +66,7 @@ def engine():
         MessengerIdentity.__table__,
         MessengerPendingAsk.__table__,
         MessengerWebhookReceipt.__table__,
+        MessengerOutboundDelivery.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield engine
@@ -81,6 +83,7 @@ def db_session(engine):
         session.query(Order).delete()
         session.query(Followup).delete()
         session.query(MessengerPendingAsk).delete()
+        session.query(MessengerOutboundDelivery).delete()
         session.query(MessengerWebhookReceipt).delete()
         session.query(Answer).delete()
         session.query(Question).delete()
@@ -2795,9 +2798,15 @@ def test_webhook_outbound_failure_returns_accepted_instead_of_500(
     user_id = user.id
     monkeypatch.setattr(settings, "messenger_outbound_mode", "meta_graph")
     monkeypatch.setattr(settings, "meta_page_access_token", "page-token")
+    monkeypatch.setattr(settings, "messenger_send_max_attempts", 3)
+    monkeypatch.setattr(settings, "messenger_send_initial_backoff_ms", 0)
 
     def _raise_send_error(self, *, psid: str, text: str) -> None:  # noqa: ANN001
-        raise MessengerClientError(f"send failed for {psid}: {text}")
+        raise MessengerClientError(
+            f"send failed for {psid}: {text}",
+            retryable=False,
+            error_code="META_GRAPH_HTTP_400",
+        )
 
     monkeypatch.setattr(
         "app.messenger.client.MetaGraphMessengerClient.send_text",
@@ -2835,11 +2844,250 @@ def test_webhook_outbound_failure_returns_accepted_instead_of_500(
             MessengerWebhookReceipt.delivery_key == "message:m_outbound_fail"
         )
     )
+    delivery = db_session.scalar(
+        select(MessengerOutboundDelivery).where(
+            MessengerOutboundDelivery.delivery_key == "message:m_outbound_fail:outgoing:1"
+        )
+    )
     assert wallet is not None
     assert wallet.balance == 1
     assert receipt is not None
     assert receipt.processing_status == "failed"
-    assert receipt.error_code == "MESSENGER_OUTBOUND_FAILED"
+    assert receipt.error_code == "META_GRAPH_HTTP_400"
+    assert delivery is not None
+    assert delivery.status == "failed"
+    assert delivery.attempt_count == 1
+    assert delivery.last_error_code == "META_GRAPH_HTTP_400"
+    assert delivery.dead_lettered_at is None
+
+
+def test_webhook_outbound_retry_succeeds_before_dead_letter(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-outbound-retry",
+        page_id="page-outbound-retry",
+        balance=7,
+    )
+    monkeypatch.setattr(settings, "messenger_outbound_mode", "meta_graph")
+    monkeypatch.setattr(settings, "meta_page_access_token", "page-token")
+    monkeypatch.setattr(settings, "messenger_send_max_attempts", 3)
+    monkeypatch.setattr(settings, "messenger_send_initial_backoff_ms", 0)
+
+    attempts = {"count": 0}
+
+    def _flaky_send_text(self, *, psid: str, text: str) -> None:  # noqa: ANN001
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise MessengerClientError(
+                "temporary outage",
+                retryable=True,
+                error_code="META_GRAPH_HTTP_503",
+            )
+
+    monkeypatch.setattr(
+        "app.messenger.client.MetaGraphMessengerClient.send_text",
+        _flaky_send_text,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-outbound-retry",
+                "time": 1700002610,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-outbound-retry"},
+                        "recipient": {"id": "page-outbound-retry"},
+                        "timestamp": 1700002610,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    receipt = db_session.scalar(
+        select(MessengerWebhookReceipt).where(
+            MessengerWebhookReceipt.event_type == "postback",
+            MessengerWebhookReceipt.psid == "psid-outbound-retry",
+        )
+    )
+    delivery = db_session.scalar(
+        select(MessengerOutboundDelivery).where(
+            MessengerOutboundDelivery.psid == "psid-outbound-retry"
+        )
+    )
+
+    assert response.status_code == 200
+    assert attempts["count"] == 2
+    assert receipt is not None
+    assert receipt.processing_status == "succeeded"
+    assert receipt.error_code is None
+    assert delivery is not None
+    assert delivery.status == "sent"
+    assert delivery.attempt_count == 2
+    assert delivery.last_error_code is None
+    assert delivery.sent_at is not None
+
+
+def test_webhook_outbound_retryable_failure_dead_letters_after_max_attempts(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-outbound-dead-letter",
+        page_id="page-outbound-dead-letter",
+        balance=7,
+    )
+    monkeypatch.setattr(settings, "messenger_outbound_mode", "meta_graph")
+    monkeypatch.setattr(settings, "meta_page_access_token", "page-token")
+    monkeypatch.setattr(settings, "messenger_send_max_attempts", 3)
+    monkeypatch.setattr(settings, "messenger_send_initial_backoff_ms", 0)
+
+    attempts = {"count": 0}
+
+    def _always_fail_send_text(self, *, psid: str, text: str) -> None:  # noqa: ANN001
+        attempts["count"] += 1
+        raise MessengerClientError(
+            "server unavailable",
+            retryable=True,
+            error_code="META_GRAPH_HTTP_503",
+        )
+
+    monkeypatch.setattr(
+        "app.messenger.client.MetaGraphMessengerClient.send_text",
+        _always_fail_send_text,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-outbound-dead-letter",
+                "time": 1700002620,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-outbound-dead-letter"},
+                        "recipient": {"id": "page-outbound-dead-letter"},
+                        "timestamp": 1700002620,
+                        "postback": {"payload": "SHOW_BALANCE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    receipt = db_session.scalar(
+        select(MessengerWebhookReceipt).where(
+            MessengerWebhookReceipt.event_type == "postback",
+            MessengerWebhookReceipt.psid == "psid-outbound-dead-letter",
+        )
+    )
+    delivery = db_session.scalar(
+        select(MessengerOutboundDelivery).where(
+            MessengerOutboundDelivery.psid == "psid-outbound-dead-letter"
+        )
+    )
+
+    assert response.status_code == 200
+    assert attempts["count"] == 3
+    assert receipt is not None
+    assert receipt.processing_status == "failed"
+    assert receipt.error_code == "META_GRAPH_HTTP_503"
+    assert delivery is not None
+    assert delivery.status == "dead_letter"
+    assert delivery.attempt_count == 3
+    assert delivery.dead_lettered_at is not None
+
+
+def test_webhook_partial_outbound_failure_marks_receipt_failed(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-outbound-partial",
+        page_id="page-outbound-partial",
+        balance=2,
+    )
+    monkeypatch.setattr(settings, "messenger_outbound_mode", "meta_graph")
+    monkeypatch.setattr(settings, "meta_page_access_token", "page-token")
+    monkeypatch.setattr(settings, "messenger_send_max_attempts", 2)
+    monkeypatch.setattr(settings, "messenger_send_initial_backoff_ms", 0)
+
+    def _ok_send_text(self, *, psid: str, text: str) -> None:  # noqa: ANN001
+        return None
+
+    def _fail_quick_replies(self, *, psid: str, text: str, options) -> None:  # noqa: ANN001
+        raise MessengerClientError(
+            "meta temporary failure",
+            retryable=True,
+            error_code="META_GRAPH_HTTP_503",
+        )
+
+    monkeypatch.setattr(
+        "app.messenger.client.MetaGraphMessengerClient.send_text",
+        _ok_send_text,
+    )
+    monkeypatch.setattr(
+        "app.messenger.client.MetaGraphMessengerClient.send_quick_replies",
+        _fail_quick_replies,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-outbound-partial",
+                "time": 1700002630,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-outbound-partial"},
+                        "recipient": {"id": "page-outbound-partial"},
+                        "timestamp": 1700002630,
+                        "message": {
+                            "mid": "m_outbound_partial",
+                            "text": "請幫我分析今天運勢",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    receipt = db_session.scalar(
+        select(MessengerWebhookReceipt).where(
+            MessengerWebhookReceipt.delivery_key == "message:m_outbound_partial"
+        )
+    )
+    assert receipt is not None
+    deliveries = db_session.scalars(
+        select(MessengerOutboundDelivery)
+        .where(MessengerOutboundDelivery.receipt_id == receipt.id)
+        .order_by(MessengerOutboundDelivery.created_at.asc())
+    ).all()
+
+    assert response.status_code == 200
+    assert receipt.processing_status == "failed"
+    assert receipt.error_code == "META_GRAPH_HTTP_503"
+    assert len(deliveries) == 2
+    assert deliveries[0].status == "sent"
+    assert deliveries[0].message_kind == "text"
+    assert deliveries[0].attempt_count == 1
+    assert deliveries[1].status == "dead_letter"
+    assert deliveries[1].message_kind == "quick_replies"
+    assert deliveries[1].attempt_count == 2
 
 
 def test_webhook_post_postback_duplicate_is_ignored_after_first_delivery(

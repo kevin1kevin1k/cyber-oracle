@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -56,6 +57,7 @@ from app.messenger.service import (
     build_linked_new_credit_message,
 )
 from app.models.messenger_identity import MessengerIdentity
+from app.models.messenger_outbound_delivery import MessengerOutboundDelivery
 from app.models.messenger_webhook_receipt import MessengerWebhookReceipt
 from app.models.user import User
 from app.rate_limit import RateLimitRule, enforce_rate_limit
@@ -85,7 +87,10 @@ def _get_outbound_client():
                     "message": "META_PAGE_ACCESS_TOKEN is required for meta_graph mode",
                 },
             )
-        return MetaGraphMessengerClient(page_access_token=settings.meta_page_access_token)
+        return MetaGraphMessengerClient(
+            page_access_token=settings.meta_page_access_token,
+            timeout_seconds=settings.messenger_send_timeout_seconds,
+        )
     return NoopMessengerClient()
 
 
@@ -305,6 +310,8 @@ def _set_receipt_processing_status(
 
 def _error_code_from_exception(exc: Exception) -> str:
     if isinstance(exc, MessengerClientError):
+        if exc.error_code:
+            return exc.error_code[:64]
         return "MESSENGER_OUTBOUND_FAILED"
     if isinstance(exc, HTTPException):
         if isinstance(exc.detail, dict):
@@ -313,6 +320,152 @@ def _error_code_from_exception(exc: Exception) -> str:
                 return code[:64]
         return f"HTTP_{exc.status_code}"
     return "WEBHOOK_PROCESSING_FAILED"
+
+
+def _truncate_error_message(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized[:1024]
+
+
+def _build_outbound_delivery_key(*, receipt: MessengerWebhookReceipt, sequence: int) -> str:
+    return f"{receipt.delivery_key}:outgoing:{sequence}"
+
+
+def _create_outbound_delivery(
+    *,
+    db: Session,
+    receipt: MessengerWebhookReceipt,
+    psid: str,
+    outgoing: MessengerOutgoingMessage,
+    sequence: int,
+) -> MessengerOutboundDelivery:
+    delivery = MessengerOutboundDelivery(
+        receipt_id=receipt.id,
+        request_id=receipt.request_id,
+        delivery_key=_build_outbound_delivery_key(receipt=receipt, sequence=sequence),
+        psid=psid,
+        message_kind=outgoing.kind,
+        payload_json=outgoing.model_dump_json(),
+        status="pending",
+        attempt_count=0,
+    )
+    db.add(delivery)
+    db.commit()
+    db.refresh(delivery)
+    return delivery
+
+
+def _update_outbound_delivery(
+    *,
+    db: Session,
+    delivery_id: UUID,
+    attempt_count: int,
+    status: str | None = None,
+    last_error_code: str | None = None,
+    last_error_message: str | None = None,
+    sent_at: datetime | None = None,
+    dead_lettered_at: datetime | None = None,
+) -> MessengerOutboundDelivery | None:
+    delivery = db.get(MessengerOutboundDelivery, delivery_id)
+    if delivery is None:
+        return None
+    delivery.attempt_count = attempt_count
+    if status is not None:
+        delivery.status = status
+    delivery.last_error_code = last_error_code
+    delivery.last_error_message = _truncate_error_message(last_error_message)
+    delivery.sent_at = sent_at
+    delivery.dead_lettered_at = dead_lettered_at
+    db.add(delivery)
+    db.commit()
+    db.refresh(delivery)
+    return delivery
+
+
+def _send_outgoing_with_retry(
+    *,
+    db: Session,
+    client,
+    receipt: MessengerWebhookReceipt,
+    psid: str,
+    outgoing: MessengerOutgoingMessage,
+    sequence: int,
+) -> None:
+    delivery = _create_outbound_delivery(
+        db=db,
+        receipt=receipt,
+        psid=psid,
+        outgoing=outgoing,
+        sequence=sequence,
+    )
+    max_attempts = settings.messenger_send_max_attempts
+    initial_backoff_seconds = settings.messenger_send_initial_backoff_ms / 1000
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            dispatch_outgoing_message(client=client, psid=psid, outgoing=outgoing)
+            _update_outbound_delivery(
+                db=db,
+                delivery_id=delivery.id,
+                attempt_count=attempt,
+                status="sent",
+                last_error_code=None,
+                last_error_message=None,
+                sent_at=_current_timestamp(),
+                dead_lettered_at=None,
+            )
+            logger.info(
+                "Messenger outbound delivery succeeded: request_id=%s delivery_key=%s "
+                "outbound_delivery_id=%s psid=%s message_kind=%s attempt=%s",
+                receipt.request_id,
+                receipt.delivery_key,
+                delivery.id,
+                psid,
+                outgoing.kind,
+                attempt,
+            )
+            return
+        except MessengerClientError as exc:
+            error_code = _error_code_from_exception(exc)
+            last_error_message = str(exc)
+            should_retry = exc.retryable and attempt < max_attempts
+            status = None
+            dead_lettered_at = None
+            if not should_retry:
+                status = "dead_letter" if exc.retryable else "failed"
+                if status == "dead_letter":
+                    dead_lettered_at = _current_timestamp()
+            _update_outbound_delivery(
+                db=db,
+                delivery_id=delivery.id,
+                attempt_count=attempt,
+                status=status,
+                last_error_code=error_code,
+                last_error_message=last_error_message,
+                sent_at=None,
+                dead_lettered_at=dead_lettered_at,
+            )
+            logger.warning(
+                "Messenger outbound delivery failed: request_id=%s delivery_key=%s "
+                "outbound_delivery_id=%s psid=%s message_kind=%s attempt=%s "
+                "retryable=%s error_code=%s",
+                receipt.request_id,
+                receipt.delivery_key,
+                delivery.id,
+                psid,
+                outgoing.kind,
+                attempt,
+                exc.retryable,
+                error_code,
+            )
+            if should_retry:
+                time.sleep(initial_backoff_seconds * (2 ** (attempt - 1)))
+                continue
+            raise
 
 
 def process_webhook_events(*, queued_events: list[QueuedMessengerWebhookEvent]) -> None:
@@ -332,6 +485,8 @@ def process_webhook_events(*, queued_events: list[QueuedMessengerWebhookEvent]) 
             event = queued_event.event
 
             try:
+                if receipt is None:
+                    raise RuntimeError("Missing webhook receipt during background processing")
                 command, identity = service.prepare_incoming_event(event=event)
                 sender = event.sender.get("id")
                 if not sender:
@@ -355,8 +510,15 @@ def process_webhook_events(*, queued_events: list[QueuedMessengerWebhookEvent]) 
                 finally:
                     if should_emit_feedback:
                         _stop_processing_feedback(client=client, psid=sender)
-                for outgoing in outgoing_messages:
-                    dispatch_outgoing_message(client=client, psid=sender, outgoing=outgoing)
+                for sequence, outgoing in enumerate(outgoing_messages, start=1):
+                    _send_outgoing_with_retry(
+                        db=db,
+                        client=client,
+                        receipt=receipt,
+                        psid=sender,
+                        outgoing=outgoing,
+                        sequence=sequence,
+                    )
                 _set_receipt_processing_status(
                     db=db,
                     receipt_id=queued_event.receipt_id,
