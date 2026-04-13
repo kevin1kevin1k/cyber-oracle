@@ -77,6 +77,11 @@
   - [x] Frontend：改為只顯示回答內容與延伸問題，不顯示來源/request id/三層比例
   - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
   - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
+- [x] 新增最終回答壓縮層（post-processing compression）
+  - [x] Backend：新增可選 `OPENAI_ASK_ENABLE_COMPRESSION` 與 schema-compatible compression prompt
+  - [x] Backend：compression pass 只重寫五段主回答，保留第一層 `followup_options`
+  - [x] Backend：compression failure fail-open，回退第一層結果
+  - [x] 測試：覆蓋 compression 啟用、followups 保留、fallback 行為
 - [x] 前端導覽一致化（已於單頁設定中心版本退役）
   - [x] Frontend：抽出共用導覽元件（例如 `AppTopNav`）
   - [x] Frontend：在 `/`、`/wallet`、`/history` 三頁套用同一導覽區塊與一致文案順序

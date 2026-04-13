@@ -40,6 +40,13 @@ def test_generate_answer_uses_one_stage_pipeline(monkeypatch) -> None:
     monkeypatch.setattr(main_module.settings, "openai_ask_model", "gpt-5.2-2025-12-11")
     monkeypatch.setattr(main_module.settings, "openai_ask_top_k", 3)
     monkeypatch.setattr(main_module.settings, "openai_ask_system_prompt", "sys")
+    monkeypatch.setattr(main_module.settings, "openai_ask_enable_compression", True, raising=False)
+    monkeypatch.setattr(
+        main_module.settings,
+        "openai_ask_compression_system_prompt",
+        "compression-sys",
+        raising=False,
+    )
     monkeypatch.setattr(main_module.settings, "openai_api_key", "render-key")
     monkeypatch.setattr(main_module.settings, "vector_store_id", "vs_render")
 
@@ -56,6 +63,8 @@ def test_generate_answer_uses_one_stage_pipeline(monkeypatch) -> None:
     assert kwargs["top_k"] == 3
     assert kwargs["model"] == "gpt-5.2-2025-12-11"
     assert kwargs["system_prompt"] == "sys"
+    assert kwargs["enable_compression"] is True
+    assert kwargs["compression_system_prompt"] == "compression-sys"
 
 
 def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
@@ -95,6 +104,13 @@ def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
     monkeypatch.setattr(main_module.settings, "openai_ask_model", "gpt-5.2-2025-12-11")
     monkeypatch.setattr(main_module.settings, "openai_ask_top_k", 3)
     monkeypatch.setattr(main_module.settings, "openai_ask_system_prompt", "sys")
+    monkeypatch.setattr(main_module.settings, "openai_ask_enable_compression", True, raising=False)
+    monkeypatch.setattr(
+        main_module.settings,
+        "openai_ask_compression_system_prompt",
+        "compression-sys",
+        raising=False,
+    )
     monkeypatch.setattr(main_module.settings, "openai_api_key", "render-key")
     monkeypatch.setattr(main_module.settings, "vector_store_id", "vs_render")
 
@@ -111,3 +127,5 @@ def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
     assert kwargs["top_k"] == 3
     assert kwargs["model"] == "gpt-5.2-2025-12-11"
     assert kwargs["system_prompt"] == "sys"
+    assert kwargs["enable_compression"] is True
+    assert kwargs["compression_system_prompt"] == "compression-sys"

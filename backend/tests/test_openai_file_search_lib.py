@@ -930,3 +930,140 @@ def test_normalize_followup_options_dedupes_and_caps_valid_questions() -> None:
         "用「決策權／金流權／溝通權」三條線，幫我判斷目前主導權各落在誰身上",
         "如果我想把主導權從家長拉回到我們兩個，最小衝突的做法是什麼？",
     ]
+
+
+def test_one_stage_response_applies_compression_and_preserves_followups(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = {
+        "version": 2,
+        "input_files": [{"relative_path": "a.md", "file_id": "input_file_1"}],
+        "rag_files": [{"relative_path": "a.md", "file_id": "rag_file_1"}],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                output = [
+                    {
+                        "type": "file_search_call",
+                        "results": [
+                            {
+                                "file_id": "rag_file_1",
+                                "filename": "a.md",
+                                "score": 0.9,
+                            }
+                        ],
+                    }
+                ]
+                return SimpleNamespace(
+                    id="resp_stage_1",
+                    output=output,
+                    output_text=_structured_output_text("原始回答", ["延伸 A", "延伸 B"]),
+                )
+            return SimpleNamespace(
+                id="resp_compression",
+                output=[],
+                output_text=_structured_output_text(
+                    "壓縮後回答",
+                    ["被改寫的延伸題", "第二個被改寫延伸題"],
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+
+    client = OpenAIFileSearchClient(env_file=env_file)
+    result = client.run_one_stage_response(
+        question="問題",
+        manifest_path=manifest_path,
+        top_k=3,
+        enable_compression=True,
+        compression_system_prompt="compression prompt",
+        debug=True,
+    )
+
+    assert result.response_text == _formatted_answer("壓縮後回答")
+    assert result.followup_options == ["延伸 A", "延伸 B"]
+    compression_request = client._client.responses.calls[1]
+    assert compression_request["instructions"] == "compression prompt"
+    assert compression_request["input"][0]["content"][0]["text"] == "原始問題：問題"
+
+
+def test_one_stage_response_falls_back_when_compression_output_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = {
+        "version": 2,
+        "input_files": [{"relative_path": "a.md", "file_id": "input_file_1"}],
+        "rag_files": [{"relative_path": "a.md", "file_id": "rag_file_1"}],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                output = [
+                    {
+                        "type": "file_search_call",
+                        "results": [
+                            {
+                                "file_id": "rag_file_1",
+                                "filename": "a.md",
+                                "score": 0.9,
+                            }
+                        ],
+                    }
+                ]
+                return SimpleNamespace(
+                    id="resp_stage_1",
+                    output=output,
+                    output_text=_structured_output_text("原始回答", ["延伸 A"]),
+                )
+            return SimpleNamespace(
+                id="resp_compression",
+                output=[],
+                output_text='{"conclusion": ""}',
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+
+    client = OpenAIFileSearchClient(env_file=env_file)
+    result = client.run_one_stage_response(
+        question="問題",
+        manifest_path=manifest_path,
+        top_k=3,
+        enable_compression=True,
+        compression_system_prompt="compression prompt",
+        debug=True,
+    )
+
+    assert result.response_text == _formatted_answer("原始回答")
+    assert result.followup_options == ["延伸 A"]
+    assert any("compression_failed_fallback" in line for line in result.debug_steps)

@@ -2,6 +2,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.openai_constants import (
+    DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT,
+    DEFAULT_OPENAI_ASK_SYSTEM_PROMPT,
+)
 
 
 def test_prod_rejects_default_jwt_secret() -> None:
@@ -90,3 +94,24 @@ def test_messenger_send_timeout_must_be_positive() -> None:
 def test_messenger_send_attempts_must_be_at_least_one() -> None:
     with pytest.raises(ValidationError, match="MESSENGER_SEND_MAX_ATTEMPTS must be >= 1"):
         Settings(messenger_send_max_attempts=0)
+
+
+def test_openai_compression_settings_are_configurable() -> None:
+    settings = Settings(
+        _env_file=None,
+        openai_ask_enable_compression=True,
+        openai_ask_compression_system_prompt="compression prompt",
+    )
+
+    assert settings.openai_ask_enable_compression is True
+    assert settings.openai_ask_compression_system_prompt == "compression prompt"
+
+
+def test_openai_default_prompts_are_loaded_from_constants() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.openai_ask_system_prompt == DEFAULT_OPENAI_ASK_SYSTEM_PROMPT
+    assert (
+        settings.openai_ask_compression_system_prompt
+        == DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT
+    )

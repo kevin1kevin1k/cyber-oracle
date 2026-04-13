@@ -66,6 +66,7 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - supports `Idempotency-Key` request header
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
+  - optional final compression pass can be enabled with `OPENAI_ASK_ENABLE_COMPRESSION=true`; it rewrites only the five answer sections, preserves original `followup_options`, and falls back to the first-pass answer if compression fails
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
   - answer body is now normalized into a fixed five-part format:
     - `🔮 結論`
@@ -350,6 +351,8 @@ Environment variables:
 - production / Render runtime reads `OPENAI_API_KEY` and `VECTOR_STORE_ID` from process environment first, then falls back to local `backend/.env`
 - production / Render runtime treats `openai_integration/input_files_manifest.json` as optional; if the manifest is missing, ask flow still runs against `VECTOR_STORE_ID` and skips reusable `input_files` attachment
 - `OPENAI_ASK_PIPELINE`: ask pipeline mode (`one_stage` default, optional `two_stage`)
+- `OPENAI_ASK_ENABLE_COMPRESSION`: enable post-processing compression pass after structured generation (`false` by default)
+- `OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT`: optional override for the final compression-pass prompt; if empty, backend uses the built-in schema-compatible default
 
 Build or refresh vector store from local files:
 ```bash

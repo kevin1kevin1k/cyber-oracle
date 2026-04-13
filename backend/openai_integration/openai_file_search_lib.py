@@ -195,6 +195,8 @@ class OpenAIFileSearchClient:
         question: str,
         manifest_path: Path,
         system_prompt: str | None = None,
+        enable_compression: bool = False,
+        compression_system_prompt: str | None = None,
         top_k: int = 3,
         model: str | None = None,
         debug: bool = False,
@@ -277,6 +279,15 @@ class OpenAIFileSearchClient:
             debug_logs=debug_steps if debug else None,
             stage="5.second_stage_generate",
         )
+        structured_output = self._maybe_compress_structured_output(
+            question=question,
+            structured_output=structured_output,
+            enable_compression=enable_compression,
+            compression_system_prompt=compression_system_prompt,
+            model=model,
+            debug_logs=debug_steps if debug else None,
+            stage="6.compression_pass",
+        )
 
         return TwoStageSearchResult(
             response_text=self._format_structured_answer(structured_output),
@@ -295,6 +306,8 @@ class OpenAIFileSearchClient:
         question: str,
         manifest_path: Path,
         system_prompt: str | None = None,
+        enable_compression: bool = False,
+        compression_system_prompt: str | None = None,
         top_k: int = 3,
         model: str | None = None,
         debug: bool = False,
@@ -344,6 +357,15 @@ class OpenAIFileSearchClient:
             response_text,
             debug_logs=debug_steps if debug else None,
             stage="2.one_stage_generate_with_file_search",
+        )
+        structured_output = self._maybe_compress_structured_output(
+            question=question,
+            structured_output=structured_output,
+            enable_compression=enable_compression,
+            compression_system_prompt=compression_system_prompt,
+            model=model,
+            debug_logs=debug_steps if debug else None,
+            stage="4.compression_pass",
         )
 
         return OneStageSearchResult(
@@ -570,6 +592,41 @@ class OpenAIFileSearchClient:
         )
         return self._client.responses.create(**base_payload)
 
+    def _create_compression_response_request(
+        self,
+        *,
+        question: str,
+        structured_output: AskStructuredOutput,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+        stage: str,
+    ) -> Any:
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "text": self._build_structured_text_format(),
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": f"原始問題：{question}"},
+                        {
+                            "type": "input_text",
+                            "text": "第一版結構化回答："
+                            f"{json.dumps(structured_output.model_dump(), ensure_ascii=False)}",
+                        },
+                    ],
+                }
+            ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage=stage,
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
     @staticmethod
     def _build_structured_text_format() -> dict[str, Any]:
         schema = {
@@ -638,6 +695,60 @@ class OpenAIFileSearchClient:
                 field_name="anchoring_phrase",
             ),
             followup_options=self._normalize_followup_options(parsed.followup_options),
+        )
+
+    def _maybe_compress_structured_output(
+        self,
+        *,
+        question: str,
+        structured_output: AskStructuredOutput,
+        enable_compression: bool,
+        compression_system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> AskStructuredOutput:
+        if not enable_compression:
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: compression_skipped disabled")
+            return structured_output
+        if not (compression_system_prompt or "").strip():
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: compression_skipped empty_prompt")
+            return structured_output
+
+        try:
+            response = self._create_compression_response_request(
+                question=question,
+                structured_output=structured_output,
+                system_prompt=compression_system_prompt,
+                model=model,
+                debug_logs=debug_logs,
+                stage=stage,
+            )
+            output_text = getattr(response, "output_text", "") or ""
+            compressed = self._parse_structured_output(
+                output_text,
+                debug_logs=debug_logs,
+                stage=stage,
+            )
+        except Exception as exc:
+            if debug_logs is not None:
+                debug_logs.append(
+                    f"{stage}: compression_failed_fallback reason={type(exc).__name__}"
+                )
+            return structured_output
+
+        if debug_logs is not None:
+            debug_logs.append(f"{stage}: compression_applied")
+
+        return AskStructuredOutput(
+            conclusion=compressed.conclusion,
+            layered_analysis=compressed.layered_analysis,
+            oracle_poem=compressed.oracle_poem,
+            poem_interpretation=compressed.poem_interpretation,
+            anchoring_phrase=compressed.anchoring_phrase,
+            followup_options=structured_output.followup_options,
         )
 
     @staticmethod
