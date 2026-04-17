@@ -10,11 +10,20 @@ from openai_integration.openai_file_search_lib import AskStructuredOutput, OpenA
 def _formatted_answer(seed: str) -> str:
     return "\n\n".join(
         [
-            f"🔮 結論\n{seed}：結論",
-            f"🧭 分層解析\n{seed}：分層解析",
-            f"🪶 神諭籤詩\n{seed}：神諭籤詩",
-            f"🪞 籤詩解讀\n{seed}：籤詩解讀",
-            f"⚓ 定錨語\n{seed}：定錨語",
+            f"1️⃣ 整體結論\n{seed}：結論",
+            (
+                "2️⃣ 第一層｜核心本質\n"
+                f"{seed}：核心本質\n\n"
+                "3️⃣ 第二層｜實際作用\n"
+                f"{seed}：實際作用\n\n"
+                "4️⃣ 第三層｜關鍵行動\n"
+                f"{seed}：關鍵行動\n\n"
+                "5️⃣ 第四層｜風險與代價\n"
+                f"{seed}：風險與代價"
+            ),
+            f"🌙 籤詩\n{seed}：神諭籤詩",
+            f"✨ 行動定錨\n{seed}：定錨語",
+            f"🔚 終局收斂\n{seed}：終局收斂",
         ]
     )
 
@@ -22,33 +31,50 @@ def _formatted_answer(seed: str) -> str:
 def _structured_output_text(answer_seed: str, followups: list[str] | None = None) -> str:
     payload = {
         "conclusion": f"{answer_seed}：結論",
-        "layered_analysis": f"{answer_seed}：分層解析",
+        "layered_analysis": (
+            "2️⃣ 第一層｜核心本質\n"
+            f"{answer_seed}：核心本質\n\n"
+            "3️⃣ 第二層｜實際作用\n"
+            f"{answer_seed}：實際作用\n\n"
+            "4️⃣ 第三層｜關鍵行動\n"
+            f"{answer_seed}：關鍵行動\n\n"
+            "5️⃣ 第四層｜風險與代價\n"
+            f"{answer_seed}：風險與代價"
+        ),
         "oracle_poem": f"{answer_seed}：神諭籤詩",
-        "poem_interpretation": f"{answer_seed}：籤詩解讀",
+        "poem_interpretation": f"{answer_seed}：終局收斂",
         "anchoring_phrase": f"{answer_seed}：定錨語",
         "followup_options": followups or [],
     }
     return json.dumps(payload, ensure_ascii=False)
 
 
-def test_format_structured_answer_renders_fixed_five_sections() -> None:
+def test_format_structured_answer_renders_new_display_structure() -> None:
     rendered = OpenAIFileSearchClient._format_structured_answer(
         AskStructuredOutput(
             conclusion="直接回答",
-            layered_analysis="層次拆解",
+            layered_analysis=(
+                "2️⃣ 第一層｜核心本質\n核心拆解\n\n"
+                "3️⃣ 第二層｜實際作用\n實際作用\n\n"
+                "4️⃣ 第三層｜關鍵行動\n關鍵行動\n\n"
+                "5️⃣ 第四層｜風險與代價\n風險與代價"
+            ),
             oracle_poem="一首籤詩",
-            poem_interpretation="詩意解讀",
+            poem_interpretation="最後收斂",
             anchoring_phrase="記住這句話",
             followup_options=["延伸 A"],
         )
     )
 
     assert rendered == (
-        "🔮 結論\n直接回答\n\n"
-        "🧭 分層解析\n層次拆解\n\n"
-        "🪶 神諭籤詩\n一首籤詩\n\n"
-        "🪞 籤詩解讀\n詩意解讀\n\n"
-        "⚓ 定錨語\n記住這句話"
+        "1️⃣ 整體結論\n直接回答\n\n"
+        "2️⃣ 第一層｜核心本質\n核心拆解\n\n"
+        "3️⃣ 第二層｜實際作用\n實際作用\n\n"
+        "4️⃣ 第三層｜關鍵行動\n關鍵行動\n\n"
+        "5️⃣ 第四層｜風險與代價\n風險與代價\n\n"
+        "🌙 籤詩\n一首籤詩\n\n"
+        "✨ 行動定錨\n記住這句話\n\n"
+        "🔚 終局收斂\n最後收斂"
     )
 
 

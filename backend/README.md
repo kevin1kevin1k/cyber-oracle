@@ -66,14 +66,17 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - supports `Idempotency-Key` request header
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
-  - optional final compression pass can be enabled with `OPENAI_ASK_ENABLE_COMPRESSION=true`; it rewrites only the five answer sections, preserves original `followup_options`, and falls back to the first-pass answer if compression fails
+  - optional final compression pass can be enabled with `OPENAI_ASK_ENABLE_COMPRESSION=true`; it rewrites only the five answer sections, preserves original `followup_options`, falls back to the first-pass answer if compression fails, and now includes built-in good/bad few-shot style references inside the default prompt
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
-  - answer body is now normalized into a fixed five-part format:
-    - `🔮 結論`
-    - `🧭 分層解析`
-    - `🪶 神諭籤詩`
-    - `🪞 籤詩解讀`
-    - `⚓ 定錨語`
+  - answer body is now rendered in a fixed structured display:
+    - `1️⃣ 整體結論`
+    - `2️⃣ 第一層｜核心本質`
+    - `3️⃣ 第二層｜實際作用`
+    - `4️⃣ 第三層｜關鍵行動`
+    - `5️⃣ 第四層｜風險與代價`
+    - `🌙 籤詩`
+    - `✨ 行動定錨`
+    - `🔚 終局收斂`
   - response now includes `followup_options` (0..3 model-generated followup options)
   - backend augments the model input with per-user fixed fields (`full_name`, `mother_name`), but persisted `questions.question_text` remains the raw user-entered question
   - credit flow:

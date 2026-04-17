@@ -115,3 +115,25 @@ def test_openai_default_prompts_are_loaded_from_constants() -> None:
         settings.openai_ask_compression_system_prompt
         == DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT
     )
+
+
+def test_openai_compression_prompt_contains_new_style_constraints() -> None:
+    prompt = DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT
+
+    assert "不可同時給多個方向" in prompt
+    assert "不可先講「如果你是 A，就 B；如果你是 C，就 D」" in prompt
+    assert "2️⃣ 第一層｜核心本質" in prompt
+    assert "5️⃣ 第四層｜風險與代價" in prompt
+    assert "不可把 followup_options 寫進主回答正文" in prompt
+
+
+def test_openai_compression_prompt_contains_few_shot_examples_and_guardrails() -> None:
+    prompt = DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT
+
+    assert "以下提供同一題的壞例子與好例子，作為風格參考" in prompt
+    assert "壞例子（應避免）" in prompt
+    assert "好例子（應靠近）" in prompt
+    assert "你現在該上的不是說服課，是表達課" in prompt
+    assert "如果你現在最需要的是把想法講清楚" in prompt
+    assert "這些例子只是風格參考，不是你這次的輸出格式" in prompt
+    assert "你實際輸出時仍必須嚴格遵守既有 JSON schema" in prompt

@@ -754,13 +754,13 @@ class OpenAIFileSearchClient:
     @staticmethod
     def _format_structured_answer(value: AskStructuredOutput) -> str:
         sections = [
-            ("🔮 結論", value.conclusion),
-            ("🧭 分層解析", value.layered_analysis),
-            ("🪶 神諭籤詩", value.oracle_poem),
-            ("🪞 籤詩解讀", value.poem_interpretation),
-            ("⚓ 定錨語", value.anchoring_phrase),
+            f"1️⃣ 整體結論\n{value.conclusion.strip()}",
+            value.layered_analysis.strip(),
+            f"🌙 籤詩\n{value.oracle_poem.strip()}",
+            f"✨ 行動定錨\n{value.anchoring_phrase.strip()}",
+            f"🔚 終局收斂\n{value.poem_interpretation.strip()}",
         ]
-        return "\n\n".join(f"{title}\n{content.strip()}" for title, content in sections)
+        return "\n\n".join(section for section in sections if section.strip())
 
     @staticmethod
     def _require_non_empty_section(value: str, *, field_name: str) -> str:
