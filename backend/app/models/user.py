@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Index, String, Text, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,6 +11,7 @@ from app.db import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
+        CheckConstraint("reply_mode IN ('structured', 'free')", name="ck_users_reply_mode_valid"),
         Index("ix_users_email_unique", "email", unique=True),
         Index(
             "ix_users_channel_channel_user_id_unique",
@@ -37,6 +38,12 @@ class User(Base):
     )
     full_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     mother_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reply_mode: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default="structured",
+        default="structured",
+    )
     channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
     channel_user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

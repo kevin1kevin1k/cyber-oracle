@@ -53,7 +53,10 @@ class FollowupExecutionResult:
     followup_id: UUID
 
 
-def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, list[str]]:
+def _generate_answer_from_openai_file_search(
+    question: str,
+    reply_mode: str = "structured",
+) -> tuple[str, str, list[str]]:
     manifest_path = Path(settings.openai_manifest_path).resolve()
     try:
         client = OpenAIFileSearchClient(
@@ -61,7 +64,27 @@ def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, l
             model=settings.openai_ask_model,
             vector_store_id=settings.vector_store_id,
         )
-        if settings.openai_ask_pipeline == "two_stage":
+        if reply_mode == "free" and settings.openai_ask_pipeline == "two_stage":
+            result = client.run_two_stage_free_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=settings.openai_free_ask_system_prompt,
+                followup_system_prompt=settings.openai_free_followup_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+        elif reply_mode == "free":
+            result = client.run_one_stage_free_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=settings.openai_free_ask_system_prompt,
+                followup_system_prompt=settings.openai_free_followup_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+        elif settings.openai_ask_pipeline == "two_stage":
             result = client.run_two_stage_response(
                 question=question,
                 manifest_path=manifest_path,
@@ -93,6 +116,20 @@ def _generate_answer_from_openai_file_search(question: str) -> tuple[str, str, l
         raise AskOpenAIRuntimeError("OpenAI response is empty")
     source = "rag" if result.top_matches else "openai"
     return answer_text, source, result.followup_options
+
+
+def _invoke_answer_generator(
+    generator,
+    *,
+    question: str,
+    reply_mode: str,
+) -> tuple[str, str, list[str]]:
+    try:
+        return generator(question, reply_mode=reply_mode)
+    except TypeError as exc:
+        if "reply_mode" not in str(exc):
+            raise
+        return generator(question)
 
 
 FOLLOWUP_SECTION_MARKERS = (
@@ -276,8 +313,6 @@ def execute_ask_for_user(
     followup_limit: int = 3,
     answer_generator=None,
 ) -> AskExecutionResult:
-    generator = answer_generator or _generate_answer_from_openai_file_search
-
     replayed = _find_existing_ask_response(
         db=db,
         user_id=user_id,
@@ -295,6 +330,8 @@ def execute_ask_for_user(
             detail={"code": "USER_NOT_FOUND", "message": "User not found"},
         )
     ensure_profile_complete(user)
+    generator = answer_generator or _generate_answer_from_openai_file_search
+    reply_mode = user.reply_mode or "structured"
 
     wallet = db.scalar(
         select(CreditWallet)
@@ -345,7 +382,11 @@ def execute_ask_for_user(
 
     try:
         generator_question = build_augmented_question(user=user, question_text=question_text)
-        answer_text, source, followup_contents = generator(generator_question)
+        answer_text, source, followup_contents = _invoke_answer_generator(
+            generator,
+            question=generator_question,
+            reply_mode=reply_mode,
+        )
         answer_text = _strip_followup_section_from_answer(answer_text, followup_contents)
         question = Question(
             user_id=user_id,

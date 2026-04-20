@@ -109,6 +109,7 @@ def test_core_tables_exist(engine) -> None:
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     assert "full_name" in user_columns
     assert "mother_name" in user_columns
+    assert "reply_mode" in user_columns
 
 
 def test_credit_wallet_balance_must_be_non_negative(db_session: Session) -> None:

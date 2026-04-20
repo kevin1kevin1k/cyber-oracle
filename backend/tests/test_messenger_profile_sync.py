@@ -56,6 +56,11 @@ def test_sync_messenger_profile_pushes_get_started_and_menu(
         },
         {
             "type": "postback",
+            "title": "回覆方式",
+            "payload": "OPEN_REPLY_MODE",
+        },
+        {
+            "type": "postback",
             "title": "前往設定",
             "payload": "OPEN_SETTINGS",
         },

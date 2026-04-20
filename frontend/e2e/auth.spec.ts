@@ -15,7 +15,9 @@ test("home shows messenger-only entry message when unauthenticated", async ({ pa
   await page.goto("/");
 
   await expect(page.getByText("這個頁面僅支援從 Messenger WebView 進入。")).toBeVisible();
-  await expect(page.getByText("目前版本的 WebView 只提供目前點數、固定資料設定與刪除帳號。")).toBeVisible();
+  await expect(
+    page.getByText("目前版本的 WebView 只提供目前點數、固定資料設定、回覆方式設定與刪除帳號。")
+  ).toBeVisible();
 });
 
 test("legacy auth pages show disabled messenger-only notice", async ({ page }) => {

@@ -5,6 +5,8 @@ from app.config import Settings
 from app.openai_constants import (
     DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT,
     DEFAULT_OPENAI_ASK_SYSTEM_PROMPT,
+    DEFAULT_OPENAI_FREE_ASK_SYSTEM_PROMPT,
+    DEFAULT_OPENAI_FREE_FOLLOWUP_SYSTEM_PROMPT,
 )
 
 
@@ -111,6 +113,8 @@ def test_openai_default_prompts_are_loaded_from_constants() -> None:
     settings = Settings(_env_file=None)
 
     assert settings.openai_ask_system_prompt == DEFAULT_OPENAI_ASK_SYSTEM_PROMPT
+    assert settings.openai_free_ask_system_prompt == DEFAULT_OPENAI_FREE_ASK_SYSTEM_PROMPT
+    assert settings.openai_free_followup_system_prompt == DEFAULT_OPENAI_FREE_FOLLOWUP_SYSTEM_PROMPT
     assert (
         settings.openai_ask_compression_system_prompt
         == DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT

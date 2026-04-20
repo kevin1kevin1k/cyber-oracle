@@ -200,6 +200,71 @@ def test_one_stage_response_falls_back_when_manifest_missing(
     assert any("optional_runtime_fallback" in line for line in result.debug_steps)
 
 
+def test_one_stage_free_response_uses_plain_text_answer_and_followup_request(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    id="resp_free_1",
+                    output=[
+                        {
+                            "type": "file_search_call",
+                            "results": [
+                                {
+                                    "file_id": "vs_file_1",
+                                    "filename": "doc-a.md",
+                                    "score": 0.88,
+                                }
+                            ],
+                        }
+                    ],
+                    output_text="這是一段自由回覆答案",
+                )
+            return SimpleNamespace(
+                id="resp_free_followups",
+                output=[],
+                output_text=json.dumps(
+                    {"followup_options": ["延伸 A", "延伸 B"]},
+                    ensure_ascii=False,
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+    client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11", env_file=env_file)
+
+    result = client.run_one_stage_free_response(
+        question="問題",
+        manifest_path=tmp_path / "missing.json",
+        system_prompt="free prompt",
+        followup_system_prompt="followup prompt",
+        top_k=3,
+        debug=True,
+    )
+
+    assert result.response_text == "這是一段自由回覆答案"
+    assert result.followup_options == ["延伸 A", "延伸 B"]
+    first_request = client._client.responses.calls[0]
+    second_request = client._client.responses.calls[1]
+    assert "text" not in first_request
+    assert second_request["text"]["format"]["type"] == "json_schema"
+    assert second_request["instructions"] == "followup prompt"
+
+
 def test_two_stage_response_falls_back_to_vector_file_ids_when_manifest_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

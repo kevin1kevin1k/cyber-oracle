@@ -121,6 +121,7 @@ cd ..
 預期結果：
 - Meta Page 的 `Get Started` 與 `persistent_menu` 都被成功更新
 - `查看剩餘點數` 為 `SHOW_BALANCE` postback
+- `回覆方式` 為 `OPEN_REPLY_MODE` postback，會回 `結構化回覆` / `自由回覆` quick replies
 - `前往設定` 為 `OPEN_SETTINGS` postback，會再回帶 signed token 的 WebView 按鈕
 - `composer_input_disabled` 目前維持關閉，保留 Messenger 內直接輸入提問；因此手機版 persistent menu 是否明顯可見不作為 release blocker
 

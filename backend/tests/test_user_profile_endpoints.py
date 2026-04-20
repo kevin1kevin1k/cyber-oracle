@@ -135,6 +135,7 @@ def test_get_my_profile_returns_current_values(client: TestClient, db_session: S
         "full_name": "王小明",
         "mother_name": "林淑芬",
         "is_complete": True,
+        "reply_mode": "structured",
     }
 
 
@@ -147,7 +148,11 @@ def test_put_my_profile_updates_values_and_marks_complete(
     response = client.put(
         "/api/v1/me/profile",
         headers={"Authorization": f"Bearer {token}"},
-        json={"full_name": "  陳大文  ", "mother_name": "  黃美玉  "},
+        json={
+            "full_name": "  陳大文  ",
+            "mother_name": "  黃美玉  ",
+            "reply_mode": "free",
+        },
     )
 
     assert response.status_code == 200
@@ -155,10 +160,12 @@ def test_put_my_profile_updates_values_and_marks_complete(
         "full_name": "陳大文",
         "mother_name": "黃美玉",
         "is_complete": True,
+        "reply_mode": "free",
     }
     db_session.refresh(user)
     assert user.full_name == "陳大文"
     assert user.mother_name == "黃美玉"
+    assert user.reply_mode == "free"
 
 
 def test_put_my_profile_rejects_blank_values(client: TestClient, db_session: Session) -> None:
@@ -167,7 +174,26 @@ def test_put_my_profile_rejects_blank_values(client: TestClient, db_session: Ses
     response = client.put(
         "/api/v1/me/profile",
         headers={"Authorization": f"Bearer {token}"},
-        json={"full_name": "   ", "mother_name": "王母"},
+        json={"full_name": "   ", "mother_name": "王母", "reply_mode": "structured"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_put_my_profile_rejects_invalid_reply_mode(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _, token = _create_user_with_session(db_session)
+
+    response = client.put(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "full_name": "王小明",
+            "mother_name": "王母",
+            "reply_mode": "invalid-mode",
+        },
     )
 
     assert response.status_code == 422

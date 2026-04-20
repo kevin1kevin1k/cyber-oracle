@@ -56,11 +56,17 @@ test("home page loads and saves fixed ask profile fields", async ({ page }) => {
           full_name: "王小明",
           mother_name: "林淑芬",
           is_complete: true,
+          reply_mode: "structured",
         }),
       });
       return;
     }
 
+    expect(JSON.parse(route.request().postData() ?? "{}")).toEqual({
+      full_name: "陳大文",
+      mother_name: "黃美玉",
+      reply_mode: "free",
+    });
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -68,6 +74,7 @@ test("home page loads and saves fixed ask profile fields", async ({ page }) => {
         full_name: "陳大文",
         mother_name: "黃美玉",
         is_complete: true,
+        reply_mode: "free",
       }),
     });
   });
@@ -78,6 +85,7 @@ test("home page loads and saves fixed ask profile fields", async ({ page }) => {
   await expect(page.getByText("Messenger 提問前設定")).toBeVisible();
   await page.getByLabel("我的姓名").fill("陳大文");
   await page.getByLabel("我母親的姓名").fill("黃美玉");
+  await page.getByLabel("回覆方式").selectOption("free");
   await page.getByRole("button", { name: "儲存設定" }).click();
 
   await expect(page.getByText("個人設定已儲存，之後 Messenger 提問會自動帶入這兩個固定資料。")).toBeVisible();
@@ -194,7 +202,7 @@ test("home page can delete account and clear local session", async ({ page }) =>
   await expect(page.getByText("這個操作無法復原。確認後會直接刪除帳號與所有相關資料。")).toBeVisible();
   await page.getByRole("button", { name: "確認刪除帳號" }).click();
 
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("這個頁面僅支援從 Messenger WebView 進入。")).toBeVisible();
   const accessToken = await page.evaluate(() => window.localStorage.getItem("elin_access_token"));
   expect(accessToken).toBeNull();
 });

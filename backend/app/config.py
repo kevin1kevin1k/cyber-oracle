@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.openai_constants import (
     DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT,
     DEFAULT_OPENAI_ASK_SYSTEM_PROMPT,
+    DEFAULT_OPENAI_FREE_ASK_SYSTEM_PROMPT,
+    DEFAULT_OPENAI_FREE_FOLLOWUP_SYSTEM_PROMPT,
 )
 
 
@@ -23,6 +25,8 @@ class Settings(BaseSettings):
     openai_ask_pipeline: Literal["one_stage", "two_stage"] = "one_stage"
     openai_ask_top_k: int = 3
     openai_ask_system_prompt: str = DEFAULT_OPENAI_ASK_SYSTEM_PROMPT
+    openai_free_ask_system_prompt: str = DEFAULT_OPENAI_FREE_ASK_SYSTEM_PROMPT
+    openai_free_followup_system_prompt: str = DEFAULT_OPENAI_FREE_FOLLOWUP_SYSTEM_PROMPT
     openai_ask_enable_compression: bool = False
     openai_ask_compression_system_prompt: str = DEFAULT_OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT
     messenger_enabled: bool = False

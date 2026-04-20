@@ -227,6 +227,11 @@ def test_build_default_persistent_menu_uses_current_web_base_url(
         },
         {
             "type": "postback",
+            "title": "回覆方式",
+            "payload": "OPEN_REPLY_MODE",
+        },
+        {
+            "type": "postback",
             "title": "前往設定",
             "payload": "OPEN_SETTINGS",
         },

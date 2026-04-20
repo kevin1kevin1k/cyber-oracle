@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+ReplyMode = Literal["structured", "free"]
+
 
 class ApiErrorDetail(BaseModel):
     code: str
@@ -204,11 +206,13 @@ class UserProfileResponse(BaseModel):
     full_name: str | None
     mother_name: str | None
     is_complete: bool
+    reply_mode: ReplyMode
 
 
 class UpdateUserProfileRequest(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=100)
     mother_name: str = Field(..., min_length=1, max_length=100)
+    reply_mode: ReplyMode | None = None
 
     @field_validator("full_name", "mother_name")
     @classmethod

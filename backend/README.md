@@ -49,11 +49,12 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
 ## User Profile APIs
 - `GET /api/v1/me/profile`
   - requires authenticated session
-  - returns `full_name`, `mother_name`, and `is_complete`
+  - returns `full_name`, `mother_name`, `reply_mode`, and `is_complete`
 - `PUT /api/v1/me/profile`
   - requires authenticated session
-  - updates the fixed ask-profile fields used for question augmentation
+  - updates the fixed ask-profile fields used for question augmentation and the per-user `reply_mode`
   - both `full_name` and `mother_name` are required and trimmed server-side
+  - `reply_mode` supports `structured` or `free`; omitted value keeps the current mode unchanged
 - `DELETE /api/v1/me`
   - requires authenticated session
   - hard deletes current user account data (`wallet balance`, `question history`, `sessions`, profile fields)
@@ -68,15 +69,9 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
   - optional final compression pass can be enabled with `OPENAI_ASK_ENABLE_COMPRESSION=true`; it rewrites only the five answer sections, preserves original `followup_options`, falls back to the first-pass answer if compression fails, and now includes built-in good/bad few-shot style references inside the default prompt
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
-  - answer body is now rendered in a fixed structured display:
-    - `1️⃣ 整體結論`
-    - `2️⃣ 第一層｜核心本質`
-    - `3️⃣ 第二層｜實際作用`
-    - `4️⃣ 第三層｜關鍵行動`
-    - `5️⃣ 第四層｜風險與代價`
-    - `🌙 籤詩`
-    - `✨ 行動定錨`
-    - `🔚 終局收斂`
+  - per-user `reply_mode` controls answer style for both ask and followup flows:
+    - `structured`: fixed structured display with compression pass support
+    - `free`: free-form ELIN-style answer text, no fixed section schema, still returns `followup_options`
   - response now includes `followup_options` (0..3 model-generated followup options)
   - backend augments the model input with per-user fixed fields (`full_name`, `mother_name`), but persisted `questions.question_text` remains the raw user-entered question
   - credit flow:
@@ -200,6 +195,8 @@ Production deployment baseline:
 This repository now includes a non-invasive Messenger channel adapter skeleton under `app/messenger/`.
 
 - verification, webhook binding, persistent menu sync, local/pre-prod/prod validation, and Meta setup steps are documented in `docs/messenger_validation_runbook.md`
+- persistent menu now includes `查看剩餘點數` / `回覆方式` / `前往設定`
+- `回覆方式` postback returns quick replies for `結構化回覆` / `自由回覆`, and the choice is persisted on the user account
 
 Endpoints:
 - `GET /api/v1/messenger/webhook`

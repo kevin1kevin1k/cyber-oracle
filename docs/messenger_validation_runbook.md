@@ -57,6 +57,7 @@ Backend endpoint：
 目前 repo 已支援一套最小可用的 Messenger persistent menu：
 
 - `查看剩餘點數`：postback `SHOW_BALANCE`
+- `回覆方式`：postback `OPEN_REPLY_MODE`
 - `前往設定`：postback `OPEN_SETTINGS`
 
 同步方式：
@@ -71,6 +72,7 @@ cd /Users/kevin1kevin1k/cyber-oracle/backend && uv run python scripts/sync_messe
 - 因此桌面版與手機版對 menu 的呈現可能不同；手機版若優先顯示 `Like` / composer，而不是漢堡 menu，視為平台 UI 差異，不單獨視為 blocker
 - 新使用者第一次打開對話視窗時，可先看到 welcome greeting 與 `Get Started`，並知道目前有 50 點測試用點數、每次提問扣 1 點
 - 已綁定使用者點 `查看剩餘點數` 時，會直接收到目前剩餘點數
+- 已綁定使用者點 `回覆方式` 時，會收到 `結構化回覆` / `自由回覆` quick replies，點選後立即更新帳號設定
 - 若剩餘點數為 `0`，系統會回覆目前體驗點數不足的對應提示
 - 未綁定使用者點 `查看剩餘點數` 時，會回既有 linking 引導
 - `前往設定` 會先走 postback bridge，再回一顆帶 signed token 的 WebView 按鈕

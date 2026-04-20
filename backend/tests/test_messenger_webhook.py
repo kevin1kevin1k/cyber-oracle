@@ -2780,8 +2780,96 @@ def test_persistent_menu_uses_balance_and_settings_entries() -> None:
 
     assert menu[0]["title"] == "查看剩餘點數"
     assert menu[0]["payload"] == "SHOW_BALANCE"
-    assert menu[1]["title"] == "前往設定"
-    assert menu[1]["payload"] == "OPEN_SETTINGS"
+    assert menu[1]["title"] == "回覆方式"
+    assert menu[1]["payload"] == "OPEN_REPLY_MODE"
+    assert menu[2]["title"] == "前往設定"
+    assert menu[2]["payload"] == "OPEN_SETTINGS"
+
+
+def test_open_reply_mode_postback_returns_mode_switch_quick_replies(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing,
+) -> None:
+    _create_linked_messenger_user(
+        db_session,
+        psid="psid-reply-mode-menu",
+        page_id="page-reply-mode-menu",
+        balance=3,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-reply-mode-menu",
+                "time": 1700002601,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-reply-mode-menu"},
+                        "recipient": {"id": "page-reply-mode-menu"},
+                        "timestamp": 1700002601,
+                        "postback": {"payload": "OPEN_REPLY_MODE"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_outgoing) == 1
+    _, outgoing = captured_outgoing[0]
+    assert outgoing.kind == "quick_replies"
+    assert "目前使用結構化回覆" in outgoing.text
+    assert [item.title for item in outgoing.quick_replies] == ["結構化回覆", "自由回覆"]
+    assert [item.payload for item in outgoing.quick_replies] == [
+        "REPLY_MODE:structured",
+        "REPLY_MODE:free",
+    ]
+
+
+def test_reply_mode_quick_reply_updates_user_setting(
+    client: TestClient,
+    db_session: Session,
+    captured_outgoing,
+) -> None:
+    user = _create_linked_messenger_user(
+        db_session,
+        psid="psid-reply-mode-free",
+        page_id="page-reply-mode-free",
+        balance=3,
+    )
+    payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "page-reply-mode-free",
+                "time": 1700002602,
+                "messaging": [
+                    {
+                        "sender": {"id": "psid-reply-mode-free"},
+                        "recipient": {"id": "page-reply-mode-free"},
+                        "timestamp": 1700002602,
+                        "message": {
+                            "mid": "m_reply_mode_free",
+                            "quick_reply": {"payload": "REPLY_MODE:free"},
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/messenger/webhook", json=payload)
+
+    assert response.status_code == 200
+    db_session.refresh(user)
+    assert user.reply_mode == "free"
+    assert len(captured_outgoing) == 1
+    _, outgoing = captured_outgoing[0]
+    assert outgoing.kind == "text"
+    assert "目前已切換為自由回覆" in outgoing.text
 
 
 def test_webhook_outbound_failure_returns_accepted_instead_of_500(

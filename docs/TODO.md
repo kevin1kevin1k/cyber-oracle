@@ -66,6 +66,12 @@
   - [x] Frontend：`/wallet`、`/history`、`/history/[questionId]` 退役為首頁 redirect
   - [x] Backend：Messenger persistent menu 收斂為 `查看剩餘點數` / `前往設定`
   - [x] 文件：PRD / README / runbook 同步移除 Web wallet/history 作為目前 MVP 能力
+- [x] 新增 per-user 回覆方式切換（structured / free）
+  - [x] Backend：`users` 新增 `reply_mode`，預設 `structured`
+  - [x] Backend：Messenger persistent menu 新增 `回覆方式`，並可在聊天室內切換 `structured` / `free`
+  - [x] Backend：`free output` 主回答不再固定五欄 schema，但仍保留 `followup_options`
+  - [x] Frontend：單頁設定中心新增 `reply_mode` 設定欄位
+  - [x] 測試：覆蓋 profile API、Messenger menu/switch、free output pipeline
 - [x] 實作 RAG 回答重構（Top-3 檢索 + one-stage/two-stage + structured output）
   - [x] Backend：建立 OpenAI file search 向量庫建置腳本與共用查詢 library（`backend/cyber oracle`）
   - [x] Backend：建立 builder 寫入 rag_files + uploader 寫入 input_files 的 JSON manifest（path -> file_id）持久化

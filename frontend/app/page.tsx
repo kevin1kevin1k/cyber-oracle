@@ -21,6 +21,7 @@ export default function HomePage() {
   const [profileSource, setProfileSource] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [motherName, setMotherName] = useState("");
+  const [replyMode, setReplyMode] = useState<"structured" | "free">("structured");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -70,6 +71,7 @@ export default function HomePage() {
         }
         setFullName(profilePayload.full_name ?? "");
         setMotherName(profilePayload.mother_name ?? "");
+        setReplyMode(profilePayload.reply_mode ?? "structured");
         setProfileComplete(profilePayload.is_complete);
         setCreditBalance(balancePayload.balance);
       } catch (err) {
@@ -105,6 +107,7 @@ export default function HomePage() {
       await updateMyProfile({
         full_name: fullName.trim(),
         mother_name: motherName.trim(),
+        reply_mode: replyMode,
       });
       setProfileComplete(true);
       setSuccess(
@@ -132,6 +135,13 @@ export default function HomePage() {
     try {
       await deleteMyAccount();
       clearAuthSession();
+      setAuthSession(null);
+      setFullName("");
+      setMotherName("");
+      setReplyMode("structured");
+      setCreditBalance(null);
+      setProfileComplete(null);
+      setShowDeleteConfirm(false);
       router.replace("/");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -162,7 +172,7 @@ export default function HomePage() {
         {!isLoggedIn ? (
           <>
             <p>這個頁面僅支援從 Messenger WebView 進入。請回 Messenger 點擊綁定或設定按鈕。</p>
-            <p>目前版本的 WebView 只提供目前點數、固定資料設定與刪除帳號。真正提問請回 Messenger 對話進行。</p>
+            <p>目前版本的 WebView 只提供目前點數、固定資料設定、回覆方式設定與刪除帳號。真正提問請回 Messenger 對話進行。</p>
           </>
         ) : (
           <>
@@ -176,7 +186,7 @@ export default function HomePage() {
             <p className="credit-line">
               目前點數：<span className="credit-count">{loading ? "讀取中..." : `${creditBalance ?? 0} 點`}</span>
             </p>
-            <p>這裡只保留查看點數、設定姓名/母親姓名，以及刪除帳號。真正提問請回 Messenger 對話進行。</p>
+            <p>這裡只保留查看點數、設定姓名/母親姓名、回覆方式，以及刪除帳號。真正提問請回 Messenger 對話進行。</p>
           </>
         )}
         {error && <p className="error">{error}</p>}
@@ -224,6 +234,20 @@ export default function HomePage() {
                 placeholder="請輸入你母親的姓名"
                 disabled={loading || saving}
               />
+
+              <label htmlFor="reply-mode">回覆方式</label>
+              <select
+                id="reply-mode"
+                value={replyMode}
+                onChange={(event) => setReplyMode(event.target.value as "structured" | "free")}
+                disabled={loading || saving}
+              >
+                <option value="structured">結構化回覆</option>
+                <option value="free">自由回覆</option>
+              </select>
+              <p className="field-hint">
+                結構化回覆會維持固定版型；自由回覆會保留 ELIN 調性，但不固定段落格式。
+              </p>
 
               <button type="submit" disabled={!canSave}>
                 {saving ? "儲存中..." : "儲存設定"}

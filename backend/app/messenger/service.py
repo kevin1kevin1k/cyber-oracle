@@ -36,6 +36,9 @@ from app.messenger.constants import (
     DEFAULT_MESSENGER_PROFILE_REQUIRED_REPLY,
     DEFAULT_MESSENGER_REPLAY_ASK_BUTTON_TITLE,
     DEFAULT_MESSENGER_REPLAY_ASK_UNAVAILABLE_REPLY,
+    DEFAULT_MESSENGER_REPLY_MODE_BUTTON_TITLE,
+    DEFAULT_MESSENGER_REPLY_MODE_FREE_TITLE,
+    DEFAULT_MESSENGER_REPLY_MODE_STRUCTURED_TITLE,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_BUTTON_TITLE,
     DEFAULT_MESSENGER_RESHOW_FOLLOWUPS_UNAVAILABLE_REPLY,
     DEFAULT_MESSENGER_SETTINGS_BUTTON_TITLE,
@@ -52,6 +55,7 @@ from app.messenger.constants import (
     IDENTITY_STATUS_UNLINKED,
     MESSENGER_PLATFORM,
     OPEN_HISTORY_PAYLOAD,
+    OPEN_REPLY_MODE_PAYLOAD,
     OPEN_SETTINGS_PAYLOAD,
     OPEN_WALLET_PAYLOAD,
     SHOW_BALANCE_PAYLOAD,
@@ -76,6 +80,7 @@ ASK_IDEMPOTENCY_PREFIX = "msg"
 FOLLOWUP_PAYLOAD_PREFIX = "FOLLOWUP:"
 RESHOW_FOLLOWUPS_PAYLOAD_PREFIX = "RESHOW_FOLLOWUPS:"
 REPLAY_PENDING_ASK_PAYLOAD_PREFIX = "REPLAY_PENDING_ASK:"
+REPLY_MODE_PAYLOAD_PREFIX = "REPLY_MODE:"
 FOLLOWUP_BUTTON_TITLES = ("延伸問題一", "延伸問題二", "延伸問題三")
 
 
@@ -235,6 +240,11 @@ class MessengerEventService:
         user_id = self.maybe_resolve_internal_user(identity=identity)
         if user_id is None:
             return [self.build_linking_message(identity=identity)]
+
+        reply_mode = self._parse_reply_mode_payload(command.quick_reply_payload)
+        if reply_mode is not None:
+            return self._handle_reply_mode_switch(identity=identity, reply_mode=reply_mode)
+
         if not self._has_complete_profile(user_id=user_id):
             return [self.build_profile_required_message(identity=identity)]
 
@@ -313,6 +323,11 @@ class MessengerEventService:
             ]
         if payload == OPEN_SETTINGS_PAYLOAD:
             return [self.build_settings_entry_message(identity=identity)]
+        if payload == OPEN_REPLY_MODE_PAYLOAD:
+            user_id = self.maybe_resolve_internal_user(identity=identity)
+            if user_id is None:
+                return [self.build_linking_message(identity=identity)]
+            return [self._build_reply_mode_selector_message(user_id=user_id)]
         if payload == OPEN_WALLET_PAYLOAD:
             return [self.build_settings_entry_message(identity=identity)]
         if payload == OPEN_HISTORY_PAYLOAD:
@@ -443,6 +458,50 @@ class MessengerEventService:
             text=DEFAULT_MESSENGER_OPEN_SETTINGS_REPLY,
             button_title=DEFAULT_MESSENGER_OPEN_SETTINGS_BUTTON_TITLE,
         )
+
+    def _build_reply_mode_selector_message(self, *, user_id: UUID) -> MessengerOutgoingMessage:
+        user = self._db.scalar(select(User).where(User.id == user_id))
+        current_mode = (user.reply_mode if user is not None else "structured") or "structured"
+        current_mode_label = "結構化回覆" if current_mode == "structured" else "自由回覆"
+        return MessengerOutgoingMessage(
+            kind="quick_replies",
+            text=(
+                f"目前使用{current_mode_label}。"
+                "你可以切換成另一種回覆方式：結構化回覆會維持固定版型；"
+                "自由回覆會保留 ELIN 調性，但不固定段落格式。"
+            ),
+            quick_replies=[
+                MessengerQuickReplyOption(
+                    title=DEFAULT_MESSENGER_REPLY_MODE_STRUCTURED_TITLE,
+                    payload=f"{REPLY_MODE_PAYLOAD_PREFIX}structured",
+                ),
+                MessengerQuickReplyOption(
+                    title=DEFAULT_MESSENGER_REPLY_MODE_FREE_TITLE,
+                    payload=f"{REPLY_MODE_PAYLOAD_PREFIX}free",
+                ),
+            ],
+        )
+
+    def _handle_reply_mode_switch(
+        self,
+        *,
+        identity: MessengerIdentity,
+        reply_mode: str,
+    ) -> list[MessengerOutgoingMessage]:
+        user_id = self.maybe_resolve_internal_user(identity=identity)
+        if user_id is None:
+            return [self.build_linking_message(identity=identity)]
+        user = self._db.scalar(select(User).where(User.id == user_id))
+        if user is None:
+            return [self.build_linking_message(identity=identity)]
+        user.reply_mode = reply_mode
+        self._db.add(user)
+        self._db.commit()
+        if reply_mode == "free":
+            text = "目前已切換為自由回覆。之後回答會更自然，不固定段落格式，但仍保留延伸問題。"
+        else:
+            text = "目前已切換為結構化回覆。之後回答會回到固定收斂版型，並保留延伸問題。"
+        return [MessengerOutgoingMessage(kind="text", text=text)]
 
     def build_profile_required_message(
         self,
@@ -833,6 +892,18 @@ class MessengerEventService:
         except ValueError:
             return None
 
+    @staticmethod
+    def _parse_reply_mode_payload(payload: str | None) -> str | None:
+        if payload is None:
+            return None
+        normalized = payload.strip()
+        if not normalized.startswith(REPLY_MODE_PAYLOAD_PREFIX):
+            return None
+        raw_mode = normalized.removeprefix(REPLY_MODE_PAYLOAD_PREFIX).strip()
+        if raw_mode not in {"structured", "free"}:
+            return None
+        return raw_mode
+
     def _build_ask_failure_message(self, *, exc: HTTPException) -> MessengerOutgoingMessage:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         code = detail.get("code")
@@ -864,6 +935,11 @@ def build_default_persistent_menu() -> list[dict[str, str]]:
             "type": "postback",
             "title": DEFAULT_MESSENGER_BALANCE_BUTTON_TITLE,
             "payload": SHOW_BALANCE_PAYLOAD,
+        },
+        {
+            "type": "postback",
+            "title": DEFAULT_MESSENGER_REPLY_MODE_BUTTON_TITLE,
+            "payload": OPEN_REPLY_MODE_PAYLOAD,
         },
         {
             "type": "postback",

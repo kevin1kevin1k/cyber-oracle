@@ -4,6 +4,7 @@ export type UserProfileResponse = {
   full_name: string | null;
   mother_name: string | null;
   is_complete: boolean;
+  reply_mode: "structured" | "free";
 };
 
 export async function getMyProfile(): Promise<UserProfileResponse> {
@@ -16,6 +17,7 @@ export async function getMyProfile(): Promise<UserProfileResponse> {
 export async function updateMyProfile(payload: {
   full_name: string;
   mother_name: string;
+  reply_mode?: "structured" | "free";
 }): Promise<UserProfileResponse> {
   return apiRequest<UserProfileResponse>("/api/v1/me/profile", {
     method: "PUT",

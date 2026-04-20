@@ -67,6 +67,59 @@ def test_generate_answer_uses_one_stage_pipeline(monkeypatch) -> None:
     assert kwargs["compression_system_prompt"] == "compression-sys"
 
 
+def test_generate_answer_uses_free_output_pipeline(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(
+            self,
+            *,
+            api_key: str | None = None,
+            model: str,
+            vector_store_id: str | None = None,
+        ) -> None:
+            called["init_model"] = model
+            called["init_api_key"] = api_key
+            called["init_vector_store_id"] = vector_store_id
+
+        def run_one_stage_free_response(self, **kwargs):  # noqa: ANN003
+            called["pipeline"] = "one_stage_free"
+            called["kwargs"] = kwargs
+            return SimpleNamespace(
+                response_text="自由回覆答案",
+                top_matches=[],
+                followup_options=["延伸 F1", "延伸 F2"],
+            )
+
+        def run_one_stage_response(self, **kwargs):  # noqa: ANN003
+            raise AssertionError("run_one_stage_response should not be called in free mode")
+
+        def run_two_stage_response(self, **kwargs):  # noqa: ANN003
+            raise AssertionError("run_two_stage_response should not be called in free mode")
+
+    monkeypatch.setattr(main_module, "OpenAIFileSearchClient", FakeClient)
+    monkeypatch.setattr(main_module.settings, "openai_ask_pipeline", "one_stage")
+    monkeypatch.setattr(
+        main_module.settings,
+        "openai_manifest_path",
+        "openai_integration/input_files_manifest.json",
+    )
+    monkeypatch.setattr(main_module.settings, "openai_ask_model", "gpt-5.2-2025-12-11")
+    monkeypatch.setattr(main_module.settings, "openai_ask_top_k", 3)
+    monkeypatch.setattr(main_module.settings, "openai_api_key", "render-key")
+    monkeypatch.setattr(main_module.settings, "vector_store_id", "vs_render")
+
+    answer, source, followups = main_module._generate_answer_from_openai_file_search(
+        "問題",
+        reply_mode="free",
+    )
+
+    assert answer == "自由回覆答案"
+    assert source == "openai"
+    assert followups == ["延伸 F1", "延伸 F2"]
+    assert called["pipeline"] == "one_stage_free"
+
+
 def test_generate_answer_uses_two_stage_pipeline(monkeypatch) -> None:
     called: dict[str, object] = {}
 

@@ -31,6 +31,12 @@ class AskStructuredOutput(BaseModel):
     followup_options: list[str] = Field(default_factory=list)
 
 
+class AskFollowupOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    followup_options: list[str] = Field(default_factory=list)
+
+
 INVALID_FOLLOWUP_PREFIXES = (
     "我優先：",
     "我優先:",
@@ -377,6 +383,189 @@ class OpenAIFileSearchClient:
             debug_steps=debug_steps,
         )
 
+    def run_one_stage_free_response(
+        self,
+        *,
+        question: str,
+        manifest_path: Path,
+        system_prompt: str | None = None,
+        followup_system_prompt: str | None = None,
+        top_k: int = 3,
+        model: str | None = None,
+        debug: bool = False,
+    ) -> OneStageSearchResult:
+        debug_steps: list[str] = []
+
+        def run_step(step_name: str, func):  # noqa: ANN001
+            if debug:
+                debug_steps.append(f"{step_name}: start")
+            started = perf_counter()
+            result = func()
+            duration_ms = (perf_counter() - started) * 1000.0
+            if debug:
+                debug_steps.append(f"{step_name}: done ({duration_ms:.2f} ms)")
+            return result
+
+        manifest = run_step(
+            "1.load_manifest",
+            lambda: self._load_manifest_for_runtime(
+                manifest_path,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        input_file_ids = [item.file_id for item in manifest.input_files] if manifest else []
+        response = run_step(
+            "2.one_stage_free_generate_with_file_search",
+            lambda: self._create_one_stage_free_with_file_search(
+                question=question,
+                input_file_ids=input_file_ids,
+                system_prompt=system_prompt,
+                top_k=top_k,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        response_id = getattr(response, "id", "")
+        top_matches = run_step(
+            "3.extract_top_matches",
+            lambda: self._extract_top_matches_from_response(
+                response,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        response_text = self._parse_free_answer_text(
+            getattr(response, "output_text", "") or "",
+            debug_logs=debug_steps if debug else None,
+            stage="2.one_stage_free_generate_with_file_search",
+        )
+        followup_options = run_step(
+            "4.generate_followups",
+            lambda: self._generate_followup_options(
+                question=question,
+                answer_text=response_text,
+                system_prompt=followup_system_prompt,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+                stage="4.generate_followups",
+            ),
+        )
+        return OneStageSearchResult(
+            response_text=response_text,
+            followup_options=followup_options,
+            response_id=response_id,
+            input_files=manifest.input_files if manifest else [],
+            top_matches=top_matches,
+            debug_steps=debug_steps,
+        )
+
+    def run_two_stage_free_response(
+        self,
+        *,
+        question: str,
+        manifest_path: Path,
+        system_prompt: str | None = None,
+        followup_system_prompt: str | None = None,
+        top_k: int = 3,
+        model: str | None = None,
+        debug: bool = False,
+    ) -> TwoStageSearchResult:
+        debug_steps: list[str] = []
+
+        def run_step(step_name: str, func):  # noqa: ANN001
+            if debug:
+                debug_steps.append(f"{step_name}: start")
+            started = perf_counter()
+            result = func()
+            duration_ms = (perf_counter() - started) * 1000.0
+            if debug:
+                debug_steps.append(f"{step_name}: done ({duration_ms:.2f} ms)")
+            return result
+
+        manifest = run_step(
+            "1.load_manifest",
+            lambda: self._load_manifest_for_runtime(
+                manifest_path,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        input_file_ids = [item.file_id for item in manifest.input_files] if manifest else []
+        first_response = run_step(
+            "2.first_stage_file_search",
+            lambda: self._create_first_stage_with_file_search(
+                question=question,
+                input_file_ids=input_file_ids,
+                top_k=top_k,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        first_response_id = getattr(first_response, "id", "")
+        top_matches = run_step(
+            "3.extract_top_matches",
+            lambda: self._extract_top_matches_from_response(
+                first_response,
+                debug_logs=debug_steps if debug else None,
+            ),
+        )
+        if manifest is not None:
+            matched_top_file_ids, unmatched_top_matches = run_step(
+                "4.map_vs_to_input_files",
+                lambda: self._map_top_matches_to_uploaded_files(
+                    top_matches=top_matches,
+                    manifest=manifest,
+                    top_k=top_k,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+        else:
+            matched_top_file_ids, unmatched_top_matches = run_step(
+                "4.map_vs_to_input_files",
+                lambda: self._use_top_match_file_ids_directly(
+                    top_matches=top_matches,
+                    top_k=top_k,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+        second_file_ids = self._dedupe_preserve_order(input_file_ids + matched_top_file_ids)
+        second_response = run_step(
+            "5.second_stage_free_generate",
+            lambda: self._create_free_response_request(
+                question=question,
+                file_ids=second_file_ids,
+                system_prompt=system_prompt,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+                stage="5.second_stage_free_generate",
+            ),
+        )
+        second_response_id = getattr(second_response, "id", "")
+        response_text = self._parse_free_answer_text(
+            getattr(second_response, "output_text", "") or "",
+            debug_logs=debug_steps if debug else None,
+            stage="5.second_stage_free_generate",
+        )
+        followup_options = run_step(
+            "6.generate_followups",
+            lambda: self._generate_followup_options(
+                question=question,
+                answer_text=response_text,
+                system_prompt=followup_system_prompt,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+                stage="6.generate_followups",
+            ),
+        )
+        return TwoStageSearchResult(
+            response_text=response_text,
+            followup_options=followup_options,
+            first_response_id=first_response_id,
+            second_response_id=second_response_id,
+            input_files=manifest.input_files if manifest else [],
+            top_matches=top_matches,
+            unmatched_top_matches=unmatched_top_matches,
+            debug_steps=debug_steps,
+        )
+
     def load_uploaded_files_manifest(self, manifest_path: Path) -> ManifestFiles:
         if not manifest_path.exists():
             raise ValueError(
@@ -511,6 +700,48 @@ class OpenAIFileSearchClient:
         )
         return self._client.responses.create(**base_payload)
 
+    def _create_one_stage_free_with_file_search(
+        self,
+        *,
+        question: str,
+        input_file_ids: list[str],
+        system_prompt: str | None,
+        top_k: int,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+    ) -> Any:
+        top_k = max(1, top_k)
+
+        user_content_items: list[dict[str, Any]] = [{"type": "input_text", "text": question}]
+        for file_id in input_file_ids:
+            user_content_items.append({"type": "input_file", "file_id": file_id})
+
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "tools": [
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [self._vector_store_id],
+                    "max_num_results": top_k,
+                }
+            ],
+            "input": [
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": FIRST_STAGE_FILE_SEARCH_PROMPT}],
+                },
+                {"role": "user", "content": user_content_items},
+            ],
+        }
+
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage="2.one_stage_free_generate_with_file_search",
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
     def _extract_top_matches_from_response(
         self,
         response: Any,
@@ -592,6 +823,37 @@ class OpenAIFileSearchClient:
         )
         return self._client.responses.create(**base_payload)
 
+    def _create_free_response_request(
+        self,
+        *,
+        question: str,
+        file_ids: list[str],
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+        stage: str,
+    ) -> Any:
+        content_items: list[dict[str, Any]] = [{"type": "input_text", "text": question}]
+        for file_id in file_ids:
+            content_items.append({"type": "input_file", "file_id": file_id})
+
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "input": [
+                {
+                    "role": "user",
+                    "content": content_items,
+                }
+            ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage=stage,
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
     def _create_compression_response_request(
         self,
         *,
@@ -616,6 +878,37 @@ class OpenAIFileSearchClient:
                             "text": "第一版結構化回答："
                             f"{json.dumps(structured_output.model_dump(), ensure_ascii=False)}",
                         },
+                    ],
+                }
+            ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage=stage,
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
+    def _create_followup_response_request(
+        self,
+        *,
+        question: str,
+        answer_text: str,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+        stage: str,
+    ) -> Any:
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "text": self._build_followup_text_format(),
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": f"原始問題：{question}"},
+                        {"type": "input_text", "text": f"主回答：{answer_text}"},
                     ],
                 }
             ],
@@ -658,6 +951,27 @@ class OpenAIFileSearchClient:
                 "name": "ask_structured_output",
                 "strict": True,
                 "schema": schema,
+            }
+        }
+
+    @staticmethod
+    def _build_followup_text_format() -> dict[str, Any]:
+        return {
+            "format": {
+                "type": "json_schema",
+                "name": "ask_followup_output",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "followup_options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        }
+                    },
+                    "required": ["followup_options"],
+                    "additionalProperties": False,
+                },
             }
         }
 
@@ -750,6 +1064,73 @@ class OpenAIFileSearchClient:
             anchoring_phrase=compressed.anchoring_phrase,
             followup_options=structured_output.followup_options,
         )
+
+    def _generate_followup_options(
+        self,
+        *,
+        question: str,
+        answer_text: str,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> list[str]:
+        if not (system_prompt or "").strip():
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: followup_generation_skipped empty_prompt")
+            return []
+        try:
+            response = self._create_followup_response_request(
+                question=question,
+                answer_text=answer_text,
+                system_prompt=system_prompt,
+                model=model,
+                debug_logs=debug_logs,
+                stage=stage,
+            )
+            output_text = getattr(response, "output_text", "") or ""
+            return self._parse_followup_output(
+                output_text,
+                debug_logs=debug_logs,
+                stage=stage,
+            )
+        except Exception as exc:
+            if debug_logs is not None:
+                debug_logs.append(
+                    f"{stage}: followup_generation_failed_fallback reason={type(exc).__name__}"
+                )
+            return []
+
+    def _parse_followup_output(
+        self,
+        output_text: str,
+        *,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> list[str]:
+        try:
+            payload = json.loads(output_text)
+            parsed = AskFollowupOutput.model_validate(payload)
+        except Exception as exc:
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: invalid_followup_output={output_text}")
+            raise RuntimeError("Followup output parse failed") from exc
+
+        return self._normalize_followup_options(parsed.followup_options)
+
+    @staticmethod
+    def _parse_free_answer_text(
+        output_text: str,
+        *,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> str:
+        normalized = output_text.strip()
+        if normalized:
+            return normalized
+        if debug_logs is not None:
+            debug_logs.append(f"{stage}: invalid_free_output={output_text}")
+        raise RuntimeError("Free output is empty")
 
     @staticmethod
     def _format_structured_answer(value: AskStructuredOutput) -> str:

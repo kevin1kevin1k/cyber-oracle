@@ -181,7 +181,8 @@ label {
 }
 
 textarea,
-input {
+input,
+select {
   width: 100%;
   border: 1px solid #c7d4e5;
   border-radius: 10px;
@@ -207,6 +208,12 @@ button {
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.field-hint {
+  margin-top: 8px;
+  color: #4d5d78;
+  font-size: 0.95rem;
 }
 
 .secondary-button {
