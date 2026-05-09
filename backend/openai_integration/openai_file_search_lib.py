@@ -11,16 +11,18 @@ from dotenv import dotenv_values
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.openai_constants import DEFAULT_OPENAI_EVIDENCE_DIGEST_SYSTEM_PROMPT
+
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent / "input_files_manifest.json"
 DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 FIRST_STAGE_FILE_SEARCH_PROMPT = (
-    "You are a retrieval step. Read the user question and the attached input files, "
-    "then use file_search tool over the configured vector store to find the top 3 most "
-    "relevant documents. Prioritize precision and relevance."
+    "You are a retrieval step. Read the user question, then use file_search over the "
+    "configured vector store to find the most relevant documents. Prioritize precision "
+    "and relevance."
 )
 
 
-class AskStructuredOutput(BaseModel):
+class StructuredAnswerSections(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     conclusion: str = Field(min_length=1)
@@ -28,6 +30,11 @@ class AskStructuredOutput(BaseModel):
     oracle_poem: str = Field(min_length=1)
     poem_interpretation: str = Field(min_length=1)
     anchoring_phrase: str = Field(min_length=1)
+
+
+class AskStructuredOutput(StructuredAnswerSections):
+    model_config = ConfigDict(extra="forbid")
+
     followup_options: list[str] = Field(default_factory=list)
 
 
@@ -35,6 +42,15 @@ class AskFollowupOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     followup_options: list[str] = Field(default_factory=list)
+
+
+class EvidenceBrief(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer_direction: str = Field(min_length=1)
+    evidence_points: list[str] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+    source_filenames: list[str] = Field(default_factory=list)
 
 
 INVALID_FOLLOWUP_PREFIXES = (
@@ -566,6 +582,245 @@ class OpenAIFileSearchClient:
             debug_steps=debug_steps,
         )
 
+    def run_quality_first_structured_response(
+        self,
+        *,
+        question: str,
+        manifest_path: Path,
+        writer_system_prompt: str | None = None,
+        followup_system_prompt: str | None = None,
+        enable_compression: bool = False,
+        compression_system_prompt: str | None = None,
+        top_k: int = 5,
+        model: str | None = None,
+        debug: bool = False,
+    ) -> OneStageSearchResult:
+        debug_steps: list[str] = []
+
+        def run_step(step_name: str, func):  # noqa: ANN001
+            if debug:
+                debug_steps.append(f"{step_name}: start")
+            started = perf_counter()
+            result = func()
+            duration_ms = (perf_counter() - started) * 1000.0
+            if debug:
+                debug_steps.append(f"{step_name}: done ({duration_ms:.2f} ms)")
+            return result
+
+        try:
+            manifest = run_step(
+                "1.load_manifest",
+                lambda: self._load_manifest_for_runtime(
+                    manifest_path,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            retrieval_response = run_step(
+                "2.first_stage_file_search",
+                lambda: self._create_first_stage_with_file_search(
+                    question=question,
+                    input_file_ids=[],
+                    top_k=top_k,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            top_matches = run_step(
+                "3.extract_top_matches",
+                lambda: self._extract_top_matches_from_response(
+                    retrieval_response,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            evidence_file_ids = run_step(
+                "3.select_evidence_files",
+                lambda: self._select_evidence_file_ids(
+                    top_matches=top_matches,
+                    manifest=manifest,
+                    limit=top_k,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            evidence_brief = run_step(
+                "4.evidence_digest",
+                lambda: self._generate_evidence_brief(
+                    question=question,
+                    file_ids=evidence_file_ids,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                    stage="4.evidence_digest",
+                ),
+            )
+            structured_sections = run_step(
+                "5.structured_writer",
+                lambda: self._generate_structured_sections(
+                    question=question,
+                    evidence_brief=evidence_brief,
+                    system_prompt=writer_system_prompt,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                    stage="5.structured_writer",
+                ),
+            )
+            structured_sections = self._maybe_compress_structured_sections(
+                question=question,
+                structured_sections=structured_sections,
+                enable_compression=enable_compression,
+                compression_system_prompt=compression_system_prompt,
+                model=model,
+                debug_logs=debug_steps if debug else None,
+                stage="6.compression_pass",
+            )
+            answer_text = self._format_structured_answer(structured_sections)
+            followup_options = run_step(
+                "7.generate_followups",
+                lambda: self._generate_followup_options(
+                    question=question,
+                    answer_text=answer_text,
+                    system_prompt=followup_system_prompt,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                    stage="7.generate_followups",
+                ),
+            )
+            return OneStageSearchResult(
+                response_text=answer_text,
+                followup_options=followup_options,
+                response_id=getattr(retrieval_response, "id", ""),
+                input_files=[],
+                top_matches=top_matches,
+                debug_steps=debug_steps,
+            )
+        except Exception as exc:
+            fallback = self.run_two_stage_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=writer_system_prompt,
+                enable_compression=enable_compression,
+                compression_system_prompt=compression_system_prompt,
+                top_k=top_k,
+                model=model,
+                debug=debug,
+            )
+            if debug:
+                fallback.debug_steps = [
+                    f"quality_first_fallback reason={type(exc).__name__}"
+                ] + fallback.debug_steps
+            return fallback
+
+    def run_quality_first_free_response(
+        self,
+        *,
+        question: str,
+        manifest_path: Path,
+        writer_system_prompt: str | None = None,
+        followup_system_prompt: str | None = None,
+        top_k: int = 5,
+        model: str | None = None,
+        debug: bool = False,
+    ) -> OneStageSearchResult:
+        debug_steps: list[str] = []
+
+        def run_step(step_name: str, func):  # noqa: ANN001
+            if debug:
+                debug_steps.append(f"{step_name}: start")
+            started = perf_counter()
+            result = func()
+            duration_ms = (perf_counter() - started) * 1000.0
+            if debug:
+                debug_steps.append(f"{step_name}: done ({duration_ms:.2f} ms)")
+            return result
+
+        try:
+            manifest = run_step(
+                "1.load_manifest",
+                lambda: self._load_manifest_for_runtime(
+                    manifest_path,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            retrieval_response = run_step(
+                "2.first_stage_file_search",
+                lambda: self._create_first_stage_with_file_search(
+                    question=question,
+                    input_file_ids=[],
+                    top_k=top_k,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            top_matches = run_step(
+                "3.extract_top_matches",
+                lambda: self._extract_top_matches_from_response(
+                    retrieval_response,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            evidence_file_ids = run_step(
+                "3.select_evidence_files",
+                lambda: self._select_evidence_file_ids(
+                    top_matches=top_matches,
+                    manifest=manifest,
+                    limit=top_k,
+                    debug_logs=debug_steps if debug else None,
+                ),
+            )
+            evidence_brief = run_step(
+                "4.evidence_digest",
+                lambda: self._generate_evidence_brief(
+                    question=question,
+                    file_ids=evidence_file_ids,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                    stage="4.evidence_digest",
+                ),
+            )
+            answer_text = run_step(
+                "5.free_writer",
+                lambda: self._generate_free_answer_text(
+                    question=question,
+                    evidence_brief=evidence_brief,
+                    system_prompt=writer_system_prompt,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                    stage="5.free_writer",
+                ),
+            )
+            followup_options = run_step(
+                "6.generate_followups",
+                lambda: self._generate_followup_options(
+                    question=question,
+                    answer_text=answer_text,
+                    system_prompt=followup_system_prompt,
+                    model=model,
+                    debug_logs=debug_steps if debug else None,
+                    stage="6.generate_followups",
+                ),
+            )
+            return OneStageSearchResult(
+                response_text=answer_text,
+                followup_options=followup_options,
+                response_id=getattr(retrieval_response, "id", ""),
+                input_files=[],
+                top_matches=top_matches,
+                debug_steps=debug_steps,
+            )
+        except Exception as exc:
+            fallback = self.run_two_stage_free_response(
+                question=question,
+                manifest_path=manifest_path,
+                system_prompt=writer_system_prompt,
+                followup_system_prompt=followup_system_prompt,
+                top_k=top_k,
+                model=model,
+                debug=debug,
+            )
+            if debug:
+                fallback.debug_steps = [
+                    f"quality_first_fallback reason={type(exc).__name__}"
+                ] + fallback.debug_steps
+            return fallback
+
     def load_uploaded_files_manifest(self, manifest_path: Path) -> ManifestFiles:
         if not manifest_path.exists():
             raise ValueError(
@@ -854,6 +1109,108 @@ class OpenAIFileSearchClient:
         )
         return self._client.responses.create(**base_payload)
 
+    def _create_evidence_digest_request(
+        self,
+        *,
+        question: str,
+        file_ids: list[str],
+        model: str | None,
+        debug_logs: list[str] | None = None,
+        stage: str,
+    ) -> Any:
+        content_items: list[dict[str, Any]] = [
+            {"type": "input_text", "text": f"原始問題：{question}"}
+        ]
+        for file_id in file_ids:
+            content_items.append({"type": "input_file", "file_id": file_id})
+
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": DEFAULT_OPENAI_EVIDENCE_DIGEST_SYSTEM_PROMPT,
+            "text": self._build_evidence_brief_text_format(),
+            "input": [
+                {
+                    "role": "user",
+                    "content": content_items,
+                }
+            ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage=stage,
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
+    def _create_structured_sections_writer_request(
+        self,
+        *,
+        question: str,
+        evidence_brief: EvidenceBrief,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+        stage: str,
+    ) -> Any:
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "text": self._build_structured_sections_text_format(),
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": f"原始問題：{question}"},
+                        {
+                            "type": "input_text",
+                            "text": "EvidenceBrief："
+                            f"{json.dumps(evidence_brief.model_dump(), ensure_ascii=False)}",
+                        },
+                    ],
+                }
+            ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage=stage,
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
+    def _create_free_writer_request(
+        self,
+        *,
+        question: str,
+        evidence_brief: EvidenceBrief,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None = None,
+        stage: str,
+    ) -> Any:
+        base_payload: dict[str, Any] = {
+            "model": model or self._model,
+            "instructions": system_prompt or "",
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": f"原始問題：{question}"},
+                        {
+                            "type": "input_text",
+                            "text": "EvidenceBrief："
+                            f"{json.dumps(evidence_brief.model_dump(), ensure_ascii=False)}",
+                        },
+                    ],
+                }
+            ],
+        }
+        _append_request_payload_debug(
+            debug_logs=debug_logs,
+            stage=stage,
+            payload=base_payload,
+        )
+        return self._client.responses.create(**base_payload)
+
     def _create_compression_response_request(
         self,
         *,
@@ -955,6 +1312,70 @@ class OpenAIFileSearchClient:
         }
 
     @staticmethod
+    def _build_structured_sections_text_format() -> dict[str, Any]:
+        schema = {
+            "type": "object",
+            "properties": {
+                "conclusion": {"type": "string"},
+                "layered_analysis": {"type": "string"},
+                "oracle_poem": {"type": "string"},
+                "poem_interpretation": {"type": "string"},
+                "anchoring_phrase": {"type": "string"},
+            },
+            "required": [
+                "conclusion",
+                "layered_analysis",
+                "oracle_poem",
+                "poem_interpretation",
+                "anchoring_phrase",
+            ],
+            "additionalProperties": False,
+        }
+        return {
+            "format": {
+                "type": "json_schema",
+                "name": "ask_structured_sections",
+                "strict": True,
+                "schema": schema,
+            }
+        }
+
+    @staticmethod
+    def _build_evidence_brief_text_format() -> dict[str, Any]:
+        return {
+            "format": {
+                "type": "json_schema",
+                "name": "evidence_brief",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "answer_direction": {"type": "string"},
+                        "evidence_points": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "caveats": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "source_filenames": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": [
+                        "answer_direction",
+                        "evidence_points",
+                        "caveats",
+                        "source_filenames",
+                    ],
+                    "additionalProperties": False,
+                },
+            }
+        }
+
+    @staticmethod
     def _build_followup_text_format() -> dict[str, Any]:
         return {
             "format": {
@@ -1011,6 +1432,72 @@ class OpenAIFileSearchClient:
             followup_options=self._normalize_followup_options(parsed.followup_options),
         )
 
+    def _parse_structured_sections_output(
+        self,
+        output_text: str,
+        *,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> StructuredAnswerSections:
+        try:
+            payload = json.loads(output_text)
+            parsed = StructuredAnswerSections.model_validate(payload)
+        except Exception as exc:
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: invalid_structured_sections_output={output_text}")
+            raise RuntimeError("Structured sections parse failed") from exc
+
+        return StructuredAnswerSections(
+            conclusion=self._require_non_empty_section(parsed.conclusion, field_name="conclusion"),
+            layered_analysis=self._require_non_empty_section(
+                parsed.layered_analysis,
+                field_name="layered_analysis",
+            ),
+            oracle_poem=self._require_non_empty_section(
+                parsed.oracle_poem,
+                field_name="oracle_poem",
+            ),
+            poem_interpretation=self._require_non_empty_section(
+                parsed.poem_interpretation,
+                field_name="poem_interpretation",
+            ),
+            anchoring_phrase=self._require_non_empty_section(
+                parsed.anchoring_phrase,
+                field_name="anchoring_phrase",
+            ),
+        )
+
+    def _parse_evidence_brief_output(
+        self,
+        output_text: str,
+        *,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> EvidenceBrief:
+        try:
+            payload = json.loads(output_text)
+            parsed = EvidenceBrief.model_validate(payload)
+        except Exception as exc:
+            if debug_logs is not None:
+                debug_logs.append(f"{stage}: invalid_evidence_brief_output={output_text}")
+            raise RuntimeError("Evidence brief parse failed") from exc
+
+        evidence_points = [item.strip() for item in parsed.evidence_points if item.strip()]
+        caveats = [item.strip() for item in parsed.caveats if item.strip()]
+        source_filenames = [item.strip() for item in parsed.source_filenames if item.strip()]
+        if not evidence_points:
+            raise RuntimeError("Evidence brief must contain at least one evidence point")
+
+        return EvidenceBrief(
+            answer_direction=self._require_non_empty_section(
+                parsed.answer_direction,
+                field_name="answer_direction",
+            ),
+            evidence_points=evidence_points[:5],
+            caveats=caveats[:2],
+            source_filenames=source_filenames[:5],
+        )
+
     def _maybe_compress_structured_output(
         self,
         *,
@@ -1063,6 +1550,89 @@ class OpenAIFileSearchClient:
             poem_interpretation=compressed.poem_interpretation,
             anchoring_phrase=compressed.anchoring_phrase,
             followup_options=structured_output.followup_options,
+        )
+
+    def _maybe_compress_structured_sections(
+        self,
+        *,
+        question: str,
+        structured_sections: StructuredAnswerSections,
+        enable_compression: bool,
+        compression_system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> StructuredAnswerSections:
+        compressed = self._maybe_compress_structured_output(
+            question=question,
+            structured_output=AskStructuredOutput(
+                conclusion=structured_sections.conclusion,
+                layered_analysis=structured_sections.layered_analysis,
+                oracle_poem=structured_sections.oracle_poem,
+                poem_interpretation=structured_sections.poem_interpretation,
+                anchoring_phrase=structured_sections.anchoring_phrase,
+                followup_options=[],
+            ),
+            enable_compression=enable_compression,
+            compression_system_prompt=compression_system_prompt,
+            model=model,
+            debug_logs=debug_logs,
+            stage=stage,
+        )
+        return StructuredAnswerSections(
+            conclusion=compressed.conclusion,
+            layered_analysis=compressed.layered_analysis,
+            oracle_poem=compressed.oracle_poem,
+            poem_interpretation=compressed.poem_interpretation,
+            anchoring_phrase=compressed.anchoring_phrase,
+        )
+
+    def _generate_evidence_brief(
+        self,
+        *,
+        question: str,
+        file_ids: list[str],
+        model: str | None,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> EvidenceBrief:
+        response = self._create_evidence_digest_request(
+            question=question,
+            file_ids=file_ids,
+            model=model,
+            debug_logs=debug_logs,
+            stage=stage,
+        )
+        output_text = getattr(response, "output_text", "") or ""
+        return self._parse_evidence_brief_output(
+            output_text,
+            debug_logs=debug_logs,
+            stage=stage,
+        )
+
+    def _generate_structured_sections(
+        self,
+        *,
+        question: str,
+        evidence_brief: EvidenceBrief,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> StructuredAnswerSections:
+        response = self._create_structured_sections_writer_request(
+            question=question,
+            evidence_brief=evidence_brief,
+            system_prompt=system_prompt,
+            model=model,
+            debug_logs=debug_logs,
+            stage=stage,
+        )
+        output_text = getattr(response, "output_text", "") or ""
+        return self._parse_structured_sections_output(
+            output_text,
+            debug_logs=debug_logs,
+            stage=stage,
         )
 
     def _generate_followup_options(
@@ -1132,8 +1702,33 @@ class OpenAIFileSearchClient:
             debug_logs.append(f"{stage}: invalid_free_output={output_text}")
         raise RuntimeError("Free output is empty")
 
+    def _generate_free_answer_text(
+        self,
+        *,
+        question: str,
+        evidence_brief: EvidenceBrief,
+        system_prompt: str | None,
+        model: str | None,
+        debug_logs: list[str] | None,
+        stage: str,
+    ) -> str:
+        response = self._create_free_writer_request(
+            question=question,
+            evidence_brief=evidence_brief,
+            system_prompt=system_prompt,
+            model=model,
+            debug_logs=debug_logs,
+            stage=stage,
+        )
+        output_text = getattr(response, "output_text", "") or ""
+        return self._parse_free_answer_text(
+            output_text,
+            debug_logs=debug_logs,
+            stage=stage,
+        )
+
     @staticmethod
-    def _format_structured_answer(value: AskStructuredOutput) -> str:
+    def _format_structured_answer(value: StructuredAnswerSections) -> str:
         sections = [
             f"1️⃣ 整體結論\n{value.conclusion.strip()}",
             value.layered_analysis.strip(),
@@ -1225,6 +1820,50 @@ class OpenAIFileSearchClient:
             matched_ids.append(mapped_id)
 
         return matched_ids, unmatched
+
+    def _select_evidence_file_ids(
+        self,
+        *,
+        top_matches: list[TopMatch],
+        manifest: ManifestFiles | None,
+        limit: int,
+        debug_logs: list[str] | None = None,
+    ) -> list[str]:
+        rag_file_ids = {item.file_id for item in manifest.rag_files} if manifest else set()
+        rag_file_id_by_path = (
+            {item.relative_path: item.file_id for item in manifest.rag_files} if manifest else {}
+        )
+        selected: list[str] = []
+        seen: set[str] = set()
+
+        for match in top_matches:
+            if len(selected) >= max(1, limit):
+                break
+            normalized_filename = _normalize_relative_path(match.filename or "")
+            resolved_file_id = None
+            if match.vector_file_id in rag_file_ids:
+                resolved_file_id = match.vector_file_id
+            elif normalized_filename:
+                resolved_file_id = rag_file_id_by_path.get(normalized_filename)
+            elif match.vector_file_id:
+                resolved_file_id = match.vector_file_id
+
+            if resolved_file_id is None and match.vector_file_id:
+                resolved_file_id = match.vector_file_id
+
+            if not resolved_file_id or resolved_file_id in seen:
+                continue
+
+            seen.add(resolved_file_id)
+            selected.append(resolved_file_id)
+
+        if debug_logs is not None:
+            debug_logs.append(
+                "3.select_evidence_files: selected_file_ids="
+                f"{json.dumps(selected, ensure_ascii=False)}"
+            )
+
+        return selected
 
     @staticmethod
     def _is_manifest_runtime_optional_error(exc: ValueError) -> bool:

@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     vector_store_id: str | None = None
     openai_manifest_path: str = "openai_integration/input_files_manifest.json"
     openai_ask_model: str = "gpt-5.2-2025-12-11"
-    openai_ask_pipeline: Literal["one_stage", "two_stage"] = "one_stage"
-    openai_ask_top_k: int = 3
+    openai_ask_pipeline: Literal["quality_first", "one_stage", "two_stage"] = "quality_first"
+    openai_ask_top_k: int = 5
     openai_ask_system_prompt: str = DEFAULT_OPENAI_ASK_SYSTEM_PROMPT
     openai_free_ask_system_prompt: str = DEFAULT_OPENAI_FREE_ASK_SYSTEM_PROMPT
     openai_free_followup_system_prompt: str = DEFAULT_OPENAI_FREE_FOLLOWUP_SYSTEM_PROMPT

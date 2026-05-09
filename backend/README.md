@@ -66,11 +66,12 @@ uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port
   - also requires completed user profile (`full_name` + `mother_name`)
   - supports `Idempotency-Key` request header
   - runtime uses OpenAI file search pipeline (`openai_integration/openai_file_search_lib.py`)
-  - default pipeline is one-stage (`OPENAI_ASK_PIPELINE=one_stage`), switchable to two-stage
+  - default pipeline is `quality_first` (`OPENAI_ASK_PIPELINE=quality_first`), with `one_stage` / `two_stage` retained as legacy rollback modes
+  - `quality_first` splits runtime into `retrieval -> evidence digest -> writer`, so the final writer no longer receives raw retrieved files directly
   - optional final compression pass can be enabled with `OPENAI_ASK_ENABLE_COMPRESSION=true`; it rewrites only the five answer sections, preserves original `followup_options`, falls back to the first-pass answer if compression fails, and now includes built-in good/bad few-shot style references inside the default prompt
   - `source` is now runtime-generated (`rag` / `openai`), no longer fixed `mock`
   - per-user `reply_mode` controls answer style for both ask and followup flows:
-    - `structured`: fixed structured display with compression pass support
+    - `structured`: fixed structured display with quality-first retrieval/digest/writer flow and optional compression support
     - `free`: free-form ELIN-style answer text, no fixed section schema, still returns `followup_options`
   - response now includes `followup_options` (0..3 model-generated followup options)
   - backend augments the model input with per-user fixed fields (`full_name`, `mother_name`), but persisted `questions.question_text` remains the raw user-entered question
@@ -313,8 +314,8 @@ pre-commit run --all-files
 ## OpenAI File Search (cyber oracle)
 This repo includes helper scripts for one-stage/two-stage Responses flow:
 1) one-time vector store build + persist `rag_files` mapping in manifest
-2) one-time input files upload + persist `input_files` mapping in manifest
-3) query-time one-stage or two-stage response with structured output (`conclusion` / `layered_analysis` / `oracle_poem` / `poem_interpretation` / `anchoring_phrase` + `followup_options`)
+2) optional one-time `input_files` upload for legacy/local workflows
+3) query-time `quality_first` response: retrieval -> evidence digest -> final writer -> followups
 
 ```mermaid
 sequenceDiagram
@@ -332,25 +333,26 @@ sequenceDiagram
   Builder->>Env: persist VECTOR_STORE_ID
   Builder->>Manifest: write rag_files mapping
 
-  Uploader->>Files: upload input_files
+  Uploader->>Files: upload optional input_files
   Uploader->>Manifest: write input_files mapping (preserve existing rag_files)
 
-  Main->>Lib: run_two_stage_response(question)
+  Main->>Lib: run_quality_first_structured_response(question)
   Lib->>Env: read OPENAI_API_KEY + VECTOR_STORE_ID
-  Lib->>Manifest: read input_files + rag_files mapping
-  Lib->>Resp: 3.2 first responses.create + tools.file_search(top3)
-  Resp-->>Lib: top3 matches from vector store
-  Lib->>Manifest: 3.3 map top3 rag files -> input_files ids
-  Lib->>Resp: 3.4 second responses.create with mapped files
-  Resp-->>Main: final response_text
+  Lib->>Manifest: read rag_files mapping
+  Lib->>Resp: 3.2 responses.create + tools.file_search(top5)
+  Resp-->>Lib: top matches from vector store
+  Lib->>Resp: 3.3 evidence digest responses.create with selected rag files
+  Resp-->>Lib: EvidenceBrief JSON
+  Lib->>Resp: 3.4 writer responses.create with question + EvidenceBrief
+  Resp-->>Main: final response_text + followups
 ```
 
 Environment variables:
 - `OPENAI_API_KEY`: OpenAI API key in `backend/.env`
 - `VECTOR_STORE_ID`: vector store id used by file search (auto-written by vector store builder)
 - production / Render runtime reads `OPENAI_API_KEY` and `VECTOR_STORE_ID` from process environment first, then falls back to local `backend/.env`
-- production / Render runtime treats `openai_integration/input_files_manifest.json` as optional; if the manifest is missing, ask flow still runs against `VECTOR_STORE_ID` and skips reusable `input_files` attachment
-- `OPENAI_ASK_PIPELINE`: ask pipeline mode (`one_stage` default, optional `two_stage`)
+- production / Render runtime treats `openai_integration/input_files_manifest.json` as optional; if the manifest is missing, ask flow still runs against `VECTOR_STORE_ID`, and `quality_first` falls back to direct vector file ids for evidence digest
+- `OPENAI_ASK_PIPELINE`: ask pipeline mode (`quality_first` default, optional legacy `one_stage` / `two_stage`)
 - `OPENAI_ASK_ENABLE_COMPRESSION`: enable post-processing compression pass after structured generation (`false` by default)
 - `OPENAI_ASK_COMPRESSION_SYSTEM_PROMPT`: optional override for the final compression-pass prompt; if empty, backend uses the built-in schema-compatible default
 
@@ -369,9 +371,9 @@ Upload reusable `input_files` once and write manifest:
 cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
 
-Ask one question with the reusable library via CLI (`--pipeline two_stage|one_stage`, default `two_stage`):
+Ask one question with the reusable library via CLI (`--pipeline quality_first|two_stage|one_stage`, default `quality_first`):
 ```bash
-cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path openai_integration/input_files_manifest.json --pipeline two_stage && cd ..
+cd backend && uv run python -m openai_integration.openai_file_search_main --question "請根據文件回答：ELIN 的核心流程是什麼？" --manifest-path openai_integration/input_files_manifest.json --pipeline quality_first && cd ..
 ```
 
 Use library in backend code:
@@ -381,11 +383,12 @@ from pathlib import Path
 from openai_integration.openai_file_search_lib import OpenAIFileSearchClient
 
 client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11")
-result = client.run_two_stage_response(
+result = client.run_quality_first_structured_response(
     question="請根據 cyber oracle 文件回答我的問題",
     manifest_path=Path("openai_integration/input_files_manifest.json"),
-    system_prompt="你是 ELIN 文件助手。",
-    top_k=3,
+    writer_system_prompt="你是 ELIN 文件助手。",
+    followup_system_prompt=None,
+    top_k=5,
 )
 print(result.response_text)
 ```
@@ -395,8 +398,8 @@ Troubleshooting:
 ```bash
 cd backend && uv run python -m openai_integration.openai_vector_store_builder --rag-files-dir ~/Downloads/cyber_oracle_files/algorithms --vector-store-name cyber-oracle-knowledge --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
-- If file search fails with missing `input_files` mapping, rerun uploader:
+- If legacy/local workflow still depends on `input_files` mapping, rerun uploader:
 ```bash
 cd backend && uv run python -m openai_integration.openai_input_files_uploader --input-files-dir ~/Downloads/cyber_oracle_files/input_files --manifest-path openai_integration/input_files_manifest.json && cd ..
 ```
-- If Render / production has no local `input_files_manifest.json`, this is no longer a blocker. The runtime will fall back to vector-store-only search; only local workflows that depend on reusable `input_files` need the uploader/manifest.
+- If Render / production has no local `input_files_manifest.json`, this is no longer a blocker. `quality_first` will still run against `VECTOR_STORE_ID`; only local workflows that depend on legacy `input_files` attachments need the uploader/manifest.

@@ -161,7 +161,17 @@ def _generate_answer_from_openai_file_search(
             model=settings.openai_ask_model,
             vector_store_id=settings.vector_store_id,
         )
-        if reply_mode == "free" and settings.openai_ask_pipeline == "two_stage":
+        if reply_mode == "free" and settings.openai_ask_pipeline == "quality_first":
+            result = client.run_quality_first_free_response(
+                question=question,
+                manifest_path=manifest_path,
+                writer_system_prompt=settings.openai_free_ask_system_prompt,
+                followup_system_prompt=settings.openai_free_followup_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+        elif reply_mode == "free" and settings.openai_ask_pipeline == "two_stage":
             result = client.run_two_stage_free_response(
                 question=question,
                 manifest_path=manifest_path,
@@ -177,6 +187,18 @@ def _generate_answer_from_openai_file_search(
                 manifest_path=manifest_path,
                 system_prompt=settings.openai_free_ask_system_prompt,
                 followup_system_prompt=settings.openai_free_followup_system_prompt,
+                top_k=settings.openai_ask_top_k,
+                model=settings.openai_ask_model,
+                debug=False,
+            )
+        elif settings.openai_ask_pipeline == "quality_first":
+            result = client.run_quality_first_structured_response(
+                question=question,
+                manifest_path=manifest_path,
+                writer_system_prompt=settings.openai_ask_system_prompt,
+                followup_system_prompt=settings.openai_free_followup_system_prompt,
+                enable_compression=settings.openai_ask_enable_compression,
+                compression_system_prompt=settings.openai_ask_compression_system_prompt,
                 top_k=settings.openai_ask_top_k,
                 model=settings.openai_ask_model,
                 debug=False,

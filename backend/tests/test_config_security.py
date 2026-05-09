@@ -112,6 +112,7 @@ def test_openai_compression_settings_are_configurable() -> None:
 def test_openai_default_prompts_are_loaded_from_constants() -> None:
     settings = Settings(_env_file=None)
 
+    assert settings.openai_ask_pipeline == "quality_first"
     assert settings.openai_ask_system_prompt == DEFAULT_OPENAI_ASK_SYSTEM_PROMPT
     assert settings.openai_free_ask_system_prompt == DEFAULT_OPENAI_FREE_ASK_SYSTEM_PROMPT
     assert settings.openai_free_followup_system_prompt == DEFAULT_OPENAI_FREE_FOLLOWUP_SYSTEM_PROMPT

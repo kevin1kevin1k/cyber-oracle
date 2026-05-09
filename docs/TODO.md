@@ -83,6 +83,13 @@
   - [x] Frontend：改為只顯示回答內容與延伸問題，不顯示來源/request id/三層比例
   - [x] Frontend：延伸問題按鈕改用 API 回傳 `followup_options`，移除 mock 模板
   - [x] 測試：覆蓋 one-stage/two-stage、structured output parse、followup_options 渲染與點擊
+- [x] 改為品質優先的 ask pipeline（retrieval -> evidence digest -> writer）
+  - [x] Backend：新增 `quality_first` ask pipeline，並改為預設模式
+  - [x] Backend：final writer 不再直接接收 raw retrieved files 或 `input_files`
+  - [x] Backend：structured/free 共享同一層 evidence digest，followups 改為依主回答獨立生成
+  - [x] Backend：quality-first 失敗時回退到 legacy `two_stage` / `two_stage_free`
+  - [x] 文件：README 同步更新 runtime 架構與 CLI 用法
+  - [x] 測試：覆蓋 quality-first structured/free、writer request 瘦身、legacy fallback
 - [x] 新增最終回答壓縮層（post-processing compression）
   - [x] Backend：新增可選 `OPENAI_ASK_ENABLE_COMPRESSION` 與 schema-compatible compression prompt
   - [x] Backend：compression pass 只重寫五段主回答，保留第一層 `followup_options`

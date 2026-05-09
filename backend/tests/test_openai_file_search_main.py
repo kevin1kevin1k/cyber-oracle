@@ -16,15 +16,12 @@ def test_main_parses_manifest_path_and_debug_flag(
         def __init__(self, model: str) -> None:
             called["init_model"] = model
 
-        def run_two_stage_response(self, **kwargs):  # noqa: ANN003
+        def run_quality_first_structured_response(self, **kwargs):  # noqa: ANN003
             called["kwargs"] = kwargs
             return SimpleNamespace(
                 response_text="final answer",
-                first_response_id="resp_1",
-                second_response_id="resp_2",
                 input_files=[SimpleNamespace(file_id="f1")],
                 top_matches=[],
-                unmatched_top_matches=[],
                 debug_steps=[
                     "1.load_manifest: start",
                     "1.load_manifest: done (1.23 ms)",
@@ -114,5 +111,5 @@ def test_main_supports_one_stage_pipeline(monkeypatch, capsys, tmp_path: Path) -
     kwargs = called["kwargs"]
     assert kwargs["question"] == "問題"
     assert kwargs["manifest_path"] == manifest_path.resolve()
-    assert kwargs["top_k"] == 3
+    assert kwargs["top_k"] == 5
     assert kwargs["debug"] is True

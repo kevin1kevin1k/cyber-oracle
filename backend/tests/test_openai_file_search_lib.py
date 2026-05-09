@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from openai_integration.openai_file_search_lib import AskStructuredOutput, OpenAIFileSearchClient
+from openai_integration.openai_file_search_lib import (
+    AskStructuredOutput,
+    OneStageSearchResult,
+    OpenAIFileSearchClient,
+    TwoStageSearchResult,
+)
 
 
 def _formatted_answer(seed: str) -> str:
@@ -263,6 +268,335 @@ def test_one_stage_free_response_uses_plain_text_answer_and_followup_request(
     assert "text" not in first_request
     assert second_request["text"]["format"]["type"] == "json_schema"
     assert second_request["instructions"] == "followup prompt"
+
+
+def test_quality_first_structured_response_uses_digest_then_writer_without_attached_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = {
+        "version": 2,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "input_files_dir": "/tmp/input",
+        "rag_files_dir": "/tmp/rag",
+        "input_files": [
+            {
+                "relative_path": "explainer.pdf",
+                "filename": "explainer.pdf",
+                "file_id": "input_explainer",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
+        "rag_files": [
+            {
+                "relative_path": "folder/a.md",
+                "filename": "folder/a.md",
+                "file_id": "rag_file_1",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "relative_path": "folder/b.md",
+                "filename": "folder/b.md",
+                "file_id": "rag_file_2",
+                "uploaded_at": "2026-01-01T00:00:00+00:00",
+            },
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    id="resp_retrieval",
+                    output=[
+                        {
+                            "type": "file_search_call",
+                            "results": [
+                                {
+                                    "file_id": "rag_file_1",
+                                    "filename": "folder/a.md",
+                                    "score": 0.91,
+                                },
+                                {
+                                    "file_id": "rag_file_2",
+                                    "filename": "folder/b.md",
+                                    "score": 0.84,
+                                },
+                            ],
+                        }
+                    ],
+                    output_text="retrieval",
+                )
+            if len(self.calls) == 2:
+                return SimpleNamespace(
+                    id="resp_digest",
+                    output=[],
+                    output_text=json.dumps(
+                        {
+                            "answer_direction": "主判斷",
+                            "evidence_points": ["證據一", "證據二"],
+                            "caveats": ["限制一"],
+                            "source_filenames": ["folder/a.md", "folder/b.md"],
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            if len(self.calls) == 3:
+                return SimpleNamespace(
+                    id="resp_writer",
+                    output=[],
+                    output_text=json.dumps(
+                        {
+                            "conclusion": "結論",
+                            "layered_analysis": (
+                                "2️⃣ 第一層｜核心本質\n核心\n\n"
+                                "3️⃣ 第二層｜實際作用\n作用\n\n"
+                                "4️⃣ 第三層｜關鍵行動\n行動\n\n"
+                                "5️⃣ 第四層｜風險與代價\n風險"
+                            ),
+                            "oracle_poem": "籤詩",
+                            "poem_interpretation": "收斂",
+                            "anchoring_phrase": "定錨",
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            return SimpleNamespace(
+                id="resp_followup",
+                output=[],
+                output_text=json.dumps(
+                    {"followup_options": ["延伸 A", "延伸 B"]},
+                    ensure_ascii=False,
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+    client = OpenAIFileSearchClient(model="gpt-5.2-2025-12-11", env_file=env_file)
+
+    result = client.run_quality_first_structured_response(
+        question="問題",
+        manifest_path=manifest_path,
+        writer_system_prompt="writer prompt",
+        followup_system_prompt="followup prompt",
+        enable_compression=False,
+        top_k=5,
+        debug=True,
+    )
+
+    assert result.response_text == (
+        "1️⃣ 整體結論\n結論\n\n"
+        "2️⃣ 第一層｜核心本質\n核心\n\n"
+        "3️⃣ 第二層｜實際作用\n作用\n\n"
+        "4️⃣ 第三層｜關鍵行動\n行動\n\n"
+        "5️⃣ 第四層｜風險與代價\n風險\n\n"
+        "🌙 籤詩\n籤詩\n\n"
+        "✨ 行動定錨\n定錨\n\n"
+        "🔚 終局收斂\n收斂"
+    )
+    assert result.followup_options == ["延伸 A", "延伸 B"]
+    assert len(result.top_matches) == 2
+
+    retrieval_request, digest_request, writer_request, followup_request = (
+        client._client.responses.calls
+    )
+    assert retrieval_request["tools"][0]["type"] == "file_search"
+    retrieval_user_content = retrieval_request["input"][1]["content"]
+    assert retrieval_user_content == [{"type": "input_text", "text": "問題"}]
+
+    digest_file_ids = [
+        item["file_id"]
+        for item in digest_request["input"][0]["content"]
+        if item["type"] == "input_file"
+    ]
+    assert digest_file_ids == ["rag_file_1", "rag_file_2"]
+    assert all(file_id != "input_explainer" for file_id in digest_file_ids)
+    assert digest_request["text"]["format"]["name"] == "evidence_brief"
+
+    assert "tools" not in writer_request
+    assert all(item["type"] != "input_file" for item in writer_request["input"][0]["content"])
+    assert writer_request["text"]["format"]["name"] == "ask_structured_sections"
+    assert any(
+        line.startswith("4.evidence_digest: request_payload=") for line in result.debug_steps
+    )
+    assert any(
+        line.startswith("5.structured_writer: request_payload=") for line in result.debug_steps
+    )
+    assert followup_request["text"]["format"]["name"] == "ask_followup_output"
+
+
+def test_quality_first_structured_response_falls_back_to_legacy_two_stage_when_digest_parse_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    id="resp_retrieval",
+                    output=[
+                        {
+                            "type": "file_search_call",
+                            "results": [
+                                {
+                                    "file_id": "rag_file_1",
+                                    "filename": "folder/a.md",
+                                    "score": 0.91,
+                                }
+                            ],
+                        }
+                    ],
+                    output_text="retrieval",
+                )
+            return SimpleNamespace(
+                id="resp_digest",
+                output=[],
+                output_text="not-json",
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+    client = OpenAIFileSearchClient(env_file=env_file)
+
+    called: dict[str, object] = {}
+
+    def fake_legacy(**kwargs):  # noqa: ANN003
+        called["kwargs"] = kwargs
+        return OneStageSearchResult(
+            response_text="legacy answer",
+            followup_options=["legacy followup"],
+            response_id="legacy_resp",
+            input_files=[],
+            top_matches=[],
+            debug_steps=["legacy"],
+        )
+
+    monkeypatch.setattr(client, "run_two_stage_response", fake_legacy)
+
+    result = client.run_quality_first_structured_response(
+        question="問題",
+        manifest_path=tmp_path / "missing.json",
+        writer_system_prompt="writer prompt",
+        followup_system_prompt="followup prompt",
+        enable_compression=False,
+        top_k=5,
+        debug=True,
+    )
+
+    assert result.response_text == "legacy answer"
+    assert result.followup_options == ["legacy followup"]
+    assert called["kwargs"]["question"] == "問題"
+
+
+def test_quality_first_free_response_falls_back_to_legacy_two_stage_free_when_writer_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):  # noqa: ANN003
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    id="resp_retrieval",
+                    output=[
+                        {
+                            "type": "file_search_call",
+                            "results": [
+                                {
+                                    "file_id": "rag_file_1",
+                                    "filename": "folder/a.md",
+                                    "score": 0.91,
+                                }
+                            ],
+                        }
+                    ],
+                    output_text="retrieval",
+                )
+            if len(self.calls) == 2:
+                return SimpleNamespace(
+                    id="resp_digest",
+                    output=[],
+                    output_text=json.dumps(
+                        {
+                            "answer_direction": "主判斷",
+                            "evidence_points": ["證據一"],
+                            "caveats": [],
+                            "source_filenames": ["folder/a.md"],
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            return SimpleNamespace(
+                id="resp_writer",
+                output=[],
+                output_text="   ",
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("openai_integration.openai_file_search_lib.OpenAI", FakeOpenAI)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=key\nVECTOR_STORE_ID=vs_abc\n", encoding="utf-8")
+    client = OpenAIFileSearchClient(env_file=env_file)
+
+    called: dict[str, object] = {}
+
+    def fake_legacy(**kwargs):  # noqa: ANN003
+        called["kwargs"] = kwargs
+        return TwoStageSearchResult(
+            response_text="legacy free answer",
+            followup_options=["legacy free followup"],
+            first_response_id="legacy_first",
+            second_response_id="legacy_second",
+            input_files=[],
+            top_matches=[],
+            unmatched_top_matches=[],
+            debug_steps=["legacy free"],
+        )
+
+    monkeypatch.setattr(client, "run_two_stage_free_response", fake_legacy)
+
+    result = client.run_quality_first_free_response(
+        question="問題",
+        manifest_path=tmp_path / "missing.json",
+        writer_system_prompt="free writer",
+        followup_system_prompt="followup prompt",
+        top_k=5,
+        debug=True,
+    )
+
+    assert result.response_text == "legacy free answer"
+    assert result.followup_options == ["legacy free followup"]
+    assert called["kwargs"]["question"] == "問題"
 
 
 def test_two_stage_response_falls_back_to_vector_file_ids_when_manifest_missing(

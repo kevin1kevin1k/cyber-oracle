@@ -12,7 +12,7 @@ from openai_integration.openai_file_search_lib import (
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Run one-stage or two-stage Responses flow from uploaded manifest and print "
+            "Run quality-first or legacy Responses flow from uploaded manifest and print "
             "final response text"
         ),
     )
@@ -35,8 +35,8 @@ def main() -> None:
     parser.add_argument(
         "--top-k",
         type=int,
-        default=3,
-        help="Top-k file_search matches (default: 3)",
+        default=5,
+        help="Top-k file_search matches (default: 5)",
     )
     parser.add_argument(
         "--debug",
@@ -45,15 +45,25 @@ def main() -> None:
     )
     parser.add_argument(
         "--pipeline",
-        choices=["one_stage", "two_stage"],
-        default="two_stage",
-        help="Choose pipeline mode (default: two_stage)",
+        choices=["quality_first", "one_stage", "two_stage"],
+        default="quality_first",
+        help="Choose pipeline mode (default: quality_first)",
     )
     args = parser.parse_args()
 
     client = OpenAIFileSearchClient(model=args.model)
     manifest_path = Path(args.manifest_path).resolve()
-    if args.pipeline == "one_stage":
+    if args.pipeline == "quality_first":
+        result = client.run_quality_first_structured_response(
+            question=args.question,
+            manifest_path=manifest_path,
+            writer_system_prompt=args.system_prompt,
+            followup_system_prompt=None,
+            top_k=args.top_k,
+            model=args.model,
+            debug=args.debug,
+        )
+    elif args.pipeline == "one_stage":
         result = client.run_one_stage_response(
             question=args.question,
             manifest_path=manifest_path,
